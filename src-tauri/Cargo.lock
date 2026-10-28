@@ -3187,9 +3187,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 name = "nexq"
 version = "2.28.0"
 dependencies = [
- "anyhow",
  "async-trait",
- "base64 0.23.1",
  "bzip2",
  "chrono",
  "core-foundation 0.10.1",
