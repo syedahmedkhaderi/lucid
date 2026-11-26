@@ -5,7 +5,7 @@ function stamp(now: Date): string {
 }
 
 /**
- * NexQ meeting name for a detected call: the call's title (or the app's name
+ * Lucid meeting name for a detected call: the call's title (or the app's name
  * when it shows none) in front of the usual "Meeting <date time>".
  * "Weekly sync" → "Weekly sync — Meeting 2026-10-23 15:02".
  */

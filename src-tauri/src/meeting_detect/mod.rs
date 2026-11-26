@@ -1,5 +1,5 @@
 //! Meeting detection: notice when a call app (Zoom, Teams, Google Meet,
-//! Webex…) starts a meeting and offer to start NexQ, like Notion's desktop
+//! Webex…) starts a meeting and offer to start Lucid, like Notion's desktop
 //! meeting detection. Only *which process* holds an active microphone session
 //! and its window titles are read — never any audio.
 //!
@@ -71,8 +71,8 @@ pub fn start(app: &AppHandle) {
             std::thread::sleep(interval);
             let config = with_detector(|d| d.config.clone());
             let meeting_active = app.state::<AppState>().meeting_active.load(Ordering::SeqCst);
-            // Sampling is skipped while off; while NexQ records the tracker still
-            // follows the call so it doesn't prompt for it once NexQ stops.
+            // Sampling is skipped while off; while Lucid records the tracker still
+            // follows the call so it doesn't prompt for it once Lucid stops.
             let seen = if config.enabled {
                 let capturing = probe::capturing_processes();
                 if rules::may_be_call(&capturing) {
@@ -117,7 +117,7 @@ fn prompt_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         return Ok(w);
     }
     WebviewWindowBuilder::new(app, PROMPT_WINDOW, WebviewUrl::App("index.html?view=meeting-prompt".into()))
-        .title("NexQ — meeting detected")
+        .title("Lucid — meeting detected")
         .inner_size(PROMPT_WIDTH, PROMPT_HEIGHT)
         .resizable(false)
         .decorations(false)

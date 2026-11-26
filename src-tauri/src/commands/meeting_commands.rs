@@ -715,10 +715,10 @@ pub async fn start_meeting(
     // sentence that says why. The page calls this before it opens the microphone.
     let db = state.database.as_ref().ok_or_else(|| match &state.db_problem {
         Some(problem) => format!(
-            "NexQ can't start a meeting because it can't open its meetings file. {}",
+            "Lucid can't start a meeting because it can't open its meetings file. {}",
             problem.message
         ),
-        None => "NexQ can't start a meeting: the meetings file isn't open yet.".to_string(),
+        None => "Lucid can't start a meeting: the meetings file isn't open yet.".to_string(),
     })?;
 
     let db = db
@@ -1067,7 +1067,7 @@ pub async fn delete_meeting(
         tx.commit().map_err(|e| format!("Failed to delete meeting: {}", e))?;
         Ok(files)
     })?;
-    // Then the recording and waveform, only if they are in NexQ's recordings folder.
+    // Then the recording and waveform, only if they are in Lucid's recordings folder.
     if let Some(dir) = crate::workspace::purge::recordings_dir() {
         crate::workspace::purge::delete_files_inside(&dir, &files);
     }

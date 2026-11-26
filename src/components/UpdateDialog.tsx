@@ -3,7 +3,7 @@ import { ArrowUpRight } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
 import { useUpdaterStore } from "../stores/updaterStore";
 import { releaseNotesUrl, restartToUpdate } from "../hooks/useUpdater";
-import { NEXQ_VERSION } from "../lib/version";
+import { LUCID_VERSION } from "../lib/version";
 import { fetchReleaseNotes, formatReleaseDate, type ChangelogRelease } from "../lib/changelog";
 import { releaseWave } from "../lib/releaseWave.mjs";
 
@@ -184,7 +184,7 @@ export function UpdateDialog() {
     if (!visible || !version) return;
     let stale = false;
     setNotes({ status: "loading" });
-    fetchReleaseNotes(NEXQ_VERSION, version)
+    fetchReleaseNotes(LUCID_VERSION, version)
       .then((releases) => {
         if (!stale) setNotes({ status: "loaded", releases });
       })
@@ -211,7 +211,7 @@ export function UpdateDialog() {
   const releases = notes.status === "loaded" ? notes.releases : [];
   const released = formatReleaseDate(releases.find((r) => r.version === version)?.date);
   const facts = [
-    `You're on ${NEXQ_VERSION}`,
+    `You're on ${LUCID_VERSION}`,
     releases.length > 1 ? `${releases.length} releases since yours` : null,
     released ? `Released ${released}` : null,
   ]
@@ -288,7 +288,7 @@ export function UpdateDialog() {
           <button
             onClick={() => setDialogOpen(false)}
             disabled={installing}
-            title={autoUpdate ? "It installs by itself when you quit NexQ" : undefined}
+            title={autoUpdate ? "It installs by itself when you quit Lucid" : undefined}
             className="rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground disabled:opacity-50"
           >
             Later

@@ -894,7 +894,7 @@ mod tests {
         );
     }
 
-    /// NexQ's own request to Ollama Cloud: without auth, with an unknown
+    /// Lucid's own request to Ollama Cloud: without auth, with an unknown
     /// model, and with the right setup. Needs OLLAMA_API_KEY.
     #[tokio::test]
     #[ignore = "calls Ollama Cloud; needs OLLAMA_API_KEY"]

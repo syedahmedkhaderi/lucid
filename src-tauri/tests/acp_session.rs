@@ -4,13 +4,13 @@
 //! by the text of each prompt; see its header. The live tests at the end talk
 //! to a real, logged-in `agy` and are `#[ignore]`d.
 
-use nexq_lib::llm::cli_agent::acp::permission::{McpToolRule, PermissionPolicy};
-use nexq_lib::llm::cli_agent::acp::{probe_models, AcpLaunch, AcpSession};
-use nexq_lib::llm::cli_agent::protocol::AgentErrorKind;
-use nexq_lib::llm::cli_agent::session::{
+use lucid_lib::llm::cli_agent::acp::permission::{McpToolRule, PermissionPolicy};
+use lucid_lib::llm::cli_agent::acp::{probe_models, AcpLaunch, AcpSession};
+use lucid_lib::llm::cli_agent::protocol::AgentErrorKind;
+use lucid_lib::llm::cli_agent::session::{
     decode_activity, decode_tool_result, is_activity, AgentError, SessionTimeouts, THINKING_SIGNAL,
 };
-use nexq_lib::llm::provider::CancelToken;
+use lucid_lib::llm::provider::CancelToken;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -39,12 +39,21 @@ fn fake_bin() -> PathBuf {
         }
         let out = cmd.output().expect("run cargo build --example fake_acp");
         assert!(out.status.success(), "building fake_acp failed:\n{}", String::from_utf8_lossy(&out.stderr));
-        let profile_dir = std::env::current_exe().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
+        let profile_dir = cargo_profile_dir();
         let bin = profile_dir.join("examples").join(format!("fake_acp{}", std::env::consts::EXE_SUFFIX));
         assert!(bin.is_file(), "missing {}", bin.display());
         bin
     })
     .clone()
+}
+
+fn cargo_profile_dir() -> PathBuf {
+    std::env::current_exe()
+        .unwrap()
+        .ancestors()
+        .find(|path| matches!(path.file_name().and_then(|name| name.to_str()), Some("debug" | "release")))
+        .expect("Cargo profile directory in test executable path")
+        .to_path_buf()
 }
 
 /// A scratch dir with a notes folder (`notes/a.md`) and a file outside it.
@@ -116,7 +125,7 @@ fn no_cancel() -> Arc<CancelToken> {
     Arc::new(CancelToken::new())
 }
 
-async fn ask(session: &AcpSession, prompt: &str) -> Result<nexq_lib::llm::cli_agent::protocol::TurnResult, AgentError> {
+async fn ask(session: &AcpSession, prompt: &str) -> Result<lucid_lib::llm::cli_agent::protocol::TurnResult, AgentError> {
     let (_, on_delta) = collector();
     session.ask(prompt, on_delta, no_cancel()).await
 }
@@ -316,7 +325,7 @@ async fn a_tool_that_runs_without_approval_ends_the_session() {
 }
 
 /// A scripted turn (`raw:` in the fake): the steps as one prompt.
-async fn raw(session: &AcpSession, steps: Value) -> Result<nexq_lib::llm::cli_agent::protocol::TurnResult, AgentError> {
+async fn raw(session: &AcpSession, steps: Value) -> Result<lucid_lib::llm::cli_agent::protocol::TurnResult, AgentError> {
     ask(session, &format!("raw:{steps}")).await
 }
 
@@ -337,7 +346,7 @@ fn perm_call(id: &str, name: &str) -> Value {
 }
 
 /// The turn must fail as a breach, the process must be killed, and no further turn works.
-async fn assert_breach(session: &AcpSession, result: Result<nexq_lib::llm::cli_agent::protocol::TurnResult, AgentError>, why: &str) {
+async fn assert_breach(session: &AcpSession, result: Result<lucid_lib::llm::cli_agent::protocol::TurnResult, AgentError>, why: &str) {
     let err = result.unwrap_err();
     assert_eq!(err.kind(), AgentErrorKind::Other, "{why}: {err:?}");
     assert!(err.to_string().contains("does not allow"), "{why}: {err}");
@@ -584,22 +593,22 @@ fn agy() -> Option<PathBuf> {
 #[tokio::test]
 #[ignore = "needs a logged-in Antigravity CLI; uses a few tokens"]
 async fn live_antigravity_reads_a_note_through_the_notes_server_and_refuses_the_rest() {
-    use nexq_lib::llm::cli_agent::command::SourcesLaunch;
-    use nexq_lib::llm::cli_agent::sources_convert::acp_sources_for;
+    use lucid_lib::llm::cli_agent::command::SourcesLaunch;
+    use lucid_lib::llm::cli_agent::sources_convert::acp_sources_for;
     let Some(agy) = agy() else { return };
     let s = Scratch::new("live");
     std::fs::write(s.notes.join("falcon.md"), "Project Falcon launches on March 3.").unwrap();
-    let models = probe_models(agy.clone(), nexq_lib::llm::cli_agent::acp::antigravity_args()).await.unwrap();
+    let models = probe_models(agy.clone(), lucid_lib::llm::cli_agent::acp::antigravity_args()).await.unwrap();
     assert!(!models.is_empty());
     let low = models.iter().find(|(id, _)| id.contains("flash") && id.ends_with("low")).unwrap_or(&models[0]).0.clone();
 
     let sources = acp_sources_for(
         Some(&SourcesLaunch { add_dirs: vec![s.notes.clone()], ..Default::default() }),
-        Some(Path::new(env!("CARGO_BIN_EXE_nexq"))),
+        Some(Path::new(env!("CARGO_BIN_EXE_lucid"))),
     );
     let cwd = s.root.join("acp-live");
     std::fs::create_dir_all(&cwd).unwrap();
-    let mut launch = AcpLaunch::new(agy, nexq_lib::llm::cli_agent::acp::antigravity_args(), cwd.clone());
+    let mut launch = AcpLaunch::new(agy, lucid_lib::llm::cli_agent::acp::antigravity_args(), cwd.clone());
     launch.remove_cwd_on_close = true;
     launch.model = low;
     launch.system_prompt = "Answer in one short line. Read the user's notes only with the list_notes, search_notes and read_note tools.".into();

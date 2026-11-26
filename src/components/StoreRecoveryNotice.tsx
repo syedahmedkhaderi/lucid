@@ -6,7 +6,7 @@ import type { StoreRecovery } from "../lib/types";
 // What each settings file holds, in the user's words.
 const FILE_HOLDS: Record<string, string> = {
   "config.json": "your settings",
-  "nexq-settings.json": "your update preferences",
+  "lucid-settings.json": "your update preferences",
   "translation-config.json": "your translation settings",
 };
 
@@ -16,7 +16,7 @@ export function recoveryText(items: StoreRecovery[]): { title: string; lines: st
   const lines = items.map((i) => {
     const what = FILE_HOLDS[i.file] ?? i.file;
     return i.restored
-      ? `The file with ${what} was damaged. NexQ put back the last good copy.`
+      ? `The file with ${what} was damaged. Lucid put back the last good copy.`
       : `The file with ${what} was damaged and there was no good copy, so they start from the defaults.`;
   });
   const kept = items.flatMap((i) => (i.kept_as ? [i.kept_as] : []));

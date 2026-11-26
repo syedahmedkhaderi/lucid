@@ -1,6 +1,6 @@
 // Sub-PRD 3: Audio recording to WAV file
 // Writes PCM data to file in a background thread
-// Saves to %APPDATA%/com.nexq.app/recordings/{meeting_id}.wav
+// Saves to %APPDATA%/com.lucid.desktop/recordings/{meeting_id}.wav
 
 use hound::{SampleFormat, WavSpec, WavWriter};
 use std::fs;
@@ -104,7 +104,7 @@ fn get_recordings_dir() -> Result<PathBuf, String> {
 
 /// Start recording audio to a WAV file.
 ///
-/// Creates a new WAV file at `%APPDATA%/com.nexq.app/recordings/{meeting_id}.wav`
+/// Creates a new WAV file at `%APPDATA%/com.lucid.desktop/recordings/{meeting_id}.wav`
 /// and spawns a background thread to write samples.
 ///
 /// Returns a RecorderHandle for writing samples and stopping.

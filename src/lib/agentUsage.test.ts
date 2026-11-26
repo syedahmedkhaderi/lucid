@@ -149,7 +149,7 @@ describe("outdated Claude Code", () => {
   });
 
   it("says what to do, with the required version", () => {
-    expect(outdatedNote(base)).toBe("NexQ needs Claude Code 2.1.259 or newer. Update it, then check the connection.");
+    expect(outdatedNote(base)).toBe("Lucid needs Claude Code 2.1.259 or newer. Update it, then check the connection.");
   });
 
   it("builds the update command for the platform of the path", () => {

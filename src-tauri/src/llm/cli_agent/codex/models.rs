@@ -191,7 +191,7 @@ fn first_line(text: &str, fallback: &str) -> String {
 /// How the Codex CLI is signed in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodexLogin {
-    /// A ChatGPT subscription login (what NexQ wants).
+    /// A ChatGPT subscription login (what Lucid wants).
     ChatGpt { email: Option<String>, plan: Option<String> },
     /// An API key: pay-per-token, not a subscription.
     ApiKey,

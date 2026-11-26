@@ -11,9 +11,9 @@ export function apiBilledNoteFor(agentName: string): string {
 export const API_BILLED_NOTE = apiBilledNoteFor("Claude");
 
 /** Shown when only an npm install of Claude Code (`claude.cmd`) was found. */
-export const NPM_ONLY_NOTE = "Found an npm install of Claude Code — NexQ needs the native installer";
+export const NPM_ONLY_NOTE = "Found an npm install of Claude Code — Lucid needs the native installer";
 
-/** Claude Code is installed but older than NexQ can launch (the backend sets `required_version` only then). */
+/** Claude Code is installed but older than Lucid can launch (the backend sets `required_version` only then). */
 export function isOutdated(status: ClaudeCliStatus | undefined | null): boolean {
   return !!status?.installed && !!status.required_version;
 }
@@ -31,7 +31,7 @@ export function outdatedLine(status: ClaudeCliStatus | undefined | null): string
 
 /** What to do about an outdated Claude Code. */
 export function outdatedNote(status: ClaudeCliStatus | undefined | null): string {
-  return `NexQ needs Claude Code ${status?.required_version ?? "a newer version"} or newer. Update it, then check the connection.`;
+  return `Lucid needs Claude Code ${status?.required_version ?? "a newer version"} or newer. Update it, then check the connection.`;
 }
 
 /** A Windows path (drive letter or network share). */
@@ -62,7 +62,7 @@ export function isApiBilled(status: ClaudeCliStatus | undefined | null): boolean
 
 /** Shown where a Codex API-key login would otherwise read as connected. */
 export const CODEX_API_KEY_NOTE =
-  "This Codex login uses an API key. NexQ needs Codex signed in with your ChatGPT account: run `codex login` and choose Sign in with ChatGPT.";
+  "This Codex login uses an API key. Lucid needs Codex signed in with your ChatGPT account: run `codex login` and choose Sign in with ChatGPT.";
 
 /** Codex is logged in with an API key: not usable (the backend reports it as not logged in, with this method). */
 export function isApiKeyLogin(status: ClaudeCliStatus | undefined | null): boolean {

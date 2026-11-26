@@ -173,7 +173,7 @@ Ship it.".into() };
             db: Some(DbProblem {
                 kind: ProblemKind::Unreadable,
                 message: "A check of your meetings file found damage.".into(),
-                path: "C:/data/nexq.db".into(),
+                path: "C:/data/lucid.db".into(),
                 backups: vec![BackupInfo { name: "nexq-before-workspaces.db".into(), created_at: 1_700_000_000_000, bytes: 1024, meetings: Some(3) }],
             }),
         };

@@ -1,13 +1,13 @@
-; NexQ NSIS installer hooks
+; Lucid NSIS installer hooks
 ; Where the installer template (nsis/installer.nsi) finds the rest of its files
 !define NEXQ_NSIS_DIR "${__FILEDIR__}\nsis"
 
 ; Installs Visual C++ 2015-2022 Redistributable if not present (first install only)
 
 !macro NSIS_HOOK_PREINSTALL
-  ; Updates (NexQ already installed) skip this: the app ships app-local runtime
+  ; Updates (Lucid already installed) skip this: the app ships app-local runtime
   ; DLLs since v2.21.1, and a passive update must never block on a MessageBox.
-  ${If} ${FileExists} "$INSTDIR\nexq.exe"
+  ${If} ${FileExists} "$INSTDIR\lucid.exe"
     Goto vcredist_done
   ${EndIf}
 

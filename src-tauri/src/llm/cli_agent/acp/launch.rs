@@ -1,10 +1,10 @@
-//! How NexQ starts Antigravity CLI: its arguments and where `agy` lives.
+//! How Lucid starts Antigravity CLI: its arguments and where `agy` lives.
 
 use super::super::detect::find_on_path;
 use std::path::{Path, PathBuf};
 
-/// NexQ's own Antigravity data folder, `%LOCALAPPDATA%\NexQ\agent-agy`
-/// (`--gemini-dir`): sessions, the brain folder and settings of NexQ's sessions
+/// Lucid's own Antigravity data folder, `%LOCALAPPDATA%\Lucid\agent-agy`
+/// (`--gemini-dir`): sessions, the brain folder and settings of Lucid's sessions
 /// live here, not in the user's `~/.gemini`, and none of the user's own MCP
 /// servers, plugins, skills or rules in there are loaded. Checked with
 /// `agy` 1.5.14: sign-in survives (it is kept outside that folder), the folder
@@ -13,7 +13,7 @@ pub fn agy_home_dir() -> PathBuf {
     crate::app_paths::local_root().join("agent-agy")
 }
 
-/// Antigravity CLI: `agy acp --disable-telemetry --sandbox --gemini-dir <NexQ's folder>`.
+/// Antigravity CLI: `agy acp --disable-telemetry --sandbox --gemini-dir <Lucid's folder>`.
 ///
 /// - `--disable-telemetry`: no usage reporting from a hidden session.
 /// - `--sandbox`: "terminal restrictions enabled", a second wall behind the
@@ -22,7 +22,7 @@ pub fn agy_home_dir() -> PathBuf {
 ///
 /// `agy acp` has no `--model` flag: the model is set with `session/set_model`
 /// after `session/new`. No folder of the user's is given to it: the cwd is an
-/// empty NexQ folder and the notes come from the `nexq_notes` MCP server.
+/// empty Lucid folder and the notes come from the `nexq_notes` MCP server.
 pub fn antigravity_args() -> Vec<String> {
     antigravity_args_in(&agy_home_dir())
 }
@@ -44,9 +44,9 @@ pub fn agy_in_local_app_data(local_app_data: &Path) -> PathBuf {
 }
 
 /// Where `agy.exe` is: the installer's folder first, else the first real
-/// `agy.exe` on `PATH` (`find_on_path`). NexQ never spawns through a shell,
+/// `agy.exe` on `PATH` (`find_on_path`). Lucid never spawns through a shell,
 /// so only an `.exe` counts. Resolved on every spawn, so a fresh install is
-/// picked up without restarting NexQ.
+/// picked up without restarting Lucid.
 pub fn find_agy() -> Option<PathBuf> {
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
         let p = agy_in_local_app_data(Path::new(&local));
@@ -72,7 +72,7 @@ mod tests {
     fn antigravity_args_are_acp_without_telemetry() {
         let args = antigravity_args_in(Path::new("C:\\Data\\agent-agy"));
         assert_eq!(args, vec!["acp", "--disable-telemetry", "--sandbox", "--gemini-dir", "C:\\Data\\agent-agy"]);
-        // NexQ's own folder, not the user's `.gemini`.
+        // Lucid's own folder, not the user's `.gemini`.
         let own = antigravity_args();
         assert!(own[4].ends_with("agent-agy") && !own[4].contains(".gemini"), "{own:?}");
     }

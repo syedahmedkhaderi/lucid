@@ -18,7 +18,7 @@ const finding = (copies = 1): DbIntegrityFinding => ({
   message: "A check of your meetings file found damage.",
   details: ["row 3 missing"],
   checked_at: 1,
-  folder: "C:/data/NexQ",
+  folder: "C:/data/Lucid",
   copies: Array.from({ length: copies }, (_, i) => ({ name: `nexq-backup-${i}.db`, created_at: 1, bytes: 10, meetings: 2 })),
 });
 
@@ -40,7 +40,7 @@ describe("database damage notice", () => {
     render(<DatabaseDamageNotice />);
     expect(await screen.findByText("Your meetings file has some damage")).toBeTruthy();
     expect(screen.getByText(/keeps working with it and has changed nothing/)).toBeTruthy();
-    expect(screen.getByText(/2 copies of your meetings exist.*C:\/data\/NexQ/)).toBeTruthy();
+    expect(screen.getByText(/2 copies of your meetings exist.*C:\/data\/Lucid/)).toBeTruthy();
     fireEvent.click(screen.getByLabelText("Close"));
     expect(screen.queryByText("Your meetings file has some damage")).toBeNull();
   });

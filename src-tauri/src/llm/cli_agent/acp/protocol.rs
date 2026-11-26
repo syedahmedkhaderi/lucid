@@ -7,7 +7,7 @@ use crate::llm::cli_agent::protocol::{classify_error, AgentErrorKind, ToolUse, T
 use serde_json::{json, Value};
 use std::path::Path;
 
-/// The ACP protocol version NexQ speaks.
+/// The ACP protocol version Lucid speaks.
 pub const PROTOCOL_VERSION: u64 = 1;
 
 // ---- building ---------------------------------------------------------
@@ -42,7 +42,7 @@ pub fn initialize_params() -> Value {
     json!({
         "protocolVersion": PROTOCOL_VERSION,
         "clientCapabilities": { "fs": { "readTextFile": false, "writeTextFile": false }, "terminal": false },
-        "clientInfo": { "name": "NexQ", "title": "NexQ", "version": env!("CARGO_PKG_VERSION") },
+        "clientInfo": { "name": "Lucid", "title": "Lucid", "version": env!("CARGO_PKG_VERSION") },
     })
 }
 
@@ -154,7 +154,7 @@ pub fn parse_line(line: &str) -> Result<Incoming, String> {
     }
 }
 
-/// What `initialize` told us that NexQ acts on.
+/// What `initialize` told us that Lucid acts on.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct AgentInit {
     pub name: String,
@@ -248,7 +248,7 @@ pub fn models_from_session_new(v: &Value) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
-/// A `tool_call` / `tool_call_update` as far as NexQ needs it.
+/// A `tool_call` / `tool_call_update` as far as Lucid needs it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolCallInfo {
     pub id: String,
@@ -379,7 +379,7 @@ impl PromptEnd {
 
 // ---- tool activity ----------------------------------------------------
 
-/// The call as the [`ToolUse`] that NexQ's activity lines and chips know:
+/// The call as the [`ToolUse`] that Lucid's activity lines and chips know:
 /// `Read {file_path}`, `Grep {pattern}` and `mcp__<server>__<tool>`
 /// (`servers` are the keys of the MCP servers the session was started with;
 /// both CLIs name an MCP tool `mcp_<server>_<tool>`). Anything else keeps the

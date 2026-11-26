@@ -47,7 +47,7 @@ pub fn mem_db() -> Connection {
 
 /// A file database (WAL-capable) in a fresh temp directory.
 pub fn file_db(dir: &std::path::Path) -> std::path::PathBuf {
-    let path = dir.join("nexq.db");
+    let path = dir.join("lucid.db");
     let mut conn = Connection::open(&path).unwrap();
     conn.execute_batch(APP_SCHEMA).unwrap();
     migrate(&mut conn);

@@ -14,7 +14,7 @@ import { RotateCcw, Keyboard } from "lucide-react";
 
 const MODIFIER_CODES = /^(Control|Shift|Alt|Meta|OS)(Left|Right)?$/;
 
-/** Fixed keys NexQ uses that can't be rebound here. */
+/** Fixed keys Lucid uses that can't be rebound here. */
 const FIXED_SHORTCUTS: ReadonlyArray<{ keys: string; action: string }> = [
   { keys: formatShortcut("CmdOrCtrl+M"), action: `${RESERVED_SHORTCUTS["CmdOrCtrl+M"]} (any app)` },
   { keys: formatShortcut("CmdOrCtrl+B"), action: `${RESERVED_SHORTCUTS["CmdOrCtrl+B"]} (any app)` },
@@ -122,7 +122,7 @@ export function HotkeySettings() {
         </div>
 
         <p className="mt-2 text-xs text-muted-foreground">
-          These keys run the AI actions during a meeting while a NexQ window is focused. Click a
+          These keys run the AI actions during a meeting while a Lucid window is focused. Click a
           binding, then press the new key. Escape cancels.
         </p>
       </div>

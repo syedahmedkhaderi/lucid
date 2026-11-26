@@ -83,7 +83,7 @@ export function pillCard(kind: PillKind, info: AssistSources, provider: string):
     const limit = hasFolders
       ? cli
         ? `${cliAgentName(provider)} reads the folders' files itself.`
-        : "With this provider NexQ searches the folders and sends the best matching passages with your question."
+        : "With this provider Lucid searches the folders and sends the best matching passages with your question."
       : null;
     return {
       title: "Knowledge",

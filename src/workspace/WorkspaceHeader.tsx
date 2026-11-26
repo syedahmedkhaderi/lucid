@@ -257,7 +257,7 @@ export function WorkspaceHeader(p: WorkspaceHeaderProps) {
       </div>
       {p.unavailable && (
         <p className="ui-meta mt-3 rounded-lg bg-accent px-3 py-2 text-foreground" role="note">
-          Workspaces aren't available right now. Everything is in General, and NexQ works as before.
+          Workspaces aren't available right now. Everything is in General, and Lucid works as before.
         </p>
       )}
     </div>

@@ -1,12 +1,12 @@
 //! `CliSpawner`: starts the session of whichever CLI agent
 //! [`SessionConfig::kind`] names. The binary is looked up on every spawn, so
-//! a fresh install is picked up without restarting NexQ.
+//! a fresh install is picked up without restarting Lucid.
 //!
 //! - Claude: `claude.exe` and its stream-json protocol (`ClaudeSession`).
 //! - Antigravity: `agy acp` (`AcpSession`). It is given no folder of the user's:
-//!   its cwd is a new empty folder under NexQ's agent sandbox, deleted with the
-//!   session, and the notes come through NexQ's `nexq_notes` MCP server (one of
-//!   the `mcpServers` of `session/new`). Its data lives in NexQ's own
+//!   its cwd is a new empty folder under Lucid's agent sandbox, deleted with the
+//!   session, and the notes come through Lucid's `nexq_notes` MCP server (one of
+//!   the `mcpServers` of `session/new`). Its data lives in Lucid's own
 //!   `--gemini-dir`, so none of the user's MCP servers or plugins load.
 //! - Codex: `codex app-server` (`CodexSession`). Effort is passed as resolved
 //!   by the manager (clamped to the model's own levels); the MCP servers
@@ -225,7 +225,7 @@ mod tests {
         let refusal = outdated_message((2, 1, 206));
         let err = claude_binary_for_spawn(Some(Err(ClaudeBinaryError::TooOld(refusal.clone())))).unwrap_err();
         assert_eq!(err.kind(), AgentErrorKind::Outdated);
-        assert!(err.to_string().contains("Claude Code 2.1.206 is too old for NexQ. Update it to 2.1.259 or newer."), "{err}");
+        assert!(err.to_string().contains("Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer."), "{err}");
         // Missing stays not installed; a usable binary passes.
         let missing = claude_binary_for_spawn(Some(Err(ClaudeBinaryError::NotFound))).unwrap_err();
         assert_eq!(missing.kind(), AgentErrorKind::NotInstalled);

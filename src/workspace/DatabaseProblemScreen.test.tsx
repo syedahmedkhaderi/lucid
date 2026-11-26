@@ -15,7 +15,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useMeetingStore } from "../stores/meetingStore";
 import { mockBackend, seedWorkspaces, ws } from "./testUtils";
 
-const PATH = "C:\\Users\\me\\AppData\\Roaming\\com.nexq.app\\nexq.db";
+const PATH = "C:\\Users\\me\\AppData\\Roaming\\com.lucid.desktop\\lucid.db";
 const problem = (kind: DatabaseProblemKind, over: Partial<DatabaseProblem> = {}): DatabaseProblem => ({
   kind,
   message: "database disk image is malformed",
@@ -35,10 +35,10 @@ afterEach(() => cleanup());
 
 describe("what every kind says", () => {
   it.each([
-    ["unreadable", "NexQ couldn't open your meetings", "couldn't be read"],
-    ["newer", "Your meetings were saved by a newer NexQ", "older than the one"],
-    ["upgrade_failed", "NexQ couldn't finish updating your data", "didn't complete"],
-    ["locked", "Your meetings are in use", "Another NexQ or program"],
+    ["unreadable", "Lucid couldn't open your meetings", "couldn't be read"],
+    ["newer", "Your meetings were saved by a newer Lucid", "older than the one"],
+    ["upgrade_failed", "Lucid couldn't finish updating your data", "didn't complete"],
+    ["locked", "Your meetings are in use", "Another Lucid or program"],
   ] as const)("%s: a heading, one sentence, that nothing was deleted, and where the file is", (kind, title, sentence) => {
     mockBackend();
     render(<DatabaseProblemScreen problem={problem(kind)} />);
@@ -57,7 +57,7 @@ describe("what every kind says", () => {
     mockBackend();
     const names = () => screen.queryAllByRole("button").map((b) => b.textContent);
     render(<DatabaseProblemScreen problem={problem("newer")} />);
-    expect(names()).toEqual(["Install the newer NexQ", "Open data folder"]);
+    expect(names()).toEqual(["Install the newer Lucid", "Open data folder"]);
     cleanup();
     render(<DatabaseProblemScreen problem={problem("upgrade_failed")} />);
     expect(names()).toEqual(["Try again", "Open data folder"]);
@@ -84,8 +84,8 @@ describe("unreadable", () => {
 
     await userEvent.click(within(rows[0]).getByRole("button", { name: /^Restore the copy from .*, 1 meeting$/ }));
     await waitFor(() => expect(b.called("restore_database_copy")[0]?.args).toMatchObject({ name: "nexq-2026-11-20.db" }));
-    const restart = await screen.findByRole("button", { name: "Restart NexQ" });
-    expect(screen.getByRole("heading", { level: 1, name: "NexQ needs to restart" })).toBeInTheDocument();
+    const restart = await screen.findByRole("button", { name: "Restart Lucid" });
+    expect(screen.getByRole("heading", { level: 1, name: "Lucid needs to restart" })).toBeInTheDocument();
     expect(document.activeElement).toBe(restart);
     expect(screen.getByRole("status")).toHaveTextContent(/Restart to open your meetings/);
     await userEvent.click(restart);
@@ -104,7 +104,7 @@ describe("unreadable", () => {
     render(<DatabaseProblemScreen problem={problem("unreadable")} />);
     await userEvent.click(screen.getByRole("button", { name: "Start with an empty database" }));
     const dialog = await screen.findByRole("alertdialog");
-    expect(dialog).toHaveTextContent("nexq.db");
+    expect(dialog).toHaveTextContent("lucid.db");
     expect(dialog).toHaveTextContent(/not deleted: it is kept aside under its name/);
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(b.called("start_with_new_database")).toHaveLength(0);
@@ -112,7 +112,7 @@ describe("unreadable", () => {
     await userEvent.click(screen.getByRole("button", { name: "Start with an empty database" }));
     await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Start empty" }));
     await waitFor(() => expect(b.called("start_with_new_database")).toHaveLength(1));
-    expect(await screen.findByRole("button", { name: "Restart NexQ" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Restart Lucid" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(/kept aside/);
   });
 
@@ -133,7 +133,7 @@ describe("the other kinds", () => {
   it("newer: Install opens the update dialog", async () => {
     mockBackend();
     render(<DatabaseProblemScreen problem={problem("newer")} />);
-    await userEvent.click(screen.getByRole("button", { name: "Install the newer NexQ" }));
+    await userEvent.click(screen.getByRole("button", { name: "Install the newer Lucid" }));
     expect(updater.openUpdateDialog).toHaveBeenCalledTimes(1);
   });
 
@@ -160,7 +160,7 @@ describe("the other kinds", () => {
     render(<DatabaseProblemScreen problem={problem("locked")} />);
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Your meetings can be opened now. Restart to open your meetings.");
-    await userEvent.click(screen.getByRole("button", { name: "Restart NexQ" }));
+    await userEvent.click(screen.getByRole("button", { name: "Restart Lucid" }));
     await waitFor(() => expect(b.called("restart_app")).toHaveLength(1));
     cleanup();
     mockBackend({ retry_open_database: { ok: false, needs_restart: false } });
@@ -182,12 +182,12 @@ describe("the other kinds", () => {
     cleanup();
     mockBackend({
       retry_open_database: () => {
-        throw "The file is held by another NexQ";
+        throw "The file is held by another Lucid";
       },
     });
     render(<DatabaseProblemScreen problem={problem("locked")} />);
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("The file is held by another NexQ");
+    expect(await screen.findByRole("alert")).toHaveTextContent("The file is held by another Lucid");
   });
 
   it("Open data folder asks the backend, and a refusal is reported", async () => {
@@ -208,7 +208,7 @@ describe("in the launcher", () => {
     useMeetingStore.setState({ activeMeeting: null, selectedMeetingId: null });
     await useWorkspaceStore.getState().refresh();
     render(<LauncherView />);
-    expect(screen.getByRole("heading", { level: 1, name: "NexQ couldn't open your meetings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Lucid couldn't open your meetings" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start meeting" })).toBeNull();
     expect(screen.queryByTestId("chat")).toBeNull();
     expect(screen.queryByRole("region", { name: "Meetings" })).toBeNull();

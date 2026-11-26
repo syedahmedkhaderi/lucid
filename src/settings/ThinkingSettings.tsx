@@ -56,7 +56,7 @@ export function ThinkingSettings({ provider }: { provider: LLMProviderType }) {
           ))}
         </select>
         <p id={hintId} className="mt-1.5 text-xs text-muted-foreground">
-          Off answers faster. Not every model supports it; NexQ falls back automatically.
+          Off answers faster. Not every model supports it; Lucid falls back automatically.
         </p>
       </div>
 
@@ -92,7 +92,7 @@ export function ThinkingSettings({ provider }: { provider: LLMProviderType }) {
               </p>
             ) : (
               <p className="mt-1.5 text-xs text-muted-foreground">
-                A JSON object merged into each request after NexQ's own fields.
+                A JSON object merged into each request after Lucid's own fields.
                 {provider === "ollama" ? ' "options" is merged key by key.' : ""} "model", "messages" and "stream"
                 are ignored.
               </p>

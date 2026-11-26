@@ -1,5 +1,5 @@
 //! Opening the database safely. When the file can't be used (damaged, written
-//! by a newer NexQ, in use by another program), nothing is created, upgraded or
+//! by a newer Lucid, in use by another program), nothing is created, upgraded or
 //! overwritten: the app starts without it, says why, and offers the copies it
 //! already has. A recovery puts the old files aside under new names (it never
 //! deletes) and is finished on the next start even if the power went out
@@ -13,9 +13,9 @@ use std::time::Duration;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 
-pub const DB_NAME: &str = "nexq.db";
-const MARKER: &str = "nexq.db.pending-restore";
-const RESTORE_TMP: &str = "nexq.db.restore-tmp";
+pub const DB_NAME: &str = "lucid.db";
+const MARKER: &str = "lucid.db.pending-restore";
+const RESTORE_TMP: &str = "lucid.db.restore-tmp";
 const MAGIC: &[u8; 16] = b"SQLite format 3\0";
 const PROBE_WAIT: Duration = Duration::from_millis(500);
 
@@ -73,7 +73,7 @@ pub fn plain_io(e: &std::io::Error) -> String {
     use std::io::ErrorKind::*;
     match (e.raw_os_error(), e.kind()) {
         (Some(32) | Some(33), _) => "it is open in another program".to_string(),
-        (_, PermissionDenied) => "NexQ is not allowed to read it".to_string(),
+        (_, PermissionDenied) => "Lucid is not allowed to read it".to_string(),
         (_, NotFound) => "it is not there".to_string(),
         _ => {
             let text = e.to_string();
@@ -165,7 +165,7 @@ pub fn probe(path: &Path) -> Result<(), (ProblemKind, String)> {
     if version > top_version() {
         return Err((
             ProblemKind::Newer,
-            format!("Your meetings were saved by a newer NexQ (data version {version}; this one understands up to {})", top_version()),
+            format!("Your meetings were saved by a newer Lucid (data version {version}; this one understands up to {})", top_version()),
         ));
     }
     Ok(())
@@ -200,7 +200,7 @@ fn is_copy_name(name: &str) -> bool {
         return false;
     }
     ((name.starts_with("nexq-before-") || name.starts_with("nexq-backup-")) && name.ends_with(".db"))
-        || name.starts_with("nexq.db.damaged-")
+        || name.starts_with("lucid.db.damaged-")
 }
 
 /// The copies of the database in `dir` that open and check out, newest first.
@@ -255,7 +255,7 @@ fn aside_name(stamp: u64, suffix: &str) -> String {
 /// [`resume_pending`]); the app restarts afterwards.
 pub fn restore_copy(dir: &Path, name: &str, stamp: u64, kind: ProblemKind) -> Result<(), String> {
     if !list_backups(dir).iter().any(|b| b.name == name) {
-        return Err("That copy is not one NexQ can restore from".to_string());
+        return Err("That copy is not one Lucid can restore from".to_string());
     }
     still_needed(dir, kind)?;
     write_marker(dir, &Pending { action: "restore".into(), source: Some(name.to_string()), stamp, phase: planned() })?;
@@ -267,7 +267,7 @@ pub fn restore_copy(dir: &Path, name: &str, stamp: u64, kind: ProblemKind) -> Re
 fn still_needed(dir: &Path, kind: ProblemKind) -> Result<(), String> {
     match probe(&dir.join(DB_NAME)) {
         Ok(()) if kind != ProblemKind::UpgradeFailed => {
-            Err("Your meetings file opens fine now, so nothing was changed. Restart NexQ.".to_string())
+            Err("Your meetings file opens fine now, so nothing was changed. Restart Lucid.".to_string())
         }
         Err((ProblemKind::Locked, why)) => Err(format!("Another program is using the meetings file, so nothing was changed. Close it and try again. ({why})")),
         _ => Ok(()),
@@ -283,7 +283,7 @@ pub fn start_new(dir: &Path, stamp: u64, kind: ProblemKind) -> Result<(), String
 
 fn write_marker(dir: &Path, pending: &Pending) -> Result<(), String> {
     if dir.join(MARKER).exists() {
-        return Err("An earlier recovery is still being finished. Restart NexQ".to_string());
+        return Err("An earlier recovery is still being finished. Restart Lucid".to_string());
     }
     let text = serde_json::to_string(pending).map_err(|e| e.to_string())?;
     crate::store_guard::write_atomic(&dir.join(MARKER), text.as_bytes()).map_err(|e| format!("Couldn't start the recovery: {e}"))
@@ -337,7 +337,7 @@ fn run_pending(dir: &Path, stop_after: Option<u8>, startup: bool) -> Result<bool
                     return Err(format!(
                         "Couldn't put {DB_NAME}{suffix} aside ({}). Nothing was changed.{}",
                         plain_io(&e),
-                        if restored { "" } else { " Some files could not be put back; they are kept as nexq.db.damaged-*." }
+                        if restored { "" } else { " Some files could not be put back; they are kept as lucid.db.damaged-*." }
                     ));
                 }
             }
@@ -348,7 +348,7 @@ fn run_pending(dir: &Path, stop_after: Option<u8>, startup: bool) -> Result<bool
         // From here the recovery is the user's decision carried out: a later start may finish it.
         if let Err(e) = rewrite_marker(dir, &Pending { phase: "aside".into(), ..pending.clone() }) {
             let restored = rollback(dir, &pending);
-            return Err(format!("Couldn't record the recovery ({e}). Nothing was changed.{}", if restored { "" } else { " Some files are kept as nexq.db.damaged-*." }));
+            return Err(format!("Couldn't record the recovery ({e}). Nothing was changed.{}", if restored { "" } else { " Some files are kept as lucid.db.damaged-*." }));
         }
     } else if !main_aside.exists() {
         // The note says the old files are aside but they are not: it is not ours to continue.
@@ -522,7 +522,7 @@ mod tests {
         let before = fs::read(&path).unwrap();
         let (kind, why) = probe(&path).unwrap_err();
         assert_eq!(kind, ProblemKind::Newer);
-        assert!(why.contains("newer NexQ"));
+        assert!(why.contains("newer Lucid"));
         assert_eq!(fs::read(&path).unwrap(), before);
         make_db(&d.join("ok.db"), 1, top_version());
         assert!(probe(&d.join("ok.db")).is_ok(), "the same version is fine");
@@ -562,7 +562,7 @@ mod tests {
         }
         fs::write(d.join("nexq-backup-rot.db"), &rot).unwrap();
         // Not copies at all.
-        fs::write(d.join("nexq.db"), b"live").unwrap();
+        fs::write(d.join("lucid.db"), b"live").unwrap();
         fs::write(d.join("notes.db"), b"x").unwrap();
         let offered: Vec<String> = list_backups(&d).into_iter().map(|b| b.name).collect();
         let mut sorted = offered.clone();
@@ -580,16 +580,16 @@ mod tests {
     fn restoring_puts_all_three_files_aside_and_brings_the_copy_in() {
         let d = dir("restore");
         fs::write(d.join(DB_NAME), b"damaged main").unwrap();
-        fs::write(d.join("nexq.db-wal"), b"damaged wal").unwrap();
-        fs::write(d.join("nexq.db-shm"), b"damaged shm").unwrap();
+        fs::write(d.join("lucid.db-wal"), b"damaged wal").unwrap();
+        fs::write(d.join("lucid.db-shm"), b"damaged shm").unwrap();
         make_db(&d.join("nexq-before-workspaces.db"), 5, 8);
         restore_copy(&d, "nexq-before-workspaces.db", 1234, ProblemKind::Unreadable).unwrap();
         // The old files are all kept, under one stamp.
-        assert_eq!(fs::read(d.join("nexq.db.damaged-1234")).unwrap(), b"damaged main");
-        assert_eq!(fs::read(d.join("nexq.db.damaged-1234-wal")).unwrap(), b"damaged wal");
-        assert_eq!(fs::read(d.join("nexq.db.damaged-1234-shm")).unwrap(), b"damaged shm");
-        assert!(!d.join("nexq.db-wal").exists() && !d.join("nexq.db-shm").exists());
-        // The copy is in as nexq.db, whole, and the source copy is still there.
+        assert_eq!(fs::read(d.join("lucid.db.damaged-1234")).unwrap(), b"damaged main");
+        assert_eq!(fs::read(d.join("lucid.db.damaged-1234-wal")).unwrap(), b"damaged wal");
+        assert_eq!(fs::read(d.join("lucid.db.damaged-1234-shm")).unwrap(), b"damaged shm");
+        assert!(!d.join("lucid.db-wal").exists() && !d.join("lucid.db-shm").exists());
+        // The copy is in as lucid.db, whole, and the source copy is still there.
         assert!(probe(&d.join(DB_NAME)).is_ok());
         let meetings: i64 = Connection::open(d.join(DB_NAME)).unwrap().query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0)).unwrap();
         assert_eq!(meetings, 5);
@@ -603,7 +603,7 @@ mod tests {
         let d = dir("names");
         fs::write(d.join(DB_NAME), b"damaged").unwrap();
         make_db(&d.join("nexq-before-workspaces.db"), 1, 8);
-        for bad in ["../nexq-before-workspaces.db", "nexq-before-nothing.db", "nexq.db", "C:\\Windows\\x.db", "", "nexq-before-workspaces.db/.."] {
+        for bad in ["../nexq-before-workspaces.db", "nexq-before-nothing.db", "lucid.db", "C:\\Windows\\x.db", "", "nexq-before-workspaces.db/.."] {
             assert!(restore_copy(&d, bad, 1, ProblemKind::Unreadable).is_err(), "{bad:?}");
         }
         // A damaged copy is refused too, and the damaged file stayed where it was.
@@ -619,7 +619,7 @@ mod tests {
         for stop in [1u8, 2, 3] {
             let d = dir(&format!("cut{stop}"));
             fs::write(d.join(DB_NAME), b"damaged main").unwrap();
-            fs::write(d.join("nexq.db-wal"), b"damaged wal").unwrap();
+            fs::write(d.join("lucid.db-wal"), b"damaged wal").unwrap();
             make_db(&d.join("nexq-before-workspaces.db"), 4, 8);
             write_marker(&d, &Pending { action: "restore".into(), source: Some("nexq-before-workspaces.db".into()), stamp: 99, phase: planned() }).unwrap();
             assert!(run_pending(&d, Some(stop), false).is_err(), "stopped after step {stop}");
@@ -628,8 +628,8 @@ mod tests {
             assert_eq!(resume_pending(&d), Ok(false));
             let count: i64 = Connection::open(d.join(DB_NAME)).unwrap().query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0)).unwrap();
             assert_eq!(count, 4, "stop {stop}");
-            assert_eq!(fs::read(d.join("nexq.db.damaged-99")).unwrap(), b"damaged main", "stop {stop}");
-            assert_eq!(fs::read(d.join("nexq.db.damaged-99-wal")).unwrap(), b"damaged wal");
+            assert_eq!(fs::read(d.join("lucid.db.damaged-99")).unwrap(), b"damaged main", "stop {stop}");
+            assert_eq!(fs::read(d.join("lucid.db.damaged-99-wal")).unwrap(), b"damaged wal");
             let asides = names(&d).into_iter().filter(|n| n.contains(".damaged-")).count();
             assert_eq!(asides, 2, "put aside once, never twice (stop {stop})");
             assert!(!d.join(MARKER).exists() && !d.join(RESTORE_TMP).exists());
@@ -647,7 +647,7 @@ mod tests {
         fs::remove_file(d.join("nexq-before-workspaces.db")).unwrap();
         assert!(resume_pending(&d).is_err());
         assert_eq!(fs::read(d.join(DB_NAME)).unwrap(), b"damaged main", "back where it was");
-        assert!(!d.join(MARKER).exists() && !d.join("nexq.db.damaged-5").exists());
+        assert!(!d.join(MARKER).exists() && !d.join("lucid.db.damaged-5").exists());
         let _ = fs::remove_dir_all(d);
     }
 
@@ -655,20 +655,20 @@ mod tests {
     fn starting_new_puts_everything_aside_and_leaves_no_database_for_the_next_start_to_create() {
         let d = dir("new");
         fs::write(d.join(DB_NAME), b"damaged main").unwrap();
-        fs::write(d.join("nexq.db-shm"), b"shm").unwrap();
+        fs::write(d.join("lucid.db-shm"), b"shm").unwrap();
         start_new(&d, 321, ProblemKind::Unreadable).unwrap();
-        assert!(!d.join(DB_NAME).exists() && !d.join("nexq.db-shm").exists());
-        assert_eq!(fs::read(d.join("nexq.db.damaged-321")).unwrap(), b"damaged main");
-        assert_eq!(fs::read(d.join("nexq.db.damaged-321-shm")).unwrap(), b"shm");
+        assert!(!d.join(DB_NAME).exists() && !d.join("lucid.db-shm").exists());
+        assert_eq!(fs::read(d.join("lucid.db.damaged-321")).unwrap(), b"damaged main");
+        assert_eq!(fs::read(d.join("lucid.db.damaged-321-shm")).unwrap(), b"shm");
         assert!(!d.join(MARKER).exists());
         // A stop in the middle is finished the same way.
         let e = dir("new-cut");
         fs::write(e.join(DB_NAME), b"main").unwrap();
-        fs::write(e.join("nexq.db-wal"), b"wal").unwrap();
+        fs::write(e.join("lucid.db-wal"), b"wal").unwrap();
         write_marker(&e, &Pending { action: "new".into(), source: None, stamp: 8, phase: planned() }).unwrap();
         assert!(run_pending(&e, Some(1), false).is_err());
         assert_eq!(resume_pending(&e), Ok(true));
-        assert!(!e.join(DB_NAME).exists() && e.join("nexq.db.damaged-8-wal").exists());
+        assert!(!e.join(DB_NAME).exists() && e.join("lucid.db.damaged-8-wal").exists());
         let _ = fs::remove_dir_all(d);
         let _ = fs::remove_dir_all(e);
     }
@@ -676,7 +676,7 @@ mod tests {
     #[test]
     fn a_restore_includes_what_a_copys_own_wal_holds() {
         let d = dir("wal");
-        let copy = d.join("nexq.db.damaged-1");
+        let copy = d.join("lucid.db.damaged-1");
         make_db(&copy, 1, 8);
         {
             // A write that only lives in the copy's -wal (named like its aside set).
@@ -689,7 +689,7 @@ mod tests {
         assert_eq!(shown.len(), 1);
         assert_eq!(shown[0].meetings, Some(2), "the copy is read with its -wal");
         fs::write(d.join(DB_NAME), b"damaged").unwrap();
-        restore_copy(&d, "nexq.db.damaged-1", 2, ProblemKind::Unreadable).unwrap();
+        restore_copy(&d, "lucid.db.damaged-1", 2, ProblemKind::Unreadable).unwrap();
         let n: i64 = Connection::open(d.join(DB_NAME)).unwrap().query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 2);
         let _ = fs::remove_dir_all(d);
@@ -780,15 +780,15 @@ mod tests {
         for held_suffix in ["-wal", "-shm"] {
             let d = dir("held-step");
             fs::write(d.join(DB_NAME), b"damaged main").unwrap();
-            fs::write(d.join("nexq.db-wal"), b"wal").unwrap();
-            fs::write(d.join("nexq.db-shm"), b"shm").unwrap();
+            fs::write(d.join("lucid.db-wal"), b"wal").unwrap();
+            fs::write(d.join("lucid.db-shm"), b"shm").unwrap();
             let held = hold(&d.join(format!("{DB_NAME}{held_suffix}")));
             let err = start_new(&d, 9, ProblemKind::Unreadable).unwrap_err();
             assert!(err.contains("Nothing was changed"), "{err}");
             drop(held);
             untouched(&d, b"damaged main");
-            assert_eq!(fs::read(d.join("nexq.db-wal")).unwrap(), b"wal", "held {held_suffix}");
-            assert_eq!(fs::read(d.join("nexq.db-shm")).unwrap(), b"shm", "held {held_suffix}");
+            assert_eq!(fs::read(d.join("lucid.db-wal")).unwrap(), b"wal", "held {held_suffix}");
+            assert_eq!(fs::read(d.join("lucid.db-shm")).unwrap(), b"shm", "held {held_suffix}");
             // the next start does nothing either
             assert_eq!(resume_pending(&d), Ok(false));
             untouched(&d, b"damaged main");
@@ -799,13 +799,13 @@ mod tests {
     fn a_failed_restore_in_the_same_run_puts_everything_back() {
         let d = dir("failed-restore");
         fs::write(d.join(DB_NAME), b"damaged main").unwrap();
-        fs::write(d.join("nexq.db-wal"), b"wal").unwrap();
+        fs::write(d.join("lucid.db-wal"), b"wal").unwrap();
         // the copy named in the note is gone when the restore wants it
         write_marker(&d, &Pending { action: "restore".into(), source: Some("nexq-gone.db".into()), stamp: 3, phase: planned() }).unwrap();
         let err = run_pending(&d, None, false).unwrap_err();
         assert!(err.contains("Couldn't restore"), "{err}");
         untouched(&d, b"damaged main");
-        assert_eq!(fs::read(d.join("nexq.db-wal")).unwrap(), b"wal");
+        assert_eq!(fs::read(d.join("lucid.db-wal")).unwrap(), b"wal");
         assert!(!d.join(RESTORE_TMP).exists());
     }
 
@@ -814,15 +814,15 @@ mod tests {
         for cut in [10u8, 11, 12] {
             let d = dir(&format!("cut-move{cut}"));
             fs::write(d.join(DB_NAME), b"healthy main").unwrap();
-            fs::write(d.join("nexq.db-wal"), b"wal").unwrap();
-            fs::write(d.join("nexq.db-shm"), b"shm").unwrap();
+            fs::write(d.join("lucid.db-wal"), b"wal").unwrap();
+            fs::write(d.join("lucid.db-shm"), b"shm").unwrap();
             write_marker(&d, &Pending { action: "new".into(), source: None, stamp: 4, phase: planned() }).unwrap();
             assert!(run_pending(&d, Some(cut), false).is_err());
             // Not every file is aside yet: the next start puts back what moved, and continues nothing.
             assert_eq!(resume_pending(&d), Ok(false), "cut {cut}");
             untouched(&d, b"healthy main");
-            assert_eq!(fs::read(d.join("nexq.db-wal")).unwrap(), b"wal", "cut {cut}");
-            assert_eq!(fs::read(d.join("nexq.db-shm")).unwrap(), b"shm", "cut {cut}");
+            assert_eq!(fs::read(d.join("lucid.db-wal")).unwrap(), b"wal", "cut {cut}");
+            assert_eq!(fs::read(d.join("lucid.db-shm")).unwrap(), b"shm", "cut {cut}");
         }
     }
 
@@ -848,12 +848,12 @@ mod tests {
         let d = dir("older");
         fs::write(d.join(DB_NAME), b"main now").unwrap();
         // an attempt long ago moved the -wal and stopped
-        fs::write(d.join("nexq.db.damaged-1-wal"), b"old wal").unwrap();
+        fs::write(d.join("lucid.db.damaged-1-wal"), b"old wal").unwrap();
         let note = Pending { action: "new".into(), source: None, stamp: 1, phase: planned() };
         fs::write(d.join(MARKER), serde_json::to_string(&note).unwrap()).unwrap();
         assert_eq!(resume_pending(&d), Ok(false));
         assert_eq!(fs::read(d.join(DB_NAME)).unwrap(), b"main now");
-        assert_eq!(fs::read(d.join("nexq.db-wal")).unwrap(), b"old wal");
+        assert_eq!(fs::read(d.join("lucid.db-wal")).unwrap(), b"old wal");
         assert!(!d.join(MARKER).exists());
     }
 
@@ -869,7 +869,7 @@ mod tests {
         untouched(&d, &before);
         // A file that opens but whose upgrade failed is exactly what a restore is for.
         restore_copy(&d, "nexq-before-workspaces.db", 6, ProblemKind::UpgradeFailed).unwrap();
-        assert!(d.join("nexq.db.damaged-6").exists());
+        assert!(d.join("lucid.db.damaged-6").exists());
     }
 
     #[test]

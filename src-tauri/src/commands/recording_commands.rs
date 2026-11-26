@@ -138,7 +138,7 @@ pub async fn delete_recording(
         )
         .map_err(|e| format!("Failed to query recording paths: {}", e))?;
 
-    // Delete files from disk, but only ones inside NexQ's recordings folder
+    // Delete files from disk, but only ones inside Lucid's recordings folder
     // (a path the database names elsewhere is never touched).
     let files: Vec<std::path::PathBuf> = [&paths.0, &paths.1].into_iter().flatten().map(std::path::PathBuf::from).collect();
     if let Some(dir) = crate::workspace::purge::recordings_dir() {

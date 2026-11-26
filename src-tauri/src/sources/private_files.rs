@@ -2,7 +2,7 @@
 //! values inline (stdio servers inherit the whole `claude.exe` environment, so
 //! secrets must not go in the process env).
 //!
-//! The folder is `%LOCALAPPDATA%\NexQ\agent-private`: inside the user's own
+//! The folder is `%LOCALAPPDATA%\Lucid\agent-private`: inside the user's own
 //! profile (the default ACL there is user, SYSTEM and administrators only) and
 //! deliberately NOT under `agent-sandbox`, which is the CLI's working directory
 //! and so readable by the model's Read, Grep and Glob tools.
@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 const PREFIX: &str = "nexq-mcp-";
 const SUFFIX: &str = ".json";
 
-/// `%LOCALAPPDATA%\NexQ\agent-private`.
+/// `%LOCALAPPDATA%\Lucid\agent-private`.
 pub fn private_dir() -> PathBuf {
     crate::app_paths::local_root().join("agent-private")
 }
@@ -49,8 +49,8 @@ pub fn remove_private_file(path: &Path) {
     }
 }
 
-/// App start: delete files whose owning NexQ process is gone (a crash or a
-/// kill left them). Files of this process and of another running NexQ stay.
+/// App start: delete files whose owning Lucid process is gone (a crash or a
+/// kill left them). Files of this process and of another running Lucid stay.
 /// Returns how many were deleted.
 pub fn cleanup_leftovers(dir: &Path) -> usize {
     let Ok(entries) = std::fs::read_dir(dir) else { return 0 };

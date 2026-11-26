@@ -1,5 +1,5 @@
 //! Credential backend stub for platforms without a native secret store.
-//! NexQ officially targets Windows (Credential Manager) and macOS (Keychain).
+//! Lucid officially targets Windows (Credential Manager) and macOS (Keychain).
 
 const UNSUPPORTED: &str = "No credential backend is available on this platform";
 

@@ -1,5 +1,5 @@
 // ============================================================================
-// NexQ TypeScript Types — Single source of truth
+// Lucid TypeScript Types — Single source of truth
 // All types mirror Rust structs. Other sub-PRDs IMPORT from here only.
 // ============================================================================
 
@@ -373,10 +373,10 @@ export interface ClaudeCliStatus {
   version: string | null;
   /** null when not installed or the `auth status` probe failed. */
   auth: ClaudeAuthStatus | null;
-  /** Not installed, but an npm install (`claude.cmd`) was found: NexQ needs the native installer. */
+  /** Not installed, but an npm install (`claude.cmd`) was found: Lucid needs the native installer. */
   npm_only: boolean;
   /**
-   * Claude only: the oldest Claude Code NexQ can launch ("2.1.259"), set only
+   * Claude only: the oldest Claude Code Lucid can launch ("2.1.259"), set only
    * when it is installed, its version is known and older than that. null
    * otherwise, and always for Codex and Antigravity.
    */
@@ -1178,7 +1178,7 @@ export interface MeetingPromptInfo {
 
 /** Mirrors `LogInfo` in log_commands.rs. */
 export interface LogInfo {
-  /** Folder holding nexq.log and its rotated copies. */
+  /** Folder holding lucid.log and its rotated copies. */
   dir: string;
   /** Full path of the current log file. */
   file: string;
@@ -1341,7 +1341,7 @@ export interface NotesFolderInfo {
   md_count: number;
   /** The walk stopped at its entry limit: `md_count` is a lower bound. */
   truncated: boolean;
-  /** Why this folder can't be a notes folder (a whole drive, NexQ's private files, the user's home). */
+  /** Why this folder can't be a notes folder (a whole drive, Lucid's private files, the user's home). */
   problem: string | null;
 }
 
@@ -2074,9 +2074,9 @@ export interface RetryOpenResult {
 }
 export type DbProblemKind = "unreadable" | "newer" | "upgrade_failed" | "locked";
 
-/** A copy of the database NexQ opened read-only and checked before offering it. */
+/** A copy of the database Lucid opened read-only and checked before offering it. */
 export interface DbBackup {
-  /** A file name in NexQ's data folder (never a path). */
+  /** A file name in Lucid's data folder (never a path). */
   name: string;
   /** Epoch ms. */
   created_at: number;

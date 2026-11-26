@@ -73,7 +73,7 @@ const ENDED_SENTENCE: Record<EndedKind, string> = {
   manual: "The notes were on manual, so they were not updated by themselves.",
   out_of_time: "The last update ran out of time.",
   stopped: "You stopped the notes.",
-  interrupted: "NexQ was closed before the notes were finished.",
+  interrupted: "Lucid was closed before the notes were finished.",
   other_meeting: "The notes stopped because another meeting started.",
   nothing_to_note: "The notes read the whole call and found nothing to write down.",
 };

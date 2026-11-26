@@ -90,7 +90,7 @@ impl GeminiCacheClient {
 
         let mut body = json!({
             "model": model_id,
-            "displayName": "NexQ Meeting Context",
+            "displayName": "Lucid Meeting Context",
             "contents": [
                 {
                     "role": "user",

@@ -1,6 +1,6 @@
 // Sherpa-ONNX offline (batch) STT provider.
 //
-// Handles models NexQ can't decode in-process (today SenseVoice) through
+// Handles models Lucid can't decode in-process (today SenseVoice) through
 // sherpa-onnx's offline program. Parakeet CTC is decoded natively in
 // ort_streaming/ctc.rs. Audio chunks are accumulated, written to a temp WAV
 // file, and run through the `sherpa-onnx-offline` program on each batch.
@@ -522,12 +522,12 @@ fn write_wav(path: &std::path::Path, samples: &[i16], sample_rate: u32) -> std::
 /// The sherpa-onnx offline program's file name on this platform.
 pub const OFFLINE_BINARY: &str = if cfg!(windows) { "sherpa-onnx-offline.exe" } else { "sherpa-onnx-offline" };
 
-/// Why a SenseVoice model can't start, for the Dev Log. NexQ doesn't
+/// Why a SenseVoice model can't start, for the Dev Log. Lucid doesn't
 /// download the program those models run through.
 pub fn missing_binary_message(models_base_dir: &std::path::Path) -> String {
     format!(
-        "This model runs through the sherpa-onnx offline program ({OFFLINE_BINARY}), which NexQ doesn't download. \
-         Use Parakeet TDT 0.6B v3, which runs inside NexQ, or place {OFFLINE_BINARY} in {}",
+        "This model runs through the sherpa-onnx offline program ({OFFLINE_BINARY}), which Lucid doesn't download. \
+         Use Parakeet TDT 0.6B v3, which runs inside Lucid, or place {OFFLINE_BINARY} in {}",
         models_base_dir.join("sherpa_onnx").join("sherpa-onnx-v<version>").join("bin").display()
     )
 }

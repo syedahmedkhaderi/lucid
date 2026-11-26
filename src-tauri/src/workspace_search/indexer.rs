@@ -475,7 +475,7 @@ pub(crate) fn index_folder_with(
         if prev.map_or(false, |r| (r.status == "in_progress" || r.status == "crashed") && same_stat(r)) {
             store::upsert_source(
                 conn, PassageKind::Folder, &folder.id, &f.rel_path, "", f.mtime_ms, f.size as i64, "crashed",
-                Some("NexQ stopped while reading this file, so it is skipped until the file changes"),
+                Some("Lucid stopped while reading this file, so it is skipped until the file changes"),
             )
             .map_err(e)?;
             rep.failed += 1;

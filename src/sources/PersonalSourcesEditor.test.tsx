@@ -132,10 +132,10 @@ describe("PersonalSourcesEditor", () => {
   });
 
   it("a folder with a problem that was saved earlier can't be switched on", async () => {
-    ipc.inspectNotesFolder.mockResolvedValue(info({ problem: "NexQ's own files are not notes." }));
+    ipc.inspectNotesFolder.mockResolvedValue(info({ problem: "Lucid's own files are not notes." }));
     setConfig({ notes_folders: [{ id: "f1", label: "Vault", path: "D:\\X", enabled: false }] });
     render(<PersonalSourcesEditor variant="full" />);
-    expect(await screen.findByText("NexQ's own files are not notes.")).toBeInTheDocument();
+    expect(await screen.findByText("Lucid's own files are not notes.")).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Use Vault" })).toBeDisabled();
   });
 

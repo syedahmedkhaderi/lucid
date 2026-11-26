@@ -178,7 +178,7 @@ export async function runMaiSession(start: MaiStart, ipc: MaiTransport, sdk: typ
       config = sdk.SpeechConfig.fromAuthorizationToken(token.value, start.region);
       config.setModel(MODEL);
       // Microsoft's MAI guide uses the model's default multilingual mode with
-      // no language override. An explicit NexQ locale is passed as requested.
+      // no language override. An explicit Lucid locale is passed as requested.
       if (start.language) config.speechRecognitionLanguage = start.language;
       stream = sdk.AudioInputStream.createPushStream(sdk.AudioStreamFormat.getWaveFormatPCM(16_000, 16, 1));
       recognizer = new sdk.SpeechRecognizer(config, sdk.AudioConfig.fromStreamInput(stream));

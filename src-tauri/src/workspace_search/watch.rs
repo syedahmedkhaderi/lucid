@@ -245,7 +245,7 @@ mod tests {
         assert!(r("a folder moved"), "a directory has no extension: its files moved");
         assert!(!r(".git/index") && !r("sub/.hidden/a.md") && !r(".env") && !r("node_modules/x/readme.md"));
         assert!(!r("my password list.txt") && !r("id_rsa") && !r("notes.md~") && !r("a.md.tmp") && !r("image.png"));
-        // NexQ's own private folder is never a reason to index
+        // Lucid's own private folder is never a reason to index
         let private = Path::new("C:/private");
         assert!(!relevant(Path::new("a.md"), Some(private), &private.join("a.md")));
         assert!(!changes_content(&EventKind::Access(notify::event::AccessKind::Any)));

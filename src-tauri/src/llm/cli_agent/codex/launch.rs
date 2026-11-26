@@ -20,9 +20,9 @@
 //!   surface is a JavaScript `exec` whose nested tools lose `exec_command` and
 //!   `write_stdin`). The read-only sandbox can read the whole disk and the
 //!   approval policy cannot tell a harmless command from a harmful one in
-//!   every shell, so NexQ never has commands to judge. The notes folders are
-//!   served by NexQ's own MCP server instead (`nexq_notes`, see `notes_mcp`),
-//!   added to the thread's config like any other server of NexQ's. If a command
+//!   every shell, so Lucid never has commands to judge. The notes folders are
+//!   served by Lucid's own MCP server instead (`nexq_notes`, see `notes_mcp`),
+//!   added to the thread's config like any other server of Lucid's. If a command
 //!   or file change item starts anyway, the session ends (`session.rs`).
 //! - `notify=[]` drops the user's notify hook, `skills.include_instructions=false`
 //!   keeps the roughly 40 000 characters of skill descriptions out of the prompt.
@@ -43,18 +43,18 @@ pub struct CodexLaunch {
     pub program: PathBuf,
     /// Args before `app-server` (the script path when `program` is `node`).
     pub prefix_args: Vec<String>,
-    /// Working directory: the NexQ agent sandbox (`command::sandbox_dir`).
+    /// Working directory: the Lucid agent sandbox (`command::sandbox_dir`).
     pub cwd: PathBuf,
     /// Model slug, e.g. `gpt-6.2-sol`. Empty: the account default.
     pub model: String,
     /// Reasoning effort (`low` .. `max`). `None`: the model's default.
     pub effort: Option<String>,
-    /// NexQ's system prompt; replaces Codex's own coding-agent prompt.
+    /// Lucid's system prompt; replaces Codex's own coding-agent prompt.
     pub system_prompt: String,
     /// Extra `key=value` pairs for `-c`. No secrets: the command line is
-    /// visible to other processes (NexQ's MCP servers go in `mcp_servers`).
+    /// visible to other processes (Lucid's MCP servers go in `mcp_servers`).
     pub mcp_overrides: Vec<String>,
-    /// NexQ's own MCP servers by key, each a Codex config table
+    /// Lucid's own MCP servers by key, each a Codex config table
     /// (`{command, args, env, enabled_tools}` or `{url, http_headers, ..}`),
     /// sent in `thread/start`'s `config`, so their secrets never reach the
     /// command line. A key must not collide with a server the user already
@@ -93,7 +93,7 @@ impl std::fmt::Debug for CodexLaunch {
 }
 
 impl CodexLaunch {
-    /// The keys of NexQ's own MCP servers (from `mcp_servers` and from
+    /// The keys of Lucid's own MCP servers (from `mcp_servers` and from
     /// `mcp_servers.<key>.` overrides), each once.
     pub fn server_keys(&self) -> Vec<String> {
         let mut keys = override_server_keys(&self.mcp_overrides);
@@ -105,13 +105,13 @@ impl CodexLaunch {
         keys
     }
 
-    /// `thread/start`'s `config`: NexQ's own MCP servers, with every fixed
+    /// `thread/start`'s `config`: Lucid's own MCP servers, with every fixed
     /// override and disabled feature of the command line repeated. `None`
     /// without any server (the command line's settings then stand alone).
     ///
     /// A thread's config makes Codex read the user's config again, and the
     /// command line's `-c mcp_servers.<name>.enabled=false` and `-c notify=[]`
-    /// do not carry over: with NexQ's servers in it, all of the user's own
+    /// do not carry over: with Lucid's servers in it, all of the user's own
     /// servers started anyway (seen with Codex 0.171.0: mira, node_repl, pencil
     /// and web_search came up next to `nexq_notes`). So each of `user_servers`
     /// is switched off here as well, and so is everything else the command
@@ -269,7 +269,7 @@ pub fn override_server_keys(overrides: &[String]) -> Vec<String> {
 }
 
 /// The full argv: `prefix_args`, `app-server`, the feature switches, then every
-/// `-c` override. `user_servers` are switched off unless NexQ defines a server
+/// `-c` override. `user_servers` are switched off unless Lucid defines a server
 /// of the same name itself.
 pub fn build_args(launch: &CodexLaunch, user_servers: &[String]) -> Vec<String> {
     let mut args: Vec<String> = launch.prefix_args.clone();
@@ -380,7 +380,7 @@ pub fn parse_mcp_list(json: &str) -> Option<Vec<String>> {
 
 /// The program and leading args to run for a `codex` found on PATH.
 ///
-/// NexQ never spawns through a shell, and an npm global install is a `.cmd`
+/// Lucid never spawns through a shell, and an npm global install is a `.cmd`
 /// shim. Next to the shim sits the package; the native `codex.exe` inside its
 /// platform package is used when present, otherwise `node` runs the package's
 /// `bin/codex.js`.
@@ -425,7 +425,7 @@ pub fn resolve_program(shim_or_exe: &Path) -> Option<(PathBuf, Vec<String>)> {
     None
 }
 
-/// The first `codex` on PATH that NexQ can spawn.
+/// The first `codex` on PATH that Lucid can spawn.
 pub fn find_codex() -> Option<(PathBuf, Vec<String>)> {
     find_on_path("codex").iter().find_map(|p| resolve_program(p))
 }
@@ -547,16 +547,16 @@ mod tests {
     fn nexqs_own_servers_are_added_and_never_switched_off() {
         let mut l = launch();
         l.mcp_overrides = vec![
-            "mcp_servers.nexq-notes.command=\"npx\"".into(),
-            "mcp_servers.nexq-notes.args=[\"-y\",\"x\"]".into(),
+            "mcp_servers.lucid-notes.command=\"npx\"".into(),
+            "mcp_servers.lucid-notes.args=[\"-y\",\"x\"]".into(),
         ];
         // The user happens to have a server of the same name.
         let args = build_args(&l, &["nexq-notes".to_string(), "mira".to_string()]);
-        assert!(!args.contains(&"mcp_servers.nexq-notes.enabled=false".to_string()));
+        assert!(!args.contains(&"mcp_servers.lucid-notes.enabled=false".to_string()));
         assert!(args.contains(&"mcp_servers.mira.enabled=false".to_string()));
-        assert!(args.contains(&"mcp_servers.nexq-notes.command=\"npx\"".to_string()));
+        assert!(args.contains(&"mcp_servers.lucid-notes.command=\"npx\"".to_string()));
         // Each override is its own `-c` value.
-        let at = args.iter().position(|a| a == "mcp_servers.nexq-notes.command=\"npx\"").unwrap();
+        let at = args.iter().position(|a| a == "mcp_servers.lucid-notes.command=\"npx\"").unwrap();
         assert_eq!(args[at - 1], "-c");
     }
 

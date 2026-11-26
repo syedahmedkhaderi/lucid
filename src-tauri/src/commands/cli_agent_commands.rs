@@ -165,7 +165,7 @@ pub fn login_launch(kind: CliAgentKind, bin: Option<&Path>) -> (Option<PathBuf>,
     (dir.map(Path::to_path_buf), format!(r#"/d /c start "{title}" cmd.exe /k {exe}"#))
 }
 
-/// Open a visible terminal running the CLI so the user can log in. NexQ reads
+/// Open a visible terminal running the CLI so the user can log in. Lucid reads
 /// nothing from it; credentials stay between the user and the CLI.
 #[command]
 pub async fn open_cli_login_terminal(kind: CliAgentKind) -> Result<(), String> {

@@ -4,7 +4,7 @@
 //! lists) into what Antigravity (ACP) and Codex take.
 //!
 //! Neither of them is given a folder to read or a file tool to read it with.
-//! The notes folders become NexQ's own read-only MCP server (`nexq_notes`, see
+//! The notes folders become Lucid's own read-only MCP server (`nexq_notes`, see
 //! `notes_mcp`: `nexq.exe --notes-mcp`), which opens every file itself. What
 //! each CLI gets:
 //!
@@ -44,7 +44,7 @@ const RESERVED_KEYS: [&str; 2] = [NOTES_SERVER, "nexq"];
 
 /// `(server key, entry)` of every user server in the launch's mcp-config JSON,
 /// in the file's order (the entry is `{command, args, env}` or
-/// `{type, url, headers}`), then NexQ's notes server when the launch has notes
+/// `{type, url, headers}`), then Lucid's notes server when the launch has notes
 /// folders and `exe` (this program) is known.
 fn config_entries(launch: &SourcesLaunch, exe: Option<&Path>) -> Vec<(String, Value)> {
     let mut entries: Vec<(String, Value)> = launch
@@ -64,7 +64,7 @@ fn config_entries(launch: &SourcesLaunch, exe: Option<&Path>) -> Vec<(String, Va
     if !launch.add_dirs.is_empty() {
         match exe {
             Some(exe) => entries.push((NOTES_SERVER.to_string(), server_command(exe, &launch.add_dirs))),
-            None => log::warn!("cannot find the NexQ program: the notes folders are not served"),
+            None => log::warn!("cannot find the Lucid program: the notes folders are not served"),
         }
     }
     entries
@@ -180,7 +180,7 @@ pub fn acp_sources(launch: Option<&SourcesLaunch>) -> AcpSources {
     acp_sources_for(launch, std::env::current_exe().ok().as_deref())
 }
 
-/// [`acp_sources`] for a given NexQ program (the notes server's command).
+/// [`acp_sources`] for a given Lucid program (the notes server's command).
 pub fn acp_sources_for(launch: Option<&SourcesLaunch>, exe: Option<&Path>) -> AcpSources {
     let Some(launch) = launch else {
         return AcpSources { policy: PermissionPolicy::deny_all(), ..Default::default() };
@@ -262,7 +262,7 @@ pub fn codex_sources(launch: Option<&SourcesLaunch>) -> CodexSources {
     codex_sources_for(launch, std::env::current_exe().ok().as_deref())
 }
 
-/// [`codex_sources`] for a given NexQ program (the notes server's command).
+/// [`codex_sources`] for a given Lucid program (the notes server's command).
 pub fn codex_sources_for(launch: Option<&SourcesLaunch>, exe: Option<&Path>) -> CodexSources {
     let Some(launch) = launch else { return CodexSources::default() };
     let entries = config_entries(launch, exe);
@@ -312,7 +312,7 @@ mod tests {
     use crate::llm::cli_agent::acp::permission::{decide, parse_request, PermissionRequest};
     use std::path::PathBuf;
 
-    const EXE: &str = "C:\\Program Files\\NexQ\\nexq.exe";
+    const EXE: &str = "C:\\Program Files\\Lucid\\nexq.exe";
 
     /// What `build_sources_launch` makes for a notes folder, a stdio server
     /// with two secret values and an http server with one secret header.

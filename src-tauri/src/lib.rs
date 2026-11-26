@@ -113,7 +113,7 @@ fn show_overlay(app: &tauri::AppHandle) {
     }
 }
 
-/// Launching NexQ again while it runs: bring up the overlay during a meeting
+/// Launching Lucid again while it runs: bring up the overlay during a meeting
 /// (hiding it would hide the meeting), else the launcher.
 fn show_for_second_launch(app: &tauri::AppHandle) {
     let meeting_active = app
@@ -204,7 +204,7 @@ fn startup_gate<R: tauri::Runtime>(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Relaunched by the installer of an update installed on quit: the user
-    // quit NexQ, so exit before anything (single-instance hand-off, windows,
+    // quit Lucid, so exit before anything (single-instance hand-off, windows,
     // tray) happens.
     if updater_commands::is_post_update_quit(std::env::args_os()) {
         return;
@@ -641,7 +641,7 @@ pub fn run() {
             });
 
             // -- Handle tray icon click events --
-            //   Left click (Windows) or double-click: bring NexQ back (the
+            //   Left click (Windows) or double-click: bring Lucid back (the
             //   meeting overlay during a meeting, else the dashboard)
             //   Middle click: mute toggle
             //   Right-click: context menu (handled by Tauri's menu system)
@@ -727,7 +727,7 @@ pub fn run() {
                 stealth_commands::float_over_full_screen(&overlay.as_ref().window());
             }
 
-            log::info!("NexQ initialized successfully (setup took {} ms)", setup_started.elapsed().as_millis());
+            log::info!("Lucid initialized successfully (setup took {} ms)", setup_started.elapsed().as_millis());
             Ok(())
         })
         .invoke_handler(startup_gate(tauri::generate_handler![
@@ -1017,9 +1017,9 @@ pub fn run() {
             settings_commands::take_store_recovery,
         ]))
         .build(context)
-        .expect("error while building NexQ")
+        .expect("error while building Lucid")
         .run(|app, event| {
-            // How NexQ ends up quitting, for bug reports (a window closing,
+            // How Lucid ends up quitting, for bug reports (a window closing,
             // an exit request, or the OS terminating the app).
             if let tauri::RunEvent::WindowEvent { label, event: tauri::WindowEvent::Destroyed, .. } = &event {
                 log::info!("Window '{label}' closed");
@@ -1039,7 +1039,7 @@ pub fn run() {
             // children still see stdin EOF and exit on their own.
             if let tauri::RunEvent::Exit = &event {
                 let meeting_active = app.state::<AppState>().meeting_active.load(std::sync::atomic::Ordering::SeqCst);
-                log::info!("NexQ is exiting (meeting active: {meeting_active})");
+                log::info!("Lucid is exiting (meeting active: {meeting_active})");
                 // Running notes and briefs are saved as interrupted (resumable).
                 if let Some(rt) = live_runtime::global() {
                     tauri::async_runtime::block_on(rt.shutdown(std::time::Duration::from_secs(2)));

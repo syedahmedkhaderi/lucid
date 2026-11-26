@@ -632,18 +632,18 @@ fn lost_message(kind: CaptureKind, permission_denied: bool) -> String {
     if permission_denied {
         return match kind {
             CaptureKind::Output => format!(
-                "{system} privacy settings are blocking NexQ from capturing the call's audio. Allow it in {system} settings and NexQ reconnects."
+                "{system} privacy settings are blocking Lucid from capturing the call's audio. Allow it in {system} settings and Lucid reconnects."
             ),
             _ => format!(
-                "{system} privacy settings are blocking your microphone. Allow microphone access for NexQ in {system} settings and NexQ reconnects."
+                "{system} privacy settings are blocking your microphone. Allow microphone access for Lucid in {system} settings and Lucid reconnects."
             ),
         };
     }
     match kind {
-        CaptureKind::Mic => "Your microphone disconnected. NexQ reconnects it when it's back, or pick another microphone in Audio & Devices.",
-        CaptureKind::Output => "The speakers or headphones you hear the call on disconnected. NexQ reconnects them when they're back, or pick another device in Audio & Devices.",
-        CaptureKind::InputThem => "The device the other side comes in on disconnected. NexQ reconnects it when it's back, or pick another device in Audio & Devices.",
-        CaptureKind::Dual => "Your shared input device disconnected. NexQ reconnects it when it's back, or pick another device in Audio & Devices.",
+        CaptureKind::Mic => "Your microphone disconnected. Lucid reconnects it when it's back, or pick another microphone in Audio & Devices.",
+        CaptureKind::Output => "The speakers or headphones you hear the call on disconnected. Lucid reconnects them when they're back, or pick another device in Audio & Devices.",
+        CaptureKind::InputThem => "The device the other side comes in on disconnected. Lucid reconnects it when it's back, or pick another device in Audio & Devices.",
+        CaptureKind::Dual => "Your shared input device disconnected. Lucid reconnects it when it's back, or pick another device in Audio & Devices.",
     }
     .to_string()
 }
@@ -1523,19 +1523,19 @@ pub(crate) mod tests {
         let lost = |kind| lost_message(kind, false);
         assert_eq!(
             lost(CaptureKind::Mic),
-            "Your microphone disconnected. NexQ reconnects it when it's back, or pick another microphone in Audio & Devices."
+            "Your microphone disconnected. Lucid reconnects it when it's back, or pick another microphone in Audio & Devices."
         );
         assert_eq!(
             lost(CaptureKind::Output),
-            "The speakers or headphones you hear the call on disconnected. NexQ reconnects them when they're back, or pick another device in Audio & Devices."
+            "The speakers or headphones you hear the call on disconnected. Lucid reconnects them when they're back, or pick another device in Audio & Devices."
         );
         assert_eq!(
             lost(CaptureKind::InputThem),
-            "The device the other side comes in on disconnected. NexQ reconnects it when it's back, or pick another device in Audio & Devices."
+            "The device the other side comes in on disconnected. Lucid reconnects it when it's back, or pick another device in Audio & Devices."
         );
         assert_eq!(
             lost(CaptureKind::Dual),
-            "Your shared input device disconnected. NexQ reconnects it when it's back, or pick another device in Audio & Devices."
+            "Your shared input device disconnected. Lucid reconnects it when it's back, or pick another device in Audio & Devices."
         );
         assert_eq!(back_message(CaptureKind::Output, "Speakers"), "Speakers is back. Listening for the other side again.");
         assert_eq!(back_message(CaptureKind::InputThem, "Cable"), "Cable is back. Capturing the other side again.");

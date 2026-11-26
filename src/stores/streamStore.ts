@@ -114,7 +114,7 @@ const IDLE_PROGRESS = {
   requestSources: null,
 };
 
-/** Requests to drop when they end (automatic answers NexQ stopped). */
+/** Requests to drop when they end (automatic answers Lucid stopped). */
 const discarded = new Set<string>();
 
 /** Activity that arrived before its request's stream started, by request id. */
@@ -290,7 +290,7 @@ export const useStreamStore = create<StreamState>((set, get) => ({
       first_token_ms: started !== null && state.firstTokenAt !== null ? state.firstTokenAt - started : undefined,
       scope_label: state.streamMeta?.scopeLabel ?? null,
     };
-    // A stream stopped before any words is nothing to keep, nor is one NexQ
+    // A stream stopped before any words is nothing to keep, nor is one Lucid
     // stopped and asked to drop.
     const dropped = state.streamRequestId !== null && discarded.delete(state.streamRequestId);
     const keep = !dropped && content.trim().length > 0;

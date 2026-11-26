@@ -9,19 +9,19 @@
 //! the answer's id and never the CLI's own.
 
 use async_trait::async_trait;
-use nexq_lib::ai_runs::{
+use lucid_lib::ai_runs::{
     chat_events, AiPurpose, AiRunError, AiRunRequest, AiRuns, ApiBackend, ConfigSource, LiveGate, ModelSelection,
 };
-use nexq_lib::llm::cli_agent::approval::{ApprovalPolicy, ChatApprovals, WorkspaceApprovals};
-use nexq_lib::llm::cli_agent::command::{SessionConfig, SourcesLaunch};
-use nexq_lib::llm::cli_agent::manager::{
+use lucid_lib::llm::cli_agent::approval::{ApprovalPolicy, ChatApprovals, WorkspaceApprovals};
+use lucid_lib::llm::cli_agent::command::{SessionConfig, SourcesLaunch};
+use lucid_lib::llm::cli_agent::manager::{
     AgentSessionManager, NoopStatusSink, SessionHandle, SessionKey, SessionScope, SessionSpawner, Tier,
 };
-use nexq_lib::llm::cli_agent::session::{AgentError, ClaudeSession};
-use nexq_lib::llm::cli_agent::settings::CliSettings;
-use nexq_lib::llm::provider::{CancelToken, CompletionStats, GenerationParams, LLMError, LLMMessage, ModelInfo, TokenSink};
-use nexq_lib::llm::ProviderConfig;
-use nexq_lib::sources::config::{McpServer, McpTool};
+use lucid_lib::llm::cli_agent::session::{AgentError, ClaudeSession};
+use lucid_lib::llm::cli_agent::settings::CliSettings;
+use lucid_lib::llm::provider::{CancelToken, CompletionStats, GenerationParams, LLMError, LLMMessage, ModelInfo, TokenSink};
+use lucid_lib::llm::ProviderConfig;
+use lucid_lib::sources::config::{McpServer, McpTool};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -46,12 +46,21 @@ fn fake_bin() -> PathBuf {
         }
         let out = cmd.output().expect("run cargo build --example fake_claude");
         assert!(out.status.success(), "building fake_claude failed:\n{}", String::from_utf8_lossy(&out.stderr));
-        let profile_dir = std::env::current_exe().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
+        let profile_dir = cargo_profile_dir();
         let bin = profile_dir.join("examples").join(format!("fake_claude{}", std::env::consts::EXE_SUFFIX));
         assert!(bin.is_file(), "missing {}", bin.display());
         bin
     })
     .clone()
+}
+
+fn cargo_profile_dir() -> PathBuf {
+    std::env::current_exe()
+        .unwrap()
+        .ancestors()
+        .find(|path| matches!(path.file_name().and_then(|name| name.to_str()), Some("debug" | "release")))
+        .expect("Cargo profile directory in test executable path")
+        .to_path_buf()
 }
 
 struct FakeCli;
@@ -111,7 +120,7 @@ impl Rig {
         let sink = events.clone();
         // The same emitter the app installs: the payloads are made by the real functions.
         broker.set_emitter(Arc::new(move |n| {
-            let (event, payload) = nexq_lib::llm::cli_agent::approval::notice_payload(&n);
+            let (event, payload) = lucid_lib::llm::cli_agent::approval::notice_payload(&n);
             sink.lock().unwrap().push((event.to_string(), payload));
         }));
         let asks: Arc<Mutex<HashMap<String, String>>> = Arc::default();

@@ -328,7 +328,7 @@ pub fn create_openrouter_client(api_key: &str) -> OpenAICompatClient {
         auth_value: Some(format!("Bearer {}", api_key)),
         extra_headers: vec![
             ("HTTP-Referer".to_string(), "https://nexq.app".to_string()),
-            ("X-Title".to_string(), "NexQ".to_string()),
+            ("X-Title".to_string(), "Lucid".to_string()),
         ],
     })
 }

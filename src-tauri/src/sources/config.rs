@@ -114,7 +114,7 @@ pub struct McpTool {
     pub full_name: String,
     pub allowed: bool,
     /// The server's `annotations.readOnlyHint` from its `tools/list`
-    /// (`None` = not reported, or saved before NexQ read it: workspace chat then asks).
+    /// (`None` = not reported, or saved before Lucid read it: workspace chat then asks).
     pub read_only_hint: Option<bool>,
     /// The server's `annotations.destructiveHint`; `None` = not reported.
     pub destructive_hint: Option<bool>,

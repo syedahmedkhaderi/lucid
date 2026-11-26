@@ -305,7 +305,7 @@ describe("after Stop, at the end, and when the limit changes", () => {
 describe("ended kinds and live words between passes", () => {
   it("says the two new kinds in plain words", () => {
     expect(endedWords({ ended: { kind: "interrupted", detail: null } })).toBe("Interrupted");
-    expect(endedSentence({ kind: "interrupted", detail: null })).toBe("NexQ was closed before the notes were finished.");
+    expect(endedSentence({ kind: "interrupted", detail: null })).toBe("Lucid was closed before the notes were finished.");
     expect(endedWords({ ended: { kind: "other_meeting", detail: null } })).toBe("Stopped for another meeting");
     expect(endedSentence({ kind: "other_meeting", detail: "Standup started." })).toBe("The notes stopped because another meeting started. Standup started.");
   });
@@ -322,7 +322,7 @@ describe("ended kinds and live words between passes", () => {
     const { rerender } = render(<NotesPanel />);
     act(() => useMeetingStore.setState({ activeMeeting: null as never }));
     rerender(<NotesPanel />);
-    expect(screen.getByText("NexQ was closed before the notes were finished.")).toBeInTheDocument();
+    expect(screen.getByText("Lucid was closed before the notes were finished.")).toBeInTheDocument();
     expect(screen.getByText("Live notes: Interrupted")).toBeInTheDocument();
   });
 });

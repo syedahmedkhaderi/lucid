@@ -87,7 +87,7 @@ describe("capture status toasts", () => {
     handle(status("recovering"));
     vi.advanceTimersByTime(RECONNECT_NOTICE_AFTER_MS);
     const lost =
-      "Your microphone disconnected. NexQ reconnects it when it's back, or pick another microphone in Audio & Devices.";
+      "Your microphone disconnected. Lucid reconnects it when it's back, or pick another microphone in Audio & Devices.";
     handle(status("lost", lost));
     expect(shown()).toEqual([[lost, "warning", true]]);
     vi.advanceTimersByTime(120_000);

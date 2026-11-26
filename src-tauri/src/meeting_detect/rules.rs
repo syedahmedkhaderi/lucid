@@ -146,7 +146,7 @@ pub fn may_be_call(capturing: &[String]) -> bool {
 
 /// The meeting in progress, if a call app is using the microphone.
 /// `capturing` holds the lowercase executable names of processes with an
-/// active microphone session (NexQ itself excluded).
+/// active microphone session (Lucid itself excluded).
 pub fn detect(capturing: &[String], windows: &[WindowInfo], cfg: &MeetingDetectionConfig) -> Option<DetectedMeeting> {
     if !cfg.enabled {
         return None;
@@ -287,11 +287,11 @@ fn webex_title(title: &str) -> Option<String> {
 /// What to do after a detection tick.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TrackerEvent {
-    /// A meeting started (held for `CONFIRM_FOR`) and NexQ isn't recording: offer to start.
+    /// A meeting started (held for `CONFIRM_FOR`) and Lucid isn't recording: offer to start.
     Prompt(DetectedMeeting),
     /// The call ended (no mic session for `END_GRACE`).
     Ended,
-    /// NexQ started a meeting: the offer is moot.
+    /// Lucid started a meeting: the offer is moot.
     Hide,
 }
 

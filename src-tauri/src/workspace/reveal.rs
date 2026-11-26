@@ -164,7 +164,7 @@ pub fn linux_argv(path: &Path) -> Vec<OsString> {
     vec![OsString::from("--"), dir.as_os_str().to_os_string()]
 }
 
-/// Opens `dir` itself in the file manager (a folder NexQ chose, never one from the webview).
+/// Opens `dir` itself in the file manager (a folder Lucid chose, never one from the webview).
 pub fn open_directory(dir: &Path) -> Result<(), String> {
     let (program, args) = if cfg!(windows) {
         let root = std::env::var_os("SystemRoot").unwrap_or_else(|| OsString::from(r"C:\Windows"));

@@ -1,4 +1,4 @@
-//! Checking an MCP server without any CLI: NexQ speaks the client side of MCP
+//! Checking an MCP server without any CLI: Lucid speaks the client side of MCP
 //! itself (`initialize`, `notifications/initialized`, `tools/list`).
 //!
 //! Used by `mcp_check` when Claude isn't installed, so a PC with only
@@ -25,7 +25,7 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-/// The MCP revision NexQ announces.
+/// The MCP revision Lucid announces.
 const PROTOCOL_VERSION: &str = "2025-06-18";
 /// A server with more `tools/list` pages than this gets the first ones only.
 const MAX_PAGES: usize = 10;
@@ -78,7 +78,7 @@ impl HandshakeError {
             Self::Rpc(None) => "The server refused the request.".to_string(),
             Self::Protocol(text) => format!("The server's answer wasn't valid MCP: {text}"),
             Self::Http(401 | 403) => {
-                "The server needs a sign-in NexQ doesn't have. Check its header values.".to_string()
+                "The server needs a sign-in Lucid doesn't have. Check its header values.".to_string()
             }
             Self::Http(404 | 405) => "The server doesn't accept streamable HTTP requests. Servers that only \
                  speak the older SSE transport can't be checked yet."

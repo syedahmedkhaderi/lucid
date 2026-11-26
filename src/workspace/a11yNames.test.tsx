@@ -143,7 +143,7 @@ describe("every workspace screen names what a person can reach", () => {
   });
 
   it("the recovery screen and its confirm", async () => {
-    const problem = { kind: "unreadable" as const, message: "bad", path: "C:/x/nexq.db", backups: [{ name: "a.db", created_at: Date.now(), bytes: 1000, meetings: 2 }] };
+    const problem = { kind: "unreadable" as const, message: "bad", path: "C:/x/lucid.db", backups: [{ name: "a.db", created_at: Date.now(), bytes: 1000, meetings: 2 }] };
     render(<DatabaseProblemScreen problem={problem} />);
     expectNamed("recovery");
     await userEvent.click(screen.getByRole("button", { name: "Start with an empty database" }));

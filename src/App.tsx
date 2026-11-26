@@ -16,7 +16,6 @@ import {
   OverlayView,
   SelectionToolbar,
   SettingsOverlay,
-  StarPrompt,
   UpdateDialog,
   preloadForWindow,
 } from "./lazyViews";
@@ -463,7 +462,7 @@ function App() {
             <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
               <div className="h-3 w-3 rounded-full bg-primary/40 animate-pulse" />
             </div>
-            <div className="text-sm text-muted-foreground">Starting NexQ...</div>
+            <div className="text-sm text-muted-foreground">Starting Lucid...</div>
           </div>
         )}
       </div>
@@ -479,7 +478,7 @@ function App() {
   if (isOverlayWindow) {
     return (
       <div className="h-screen w-screen overflow-hidden bg-transparent text-foreground">
-        <ErrorBoundary fallbackMessage="NexQ encountered an error">
+        <ErrorBoundary fallbackMessage="Lucid encountered an error">
           {currentView === "overlay" && (
             <ErrorBoundary fallbackMessage="Failed to load overlay">
               {/* key on the meeting id → remounts overlay UI per meeting so local
@@ -509,7 +508,7 @@ function App() {
 
   return (
     <div className={`h-screen w-screen overflow-hidden text-foreground ${resolvedView === "overlay" ? "bg-transparent" : "bg-background"}`}>
-      <ErrorBoundary fallbackMessage="NexQ encountered an error">
+      <ErrorBoundary fallbackMessage="Lucid encountered an error">
         {resolvedView === "overlay" && isDemoActive && (
           <ErrorBoundary fallbackMessage="Failed to load overlay">
             <Quiet>
@@ -561,9 +560,6 @@ function App() {
       )}
       <Quiet>
         <UpdateDialog />
-
-        {/* One-time "star NexQ" card after the fifth finished meeting (launcher only) */}
-        {windowLabel === "launcher" && <StarPrompt />}
 
         {/* Demo mode: scenario picker modal + floating exit badge (loaded when asked for) */}
         {(pickerOpen || isDemoActive) && (

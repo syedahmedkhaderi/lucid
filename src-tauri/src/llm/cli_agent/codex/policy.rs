@@ -1,4 +1,4 @@
-//! What NexQ lets a Codex session do when the app-server asks.
+//! What Lucid lets a Codex session do when the app-server asks.
 //!
 //! Pure decisions: the session's reader thread calls [`decide`] for every
 //! [`ServerRequest`] and answers at once, so a turn can never stall on an
@@ -6,12 +6,12 @@
 //!
 //! A Codex session has no shell and no file tools to use: the shell tool is
 //! switched off at launch (`launch.rs`), and the notes folders are served by
-//! NexQ's own read-only MCP server (`nexq_notes`, see `notes_mcp`). So the
+//! Lucid's own read-only MCP server (`nexq_notes`, see `notes_mcp`). So the
 //! rules are short:
 //!
 //! - Commands, file changes, extra permissions (and the legacy
 //!   `execCommandApproval` / `applyPatchApproval`, which carry an argv or a
-//!   patch NexQ does not look at): always refused. NexQ no longer judges
+//!   patch Lucid does not look at): always refused. Lucid no longer judges
 //!   command strings. The session also treats the start of a command or file
 //!   change item as a breach and ends (see `session.rs`).
 //! - MCP tool calls (an elicitation that names the tool): allowed only for
@@ -54,7 +54,7 @@ pub fn decide(req: &ServerRequest, policy: &CodexPolicy) -> Verdict {
         ServerRequest::McpElicitation { server, message, meta } => decide_mcp(server, message, meta, policy),
         ServerRequest::UserInput => Verdict::Deny("no one to ask"),
         ServerRequest::DynamicToolCall => Verdict::Deny("no client tools"),
-        ServerRequest::AuthTokensRefresh => Verdict::Deny("NexQ does not manage Codex sign-in"),
+        ServerRequest::AuthTokensRefresh => Verdict::Deny("Lucid does not manage Codex sign-in"),
         ServerRequest::Unknown { .. } => Verdict::Deny("unknown request"),
     }
 }

@@ -38,7 +38,7 @@ use tauri::Manager;
 /// System prompt of the Utility session. Requests are unrelated to each other
 /// (translation, knowledge-base test, wizard), so earlier turns must not leak
 /// into later answers.
-pub const UTILITY_SYSTEM_PROMPT: &str = "You are the assistant inside NexQ, a meeting \
+pub const UTILITY_SYSTEM_PROMPT: &str = "You are the assistant inside Lucid, a meeting \
 assistant app. Every user message is a separate, self-contained request: follow its \
 ## Instructions section when present and answer only that request. Do not refer to or \
 rely on earlier messages.";
@@ -481,7 +481,7 @@ mod tests {
             LLMError::NotConfigured(_)
         ));
         assert!(matches!(
-            to_llm_error(AgentError::Spawn("Claude Code 2.1.206 is too old for NexQ. Update it to 2.1.259 or newer.".into())),
+            to_llm_error(AgentError::Spawn("Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer.".into())),
             LLMError::NotConfigured(m) if m.contains("too old")
         ));
         assert!(matches!(

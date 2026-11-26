@@ -240,7 +240,7 @@ impl Rig {
 
     fn with_tools(custom: Option<Box<dyn FnOnce(Arc<AgentSessionManager>) -> Arc<dyn ToolPolicy>>>) -> Rig {
         let dir = temp_dir("chat");
-        let db = dir.join("nexq.db");
+        let db = dir.join("lucid.db");
         {
             let conn = Connection::open(&db).unwrap();
             crate::db::migrations::run(&conn).unwrap();
@@ -2423,7 +2423,7 @@ async fn a_search_that_fails_is_an_error_not_an_empty_answer() {
 #[test]
 fn the_index_provider_reports_a_read_that_fails() {
     use crate::workspace_search::indexer::IndexProvider;
-    let p = super::provider::WorkspaceIndexProvider { db_path: std::path::PathBuf::from("Z:/no/such/dir/nexq.db"), sources: Arc::default() };
+    let p = super::provider::WorkspaceIndexProvider { db_path: std::path::PathBuf::from("Z:/no/such/dir/lucid.db"), sources: Arc::default() };
     assert!(p.documents().is_err() && p.folders().is_err() && p.talking_points().is_err());
 }
 

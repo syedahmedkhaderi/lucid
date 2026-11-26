@@ -1645,11 +1645,11 @@ function DeepgramAdvancedSettings() {
       {isFlux && (
         <div className="px-5 py-3 border-b border-border/20 bg-info/5">
           <p className="text-xs text-foreground/90">
-            Flux tells NexQ when each speaker has finished, so Auto-Answer replies right away instead of
+            Flux tells Lucid when each speaker has finished, so Auto-Answer replies right away instead of
             waiting 1.5 s, and can start on a likely finish.
           </p>
           <p className="mt-1 text-meta text-muted-foreground/80">
-            It doesn&apos;t tell speakers apart. NexQ streams silence to it, so quiet time counts toward
+            It doesn&apos;t tell speakers apart. Lucid streams silence to it, so quiet time counts toward
             Deepgram usage. Muted time doesn&apos;t: muting closes the stream.
           </p>
         </div>
@@ -2235,7 +2235,7 @@ function GroqAdvancedSettings() {
             <textarea
               value={groqConfig.prompt}
               onChange={(e) => updateField("prompt", e.target.value)}
-              placeholder="e.g., NexQ, Tauri, WASAPI, transcription..."
+              placeholder="e.g., Lucid, Tauri, WASAPI, transcription..."
               rows={2}
               className="w-full rounded-lg border border-border/50 bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20 resize-none"
             />

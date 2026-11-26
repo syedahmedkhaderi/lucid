@@ -42,7 +42,7 @@ use tokio::sync::{mpsc, oneshot, Mutex as AsyncMutex, OwnedMutexGuard};
 
 const CLOSE_GRACE: Duration = Duration::from_secs(2);
 const STDERR_TAIL_LINES: usize = 20;
-/// How long `spawn` waits for NexQ's own MCP servers to start (or fail).
+/// How long `spawn` waits for Lucid's own MCP servers to start (or fail).
 const MCP_STARTUP_WAIT: Duration = Duration::from_secs(25);
 /// Context queued by `append_context` is cut to this many characters (oldest first).
 const MAX_PENDING_CONTEXT_CHARS: usize = 200_000;
@@ -84,7 +84,7 @@ struct Shared {
     plan_limit: Mutex<Option<crate::llm::cli_agent::protocol::PlanLimit>>,
     /// Which MCP tools may run: the allowlist `item_breach` checks every item against.
     policy: CodexPolicy,
-    /// The keys of the MCP servers NexQ configured: any other that starts is a breach.
+    /// The keys of the MCP servers Lucid configured: any other that starts is a breach.
     expected_servers: Vec<String>,
 }
 
@@ -150,7 +150,7 @@ impl Shared {
     }
 }
 
-/// The first MCP server that is starting or ready although NexQ did not
+/// The first MCP server that is starting or ready although Lucid did not
 /// configure it (one that merely failed never ran).
 fn unexpected_server<'a>(servers: &'a [McpServerState], expected: &[String]) -> Option<&'a McpServerState> {
     servers
@@ -258,7 +258,7 @@ impl CodexSession {
         }
     }
 
-    /// `initialize`, sign-in check, `thread/start`, and (for NexQ's own MCP
+    /// `initialize`, sign-in check, `thread/start`, and (for Lucid's own MCP
     /// servers) the wait for their startup.
     async fn prime(&mut self, launch: &CodexLaunch, user_servers: &[String]) -> Result<(), AgentError> {
         let version = env!("CARGO_PKG_VERSION");
@@ -322,7 +322,7 @@ impl CodexSession {
             return Err(AgentError::Cli(
                 AgentErrorKind::Other,
                 format!(
-                    "Codex started an MCP server NexQ did not configure (`{}`), so the session was closed.",
+                    "Codex started an MCP server Lucid did not configure (`{}`), so the session was closed.",
                     server.name
                 ),
             ));
@@ -470,7 +470,7 @@ impl CodexSession {
         self.effort.as_deref()
     }
 
-    /// NexQ's own MCP servers and how they started (the user's are off).
+    /// Lucid's own MCP servers and how they started (the user's are off).
     pub fn init_info(&self) -> InitInfo {
         self.init.lock().unwrap().clone()
     }
@@ -583,7 +583,7 @@ fn trim_queue(queue: &mut Vec<String>, max_chars: usize) {
     }
 }
 
-/// A turn's token counts: Codex's `input` includes the cached part, NexQ's
+/// A turn's token counts: Codex's `input` includes the cached part, Lucid's
 /// `input_tokens` is the uncached prompt only.
 fn turn_result(text: String, usage: Usage, duration_ms: u64) -> TurnResult {
     TurnResult {
@@ -685,7 +685,7 @@ async fn run_turn(
                         return Err(AgentError::Timeout);
                     }
                 };
-                // A server NexQ did not configure that came up (the user's own,
+                // A server Lucid did not configure that came up (the user's own,
                 // switched off, or a plugin's): nothing it offers is vouched for.
                 if let Some(server) = unexpected_server(&shared.mcp.lock().unwrap(), &shared.expected_servers) {
                     let name = server.name.clone();
@@ -693,7 +693,7 @@ async fn run_turn(
                     shared.terminate(&format!("unexpected MCP server {name} started"));
                     return Err(AgentError::Cli(
                         AgentErrorKind::Other,
-                        format!("Codex started an MCP server NexQ did not configure (`{name}`), which NexQ does not allow. The session was closed."),
+                        format!("Codex started an MCP server Lucid did not configure (`{name}`), which Lucid does not allow. The session was closed."),
                     ));
                 }
                 // The session has no shell, no file tools and no web: only
@@ -705,7 +705,7 @@ async fn run_turn(
                         shared.terminate(&format!("{what} started"));
                         return Err(AgentError::Cli(
                             AgentErrorKind::Other,
-                            format!("Codex tried to use {what}, which NexQ does not allow. The session was closed."),
+                            format!("Codex tried to use {what}, which Lucid does not allow. The session was closed."),
                         ));
                     }
                 }

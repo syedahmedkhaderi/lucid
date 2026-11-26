@@ -1,6 +1,6 @@
 //! Keeps both windows on the app's own pages. An answer, a note or a tool
 //! result can carry a link; a click on one must never turn a window into a web
-//! page that runs inside NexQ (with its IPC bridge). Links open in the system
+//! page that runs inside Lucid (with its IPC bridge). Links open in the system
 //! browser, after the user confirms the address (`answerMarkdown`).
 
 use tauri::plugin::TauriPlugin;

@@ -1,4 +1,4 @@
-// The one-time "star NexQ on GitHub" card. This file holds the decisions and
+// The one-time "star Lucid on GitHub" card. This file holds the decisions and
 // constants; useStarPrompt wires them to the app and StarPrompt draws the card.
 import type { MeetingSummary } from "./types";
 
@@ -20,7 +20,7 @@ export const THANKS_CLOSE_MS = 4_000;
 /** How many meetings to read; five finished ones are always within the newest 50. */
 export const MEETINGS_TO_READ = 50;
 
-/** Key in nexq-settings.json. Absent in older saved configs, which means "not shown yet". */
+/** Key in lucid-settings.json. Absent in older saved configs, which means "not shown yet". */
 export const STAR_PROMPT_SHOWN_KEY = "starPromptShown";
 
 /** A meeting that ended and has a transcript (an empty one doesn't count). */
@@ -87,7 +87,7 @@ export interface StarPromptBlockers {
   notOnLauncher: boolean;
   updateDialogOpen: boolean;
   updateToastShowing: boolean;
-  /** NexQ is about to restart into an update. */
+  /** Lucid is about to restart into an update. */
   installing: boolean;
 }
 

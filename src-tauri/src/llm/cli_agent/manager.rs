@@ -1,4 +1,4 @@
-//! `AgentSessionManager`: the CLI agent sessions NexQ keeps open (Claude,
+//! `AgentSessionManager`: the CLI agent sessions Lucid keeps open (Claude,
 //! Antigravity or Codex: whichever provider is active), keyed by meeting
 //! scope and model tier.
 //!
@@ -1501,7 +1501,7 @@ pub fn is_scope_changed(err: &AgentError) -> bool {
 }
 
 fn shut_down_error() -> AgentError {
-    AgentError::Spawn("NexQ is shutting down".into())
+    AgentError::Spawn("Lucid is shutting down".into())
 }
 
 #[cfg(test)]

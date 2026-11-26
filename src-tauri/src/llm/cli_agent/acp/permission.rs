@@ -1,17 +1,17 @@
 //! Answering `session/request_permission`: a pure policy with one rule.
 //!
 //! An Antigravity session has no file tools of its own to use: the notes are
-//! served by NexQ's `nexq_notes` MCP server (see `notes_mcp`), and its working
+//! served by Lucid's `nexq_notes` MCP server (see `notes_mcp`), and its working
 //! directory is an empty folder. So a request is allowed only when it is a call
 //! of an MCP tool the policy names, `nexq_notes`' three read-only tools and
 //! the MCP tools the user allowed (and not one the user switched off).
 //! Everything else is rejected whatever its kind, name or arguments (a shell
-//! command, a read, a search, an edit, a fetch): NexQ no longer tries to judge
+//! command, a read, a search, an edit, a fetch): Lucid no longer tries to judge
 //! command strings or file paths. A request gets the reject option, or
 //! `cancelled` when the agent offered none.
 //!
 //! The session also watches what actually runs (`session.rs`): a tool call that
-//! runs without NexQ having allowed it ends the session. Tool names are split
+//! runs without Lucid having allowed it ends the session. Tool names are split
 //! into server and tool with the session's known server keys, the longest key
 //! winning (`mcp_a_b_x` is server `a_b`'s `x`, never server `a`'s `b_x`).
 
@@ -20,7 +20,7 @@ use serde_json::{json, Value};
 /// One allowed (or denied) MCP tool: `tool == None` means every tool of `server`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpToolRule {
-    /// The server key (the `name` NexQ gave it in `session/new`).
+    /// The server key (the `name` Lucid gave it in `session/new`).
     pub server: String,
     pub tool: Option<String>,
 }
@@ -199,7 +199,7 @@ pub fn is_allowed(req: &PermissionRequest, policy: &PermissionPolicy) -> bool {
 }
 
 /// Allow with `allow_once` (never `allow_always`: that would make the agent
-/// remember a grant NexQ did not give) when the policy allows the call; every
+/// remember a grant Lucid did not give) when the policy allows the call; every
 /// other call gets `reject_once`, else `reject_always`, else `cancelled`.
 pub fn decide(req: &PermissionRequest, policy: &PermissionPolicy) -> Outcome {
     let find = |kind: &str| req.options.iter().find(|o| o.kind == kind).map(|o| o.id.clone());

@@ -1,5 +1,5 @@
 // In-meeting action keys: the keys that run Assist and the other AI actions
-// while a NexQ window has focus. The global shortcuts (Ctrl+M, Ctrl+B,
+// while a Lucid window has focus. The global shortcuts (Ctrl+M, Ctrl+B,
 // Ctrl+, and the three in Settings > General) are separate and not stored here.
 
 import type { HotkeyConfig, IntelligenceMode } from "./types";
@@ -387,7 +387,7 @@ export function focusedRichEditor(doc: Document = document): Element | null {
 
 /**
  * The global Ctrl+B swallows the key before the page sees it. When an editor in
- * NexQ has focus, hand the chord to it (bold) instead of switching windows.
+ * Lucid has focus, hand the chord to it (bold) instead of switching windows.
  * Returns true when it was handed over.
  */
 export function forwardChordToEditor(key: string, doc: Document = document): boolean {

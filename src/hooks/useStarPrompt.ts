@@ -8,7 +8,7 @@
 // screen and not answered comes back after the next meeting in the same
 // session; a card that was never seen is simply offered again by the trigger.
 //
-// Persistence: `starPromptShown` in nexq-settings.json, written once the card
+// Persistence: `starPromptShown` in lucid-settings.json, written once the card
 // has been on screen for 2 s or the moment the user acts. If the setting
 // can't be read the card is not shown (never nag). Nothing leaves the machine.
 
@@ -31,7 +31,7 @@ import {
   starPromptWaiting,
 } from "../lib/starPrompt";
 
-const STORE_NAME = "nexq-settings.json";
+const STORE_NAME = "lucid-settings.json";
 
 function settingsStore() {
   return load(STORE_NAME, { autoSave: true, defaults: {} });

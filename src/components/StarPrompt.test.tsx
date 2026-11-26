@@ -56,7 +56,7 @@ describe("StarPrompt", () => {
   it("shows the title, body and exactly three actions, with no close button", () => {
     render(<StarPrompt />);
     const region = screen.getByRole("region", { name: STAR_PROMPT_TITLE });
-    expect(STAR_PROMPT_TITLE).toBe("Is NexQ working for you?");
+    expect(STAR_PROMPT_TITLE).toBe("Is Lucid working for you?");
     expect(region).toHaveTextContent("It's free and open source. A star on GitHub helps other people find it.");
     expect(STAR_PROMPT_BODY).not.toMatch(/[—–]/);
     const buttons = screen.getAllByRole("button").map((b) => b.textContent);

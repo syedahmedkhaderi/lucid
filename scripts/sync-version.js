@@ -9,7 +9,10 @@ const root = join(__dirname, "..");
 // Read version from package.json (single source of truth)
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const version = pkg.version;
-const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+const dateParts = Object.fromEntries(new Intl.DateTimeFormat("en", {
+  timeZone: "Asia/Qatar", year: "numeric", month: "2-digit", day: "2-digit",
+}).formatToParts(new Date()).map(({ type, value }) => [type, value]));
+const today = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
 
 console.log(`Syncing version ${version} (build date: ${today}) to all files...`);
 
@@ -17,12 +20,12 @@ console.log(`Syncing version ${version} (build date: ${today}) to all files...`)
 const versionTsPath = join(root, "src", "lib", "version.ts");
 let versionTs = readFileSync(versionTsPath, "utf8");
 versionTs = versionTs.replace(
-  /export const NEXQ_VERSION = ".*?";/,
-  `export const NEXQ_VERSION = "${version}";`
+  /export const LUCID_VERSION = ".*?";/,
+  `export const LUCID_VERSION = "${version}";`
 );
 versionTs = versionTs.replace(
-  /export const NEXQ_BUILD_DATE = ".*?";/,
-  `export const NEXQ_BUILD_DATE = "${today}";`
+  /export const LUCID_BUILD_DATE = ".*?";/,
+  `export const LUCID_BUILD_DATE = "${today}";`
 );
 writeFileSync(versionTsPath, versionTs);
 console.log(`  Updated src/lib/version.ts`);
@@ -47,15 +50,15 @@ cargoToml = cargoToml.replace(
 writeFileSync(cargoTomlPath, cargoToml);
 console.log(`  Updated src-tauri/Cargo.toml`);
 
-// 4. Update the nexq package in src-tauri/Cargo.lock (else the next cargo
+// 4. Update the lucid package in src-tauri/Cargo.lock (else the next cargo
 // build rewrites it and the release commit leaves it stale)
 const cargoLockPath = join(root, "src-tauri", "Cargo.lock");
 const cargoLock = readFileSync(cargoLockPath, "utf8");
-const nexqPackage = /(\[\[package\]\]\r?\nname = "nexq"\r?\nversion = )".*?"/;
-if (!nexqPackage.test(cargoLock)) {
-  throw new Error("src-tauri/Cargo.lock: nexq package entry not found");
+const lucidPackage = /(\[\[package\]\]\r?\nname = "lucid"\r?\nversion = )".*?"/;
+if (!lucidPackage.test(cargoLock)) {
+  throw new Error("src-tauri/Cargo.lock: lucid package entry not found");
 }
-writeFileSync(cargoLockPath, cargoLock.replace(nexqPackage, `$1"${version}"`));
+writeFileSync(cargoLockPath, cargoLock.replace(lucidPackage, `$1"${version}"`));
 console.log(`  Updated src-tauri/Cargo.lock`);
 
 console.log(`\nVersion sync complete.`);

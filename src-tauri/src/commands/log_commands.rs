@@ -7,7 +7,7 @@ use crate::logging;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LogInfo {
-    /// Folder holding `nexq.log` and its rotated copies.
+    /// Folder holding `lucid.log` and its rotated copies.
     pub dir: String,
     /// Full path of the current log file.
     pub file: String,

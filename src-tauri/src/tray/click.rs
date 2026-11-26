@@ -19,7 +19,7 @@ pub fn click_target(meeting_active: bool) -> ClickTarget {
     }
 }
 
-/// Left click (or double-click) on the tray icon: bring NexQ to the front.
+/// Left click (or double-click) on the tray icon: bring Lucid to the front.
 /// It only ever shows, never hides, because Windows reports a Click for each
 /// mouse-up of a double-click too.
 pub fn handle_left_click(app: &AppHandle) {

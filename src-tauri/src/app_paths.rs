@@ -1,7 +1,7 @@
-//! Where NexQ keeps its files, from one place. The folder comes from the
+//! Where Lucid keeps its files, from one place. The folder comes from the
 //! app's own identifier, so a build with another identifier (a test build)
-//! never writes into the real app's folders; for the real identifier every
-//! path is exactly where it always was.
+//! never writes into the real app's folders. Lucid uses its own identifier and
+//! does not silently reuse or migrate NexQ's user data.
 //!
 //! Set once at start from the Tauri identifier ([`init`]). Unit tests get a
 //! private temporary folder, so a test can never touch the real ones.
@@ -9,8 +9,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-/// The identifier of the real app (`tauri.conf.json`).
-pub const DEFAULT_IDENTIFIER: &str = "com.nexq.app";
+/// The identifier of Lucid (`tauri.conf.json`).
+pub const DEFAULT_IDENTIFIER: &str = "com.lucid.desktop";
 
 struct Resolved {
     /// Tauri's app data folder for this identifier.
@@ -49,7 +49,7 @@ fn set() -> Option<(&'static Path, &'static str)> {
     RESOLVED.get().map(|r| (r.data_dir.as_path(), r.identifier.as_str()))
 }
 
-/// The app's data folder (the one holding `nexq.db`). In unit tests, a private
+/// The app's data folder (the one holding `lucid.db`). In unit tests, a private
 /// temporary folder.
 pub fn data_dir() -> PathBuf {
     if cfg!(test) {
@@ -68,8 +68,8 @@ pub fn context_dir() -> PathBuf {
     context_impl(set(), &Env::current(), cfg!(test))
 }
 
-/// The folder NexQ's private session folders live in: `%LOCALAPPDATA%\NexQ`
-/// for the real app (unchanged), `...\NexQ\<identifier>` for any other
+/// The folder Lucid's private session folders live in: `%LOCALAPPDATA%\Lucid`
+/// for the production identifier, `...\Lucid\<identifier>` for any other
 /// identifier, so two builds never share (or clean up) each other's folders.
 pub fn local_root() -> PathBuf {
     local_root_impl(identifier(), &Env::current(), cfg!(test))
@@ -94,8 +94,8 @@ fn test_root() -> PathBuf {
     std::env::temp_dir().join(format!("nexq-test-{}", std::process::id()))
 }
 
-/// The recordings folder. The real identifier: where the recorder has always
-/// put it. Another identifier: inside that run's own data folder. `isolate`
+/// The recordings folder. Lucid's identifier uses its own app data folder.
+/// Another identifier uses that run's own data folder. `isolate`
 /// (unit tests): a private temporary folder whatever the identifier.
 pub fn recordings_impl(set: Option<(&Path, &str)>, env: &Env, isolate: bool) -> PathBuf {
     match set {
@@ -113,7 +113,7 @@ pub fn recordings_impl(set: Option<(&Path, &str)>, env: &Env, isolate: bool) -> 
     }
 }
 
-/// The context folder: under `APPDATA` for the real identifier (`~/.nexq`
+/// The context folder: under `APPDATA` for the real identifier (`~/.lucid`
 /// without it), like [`recordings_impl`] otherwise.
 pub fn context_impl(set: Option<(&Path, &str)>, env: &Env, isolate: bool) -> PathBuf {
     match set {
@@ -121,7 +121,7 @@ pub fn context_impl(set: Option<(&Path, &str)>, env: &Env, isolate: bool) -> Pat
         Some((data, id)) if id != DEFAULT_IDENTIFIER => data.join("context"),
         _ => match &env.appdata {
             Some(appdata) => appdata.join(DEFAULT_IDENTIFIER).join("context"),
-            None => env.home.clone().unwrap_or_else(|| PathBuf::from(".")).join(".nexq").join("context"),
+            None => env.home.clone().unwrap_or_else(|| PathBuf::from(".")).join(".lucid").join("context"),
         },
     }
 }
@@ -131,7 +131,7 @@ pub fn local_root_impl(identifier: &str, env: &Env, isolate: bool) -> PathBuf {
     if isolate {
         return test_root().join("local");
     }
-    let base = env.localappdata.clone().unwrap_or_else(std::env::temp_dir).join("NexQ");
+    let base = env.localappdata.clone().unwrap_or_else(std::env::temp_dir).join("Lucid");
     if identifier == DEFAULT_IDENTIFIER { base } else { base.join(identifier) }
 }
 
@@ -149,28 +149,28 @@ mod tests {
 
     #[test]
     fn another_identifier_never_uses_the_real_apps_folders() {
-        let data = PathBuf::from("R").join("com.nexq.test");
-        let set = Some((data.as_path(), "com.nexq.test"));
+        let data = PathBuf::from("R").join("com.lucid.test");
+        let set = Some((data.as_path(), "com.lucid.test"));
         assert_eq!(recordings_impl(set, &env(), false), data.join("recordings"));
         assert_eq!(context_impl(set, &env(), false), data.join("context"));
-        assert_eq!(local_root_impl("com.nexq.test", &env(), false), PathBuf::from("L").join("NexQ").join("com.nexq.test"));
+        assert_eq!(local_root_impl("com.lucid.test", &env(), false), PathBuf::from("L").join("Lucid").join("com.lucid.test"));
         // Not before init either, once the identifier is known to be another one.
         assert_ne!(recordings_impl(set, &env(), false), recordings_impl(None, &env(), false));
     }
 
     #[test]
-    fn the_real_identifier_keeps_the_paths_it_always_had() {
+    fn the_lucid_identifier_uses_its_own_data_namespace() {
         let e = env();
-        let data = PathBuf::from("R").join("com.nexq.app");
+        let data = PathBuf::from("R").join("com.lucid.desktop");
         let real = Some((data.as_path(), DEFAULT_IDENTIFIER));
-        assert_eq!(recordings_impl(real, &e, false), PathBuf::from("R").join("com.nexq.app").join("recordings"));
+        assert_eq!(recordings_impl(real, &e, false), PathBuf::from("R").join("com.lucid.desktop").join("recordings"));
         assert_eq!(recordings_impl(None, &e, false), recordings_impl(real, &e, false));
-        assert_eq!(context_impl(real, &e, false), PathBuf::from("R").join("com.nexq.app").join("context"));
-        assert_eq!(local_root_impl(DEFAULT_IDENTIFIER, &e, false), PathBuf::from("L").join("NexQ"));
-        // Without APPDATA: where they always went.
+        assert_eq!(context_impl(real, &e, false), PathBuf::from("R").join("com.lucid.desktop").join("context"));
+        assert_eq!(local_root_impl(DEFAULT_IDENTIFIER, &e, false), PathBuf::from("L").join("Lucid"));
+        // Without APPDATA: use Lucid's private config namespace.
         let none = Env { appdata: None, localappdata: Some(PathBuf::from("L")), home: Some(PathBuf::from("H")) };
-        assert_eq!(recordings_impl(None, &none, false), PathBuf::from("H").join(".config").join("com.nexq.app").join("recordings"));
-        assert_eq!(context_impl(None, &none, false), PathBuf::from("H").join(".nexq").join("context"));
+        assert_eq!(recordings_impl(None, &none, false), PathBuf::from("H").join(".config").join("com.lucid.desktop").join("recordings"));
+        assert_eq!(context_impl(None, &none, false), PathBuf::from("H").join(".lucid").join("context"));
         // Tauri's own folder is the same one on Windows.
         if cfg!(windows) {
             if let Some(appdata) = std::env::var_os("APPDATA") {
@@ -181,11 +181,11 @@ mod tests {
 
     #[test]
     fn a_unit_test_never_reaches_the_real_folders_even_with_the_real_identifier() {
-        let data = PathBuf::from("R").join("com.nexq.app");
+        let data = PathBuf::from("R").join("com.lucid.desktop");
         let real = Some((data.as_path(), DEFAULT_IDENTIFIER));
         for path in [recordings_impl(real, &env(), true), context_impl(None, &env(), true), local_root_impl(DEFAULT_IDENTIFIER, &env(), true)] {
             assert!(path.starts_with(std::env::temp_dir()), "{path:?}");
-            assert!(!path.to_string_lossy().contains("com.nexq.app"), "{path:?}");
+            assert!(!path.to_string_lossy().contains("com.lucid.desktop"), "{path:?}");
         }
         // And the functions the app calls are those isolated ones under cargo test.
         for path in [recordings_dir(), context_dir(), local_root()] {

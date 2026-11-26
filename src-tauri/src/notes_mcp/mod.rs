@@ -1,9 +1,9 @@
-//! NexQ's own read-only notes server for the Antigravity and Codex CLIs.
+//! Lucid's own read-only notes server for the Antigravity and Codex CLIs.
 //!
 //! Those CLIs read files with their own tools, and what such a tool will read
 //! is decided by the CLI (it can auto-allow, and its arguments are free-form).
 //! So their sessions get no file tools at all. The notes folders are served by
-//! this MCP server instead, started by the CLI as `nexq.exe --notes-mcp`, where
+//! this MCP server instead, started by the CLI as `lucid.exe --notes-mcp`, where
 //! Rust opens every file itself and decides what is inside a folder
 //! ([`vault`]).
 //!
@@ -15,7 +15,7 @@
 //! The folders arrive in the environment variable [`DIRS_ENV`] as a JSON array
 //! of paths (paths are not secrets, and this keeps the argument list short).
 //! The mode is picked in `main` before anything of the app starts, so it never
-//! hands over to a running NexQ and never opens a window.
+//! hands over to a running Lucid and never opens a window.
 
 pub mod vault;
 
@@ -25,11 +25,11 @@ use std::io::{BufRead, Read, Write};
 use std::path::PathBuf;
 use vault::Notes;
 
-/// The argument that makes `nexq.exe` run as the notes server.
+/// The argument that makes `lucid.exe` run as the notes server.
 pub const NOTES_MCP_ARG: &str = "--notes-mcp";
 /// The environment variable that carries the allowed folders (a JSON array).
 pub const DIRS_ENV: &str = "NEXQ_NOTES_DIRS";
-/// The key NexQ gives the server in the CLI's MCP configuration.
+/// The key Lucid gives the server in the CLI's MCP configuration.
 pub const SERVER_KEY: &str = "nexq_notes";
 /// The tools it offers.
 pub const TOOLS: [&str; 3] = ["list_notes", "search_notes", "read_note"];
@@ -39,7 +39,7 @@ const SUPPORTED_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"]
 /// A line longer than this is not read.
 const MAX_LINE_BYTES: usize = 4 * 1024 * 1024;
 
-/// Was NexQ started as the notes server?
+/// Was Lucid started as the notes server?
 pub fn is_notes_mode<I, S>(args: I) -> bool
 where
     I: IntoIterator<Item = S>,
@@ -361,14 +361,14 @@ mod tests {
 
     #[test]
     fn the_mode_argument_and_the_environment_are_read() {
-        assert!(is_notes_mode(["nexq.exe", "--notes-mcp"]));
-        assert!(!is_notes_mode(["nexq.exe"]));
+        assert!(is_notes_mode(["lucid.exe", "--notes-mcp"]));
+        assert!(!is_notes_mode(["lucid.exe"]));
         // The program name is not an argument.
         assert!(!is_notes_mode(["--notes-mcp"]));
         assert_eq!(dirs_from_env(Some(r#"["C:\\Notes","D:\\Wiki",""]"#)), [PathBuf::from("C:\\Notes"), PathBuf::from("D:\\Wiki")]);
         assert!(dirs_from_env(Some("not json")).is_empty() && dirs_from_env(None).is_empty());
-        let cmd = server_command(std::path::Path::new("C:\\NexQ\\nexq.exe"), &[PathBuf::from("C:\\My Notes")]);
-        assert_eq!(cmd["command"], "C:\\NexQ\\nexq.exe");
+        let cmd = server_command(std::path::Path::new("C:\\Lucid\\lucid.exe"), &[PathBuf::from("C:\\My Notes")]);
+        assert_eq!(cmd["command"], "C:\\Lucid\\lucid.exe");
         assert_eq!(cmd["args"], json!(["--notes-mcp"]));
         assert_eq!(dirs_from_env(cmd["env"][DIRS_ENV].as_str()), [PathBuf::from("C:\\My Notes")]);
     }

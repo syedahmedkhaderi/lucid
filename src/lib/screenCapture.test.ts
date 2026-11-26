@@ -88,14 +88,14 @@ describe("captureScreenIntoAsk", () => {
   });
 
   it("brings the overlay back before the error toast, and attaches nothing", async () => {
-    capture.mockRejectedValue("NexQ couldn't read the screen.");
+    capture.mockRejectedValue("Lucid couldn't read the screen.");
     const seen: string[][] = [];
     const unsubscribe = useToastStore.subscribe(() => seen.push([...overlay.log, "toast"]));
     await captureScreenIntoAsk();
     unsubscribe();
     expect(seen[0]).toEqual(["show", "toast"]);
     expect(useToastStore.getState().toasts).toEqual([
-      expect.objectContaining({ message: "NexQ couldn't read the screen.", type: "error" }),
+      expect.objectContaining({ message: "Lucid couldn't read the screen.", type: "error" }),
     ]);
     expect(takePendingScreenshots()).toHaveLength(0);
   });

@@ -76,7 +76,7 @@ describe("LLMSetupStep (first-run wizard)", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^Claude/ }));
     expect(screen.getByText("Claude Code 2.1.206 is too old: update it to use it")).toBeInTheDocument();
     expect(
-      screen.getByText(/Claude Code 2\.1\.206 is too old\. NexQ needs Claude Code 2\.1\.259 or newer/),
+      screen.getByText(/Claude Code 2\.1\.206 is too old\. Lucid needs Claude Code 2\.1\.259 or newer/),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Use Claude" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /open terminal to log in/i })).not.toBeInTheDocument();

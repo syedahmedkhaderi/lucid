@@ -11,7 +11,7 @@
     ],
     "kind": "unreadable",
     "message": "A check of your meetings file found damage.",
-    "path": "C:/data/nexq.db"
+    "path": "C:/data/lucid.db"
   },
   "error": "The database did not open"
 }

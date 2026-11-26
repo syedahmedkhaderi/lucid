@@ -431,7 +431,7 @@ export function LLMSettings() {
           <p className="mt-0.5 text-xs text-muted-foreground">
             {!isCliAgent(llmProvider) && !llmModel
               ? "Select a provider, test connection, and load models below"
-              : "NexQ answers with this provider"}
+              : "Lucid answers with this provider"}
           </p>
         </div>
       </div>
@@ -485,7 +485,7 @@ export function LLMSettings() {
       {!isCliProvider && selectedProvider !== llmProvider && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
           <p className="text-xs text-muted-foreground">
-            Viewing {selectedLabel}. NexQ is using {inUseLabel}.
+            Viewing {selectedLabel}. Lucid is using {inUseLabel}.
           </p>
           <button
             type="button"

@@ -66,12 +66,12 @@ async function toggleSettingsFromShortcut(): Promise<void> {
     return;
   }
   toggleSettingsHere();
-  // NexQ may be hidden (it has no taskbar button under stealth mode).
+  // Lucid may be hidden (it has no taskbar button under stealth mode).
   const settingsShowing = useMeetingStore.getState().currentView === "settings";
   if (settingsShowing && !(await isWindowShown("launcher"))) await showLauncherWindow();
 }
 
-/** Stealth shortcut: hide NexQ from screen sharing, or show it again. */
+/** Stealth shortcut: hide Lucid from screen sharing, or show it again. */
 export async function toggleStealthMode(): Promise<void> {
   const config = useConfigStore.getState();
   const enabled = !config.stealthMode;
@@ -223,7 +223,7 @@ export function useGlobalShortcut() {
           key: "CmdOrCtrl+B",
           handler: (event) => {
             if (event.state === "Pressed") {
-              // In a NexQ editor Ctrl+B is bold: the global key hands it over.
+              // In a Lucid editor Ctrl+B is bold: the global key hands it over.
               if (forwardChordToEditor("b")) return;
               (async () => {
                 const target = switchShortcutTarget(await isOverlayVisible(), !!useMeetingStore.getState().activeMeeting);

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 /**
  * Shared card of the AI provider settings. Three separate things, shown three
  * different ways so they are never mistaken for one another:
- *  - in use: the provider NexQ answers with (filled "In use" pill, primary border);
+ *  - in use: the provider Lucid answers with (filled "In use" pill, primary border);
  *  - viewing: the card whose details are open (quiet outline ring only);
  *  - status: whether the provider is ready (one dot and one word).
  */

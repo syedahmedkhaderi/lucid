@@ -471,7 +471,7 @@ mod tests {
 
     /// A database as v8 left it, with a meeting and two documents in it.
     fn v8_database(dir: &Path) -> (Connection, PathBuf) {
-        let path = dir.join("nexq.db");
+        let path = dir.join("lucid.db");
         let conn = Connection::open(&path).unwrap();
         migrations::run(&conn).unwrap();
         conn.execute(
@@ -660,7 +660,7 @@ mod tests {
     #[test]
     fn starting_with_sixty_meetings_is_fast_on_the_first_upgrade_and_after() {
         let dir = temp_dir("timing");
-        let path = dir.join("nexq.db");
+        let path = dir.join("lucid.db");
         {
             let conn = Connection::open(&path).unwrap();
             migrations::run(&conn).unwrap();
@@ -713,7 +713,7 @@ mod tests {
     #[test]
     fn a_fresh_database_makes_no_copy() {
         let dir = temp_dir("fresh");
-        let path = dir.join("nexq.db");
+        let path = dir.join("lucid.db");
         let conn = Connection::open(&path).unwrap();
         migrations::run(&conn).unwrap();
         run_steps(&conn, Some(&path), STEPS).unwrap();
@@ -726,7 +726,7 @@ mod tests {
     fn a_failed_copy_logs_and_the_upgrade_goes_on() {
         let dir = temp_dir("nocopy");
         let (conn, _) = v8_database(&dir);
-        let missing_dir = dir.join("gone").join("nexq.db");
+        let missing_dir = dir.join("gone").join("lucid.db");
         run_steps(&conn, Some(&missing_dir), STEPS).unwrap();
         assert!(table_exists(&conn, "workspaces"));
         let _ = std::fs::remove_dir_all(dir);
@@ -735,7 +735,7 @@ mod tests {
     #[test]
     fn the_copy_is_removed_after_14_days_only() {
         let dir = temp_dir("old");
-        let path = dir.join("nexq.db");
+        let path = dir.join("lucid.db");
         let backup = backup_path(&path);
         std::fs::write(&backup, b"x").unwrap();
         cleanup_old_backup(&path);

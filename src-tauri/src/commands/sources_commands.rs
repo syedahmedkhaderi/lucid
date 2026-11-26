@@ -295,7 +295,7 @@ pub fn open_source_file(path: String, state: State<'_, AppState>) -> Result<(), 
         return Err("That file isn't inside one of your enabled notes folders.".to_string());
     }
     if !is_openable_note(target) {
-        return Err("NexQ only opens notes and documents from here, not other kinds of file.".to_string());
+        return Err("Lucid only opens notes and documents from here, not other kinds of file.".to_string());
     }
     #[cfg(target_os = "windows")]
     let program = "explorer";
@@ -384,7 +384,7 @@ fn import_json(
 
 /// Add the servers in pasted `mcpServers` JSON. Secret values are stored in
 /// Credential Manager and are not in the returned servers. New keys avoid the
-/// keys NexQ has saved (not a list the webview sends).
+/// keys Lucid has saved (not a list the webview sends).
 #[command]
 pub fn import_mcp_servers_json(json: String, state: State<'_, AppState>) -> Result<Vec<McpServer>, String> {
     let known = known_servers(&state);
@@ -485,7 +485,7 @@ pub fn list_claude_code_mcp_servers() -> Result<Vec<ClaudeCodeMcpServer>, String
     }
 }
 
-/// Copy the named Claude Code servers into NexQ. A server that signs in with
+/// Copy the named Claude Code servers into Lucid. A server that signs in with
 /// OAuth comes back `needs_sign_in` and off; header values and secret env
 /// values are stored in Credential Manager.
 #[command]
@@ -724,7 +724,7 @@ fn save_form(
 
 /// Save the add/edit form: builds the server, stores its secrets in
 /// Credential Manager and drops the ones an edit removed. The returned server
-/// holds names only. An edit (`form.id`) must name a server NexQ has saved: its
+/// holds names only. An edit (`form.id`) must name a server Lucid has saved: its
 /// key, tool switches and on/off state come from that server. If the edit
 /// changes the command, arguments, URL or plain environment, the stored
 /// secrets are not kept and must be typed in the form again (the error says
@@ -736,7 +736,7 @@ pub fn save_mcp_server_form(
 ) -> Result<McpServer, String> {
     let old = match &form.id {
         Some(id) => Some(saved_server(&state, id).ok_or(
-            "NexQ doesn't have this server saved yet. Save your sources first, then edit it.",
+            "Lucid doesn't have this server saved yet. Save your sources first, then edit it.",
         )?),
         None => None,
     };
@@ -811,7 +811,7 @@ fn plan_check(
 ) -> Result<CheckPlan, String> {
     match draft {
         None => {
-            let saved = saved.ok_or("NexQ doesn't have this server saved yet. Save your sources first.")?;
+            let saved = saved.ok_or("Lucid doesn't have this server saved yet. Save your sources first.")?;
             Ok(CheckPlan { server: saved.clone(), typed: Default::default(), use_stored: true })
         }
         Some(form) => {
@@ -844,7 +844,7 @@ pub async fn check_mcp_server(
     state: State<'_, AppState>,
 ) -> Result<McpServer, String> {
     let saved = match &server_id {
-        Some(id) => Some(saved_server(&state, id).ok_or("NexQ doesn't have this server saved yet. Save your sources first.")?),
+        Some(id) => Some(saved_server(&state, id).ok_or("Lucid doesn't have this server saved yet. Save your sources first.")?),
         None => None,
     };
     let store = SystemSecrets::new();

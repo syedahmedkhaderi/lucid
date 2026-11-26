@@ -1,6 +1,6 @@
 // Resets every meeting-scoped Zustand store.
 //
-// Zustand stores are module singletons *per webview*, and NexQ runs two windows
+// Zustand stores are module singletons *per webview*, and Lucid runs two windows
 // (launcher + overlay). Both windows must call this when a new meeting starts,
 // otherwise the overlay keeps rendering the previous meeting's transcript, AI
 // responses, speakers, bookmarks, etc.

@@ -16,7 +16,7 @@ use crate::llm::cli_agent::command::{SourcesLaunch, SOURCES_BUILTIN_TOOLS};
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
-/// Places a notes folder must not be, or contain: NexQ's private session
+/// Places a notes folder must not be, or contain: Lucid's private session
 /// files, the user's home, and the folders that hold a CLI's sign-in (Claude's
 /// `~/.claude`, Codex's `~/.codex`, Antigravity's `~/.gemini`).
 #[derive(Debug, Clone)]
@@ -70,7 +70,7 @@ pub fn folder_problem_with(path: &Path, protected: &Protected) -> Option<String>
     }
     let private = resolve(&protected.private, true);
     if private.starts_with(&folder) || folder.starts_with(&private) {
-        return Some("This folder holds NexQ's private files, so it can't be a notes folder.".into());
+        return Some("This folder holds Lucid's private files, so it can't be a notes folder.".into());
     }
     if let Some(home) = protected.home.as_deref().map(|h| resolve(h, true)) {
         if folder == home {
@@ -530,7 +530,7 @@ mod tests {
     fn protected(base: &Path) -> Protected {
         let home = base.join("home");
         Protected {
-            private: base.join("local").join("NexQ").join("agent-private"),
+            private: base.join("local").join("Lucid").join("agent-private"),
             credentials: vec![home.join(".claude"), home.join(".claude.json"), base.join("roaming").join("Claude")],
             home: Some(home),
         }
@@ -547,7 +547,7 @@ mod tests {
         let base = real_dir("problem");
         let prot = protected(&base);
         mk(&base, "home/.claude");
-        mk(&base, "local/NexQ/agent-private");
+        mk(&base, "local/Lucid/agent-private");
         mk(&base, "roaming/Claude");
         let vault = mk(&base, "home/Documents/@ObsidianVault/DePaul notes");
 
@@ -558,9 +558,9 @@ mod tests {
         let refused = |p: &Path| folder_problem_with(p, &prot).unwrap_or_else(|| panic!("accepted {p:?}"));
         // Contains the private folder (an ancestor), or is inside it.
         assert!(refused(&base.join("local")).contains("private files"));
-        assert!(refused(&base.join("local/NexQ")).contains("private files"));
-        assert!(refused(&base.join("local/NexQ/agent-private")).contains("private files"));
-        assert!(refused(&base.join("local/NexQ/agent-private/x")).contains("private files"));
+        assert!(refused(&base.join("local/Lucid")).contains("private files"));
+        assert!(refused(&base.join("local/Lucid/agent-private")).contains("private files"));
+        assert!(refused(&base.join("local/Lucid/agent-private/x")).contains("private files"));
         // The home folder itself, and anything above it.
         assert!(refused(&base.join("home")).contains("user folder"));
         let _ = refused(&base); // holds both the private folder and home

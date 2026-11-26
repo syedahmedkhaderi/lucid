@@ -449,7 +449,7 @@ mod tests {
         assert_eq!(body["model"], "m");
         assert_eq!(body["messages"], json!([1]));
         assert_eq!(body["stream"], true);
-        assert_eq!(body["think"], true, "the user's JSON wins over what NexQ built");
+        assert_eq!(body["think"], true, "the user's JSON wins over what Lucid built");
         assert_eq!(body["top_p"], 0.9);
         assert_eq!(body["temperature"], 0.2);
     }

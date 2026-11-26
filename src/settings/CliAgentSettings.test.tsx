@@ -78,7 +78,7 @@ const API_BILLED: ClaudeCliStatus = {
   auth: { logged_in: true, auth_method: "api_key", subscription_type: null, email: "me@example.com", login: "api_billed" },
 };
 
-/** A Claude Code older than NexQ can launch, signed in. */
+/** A Claude Code older than Lucid can launch, signed in. */
 const OUTDATED: ClaudeCliStatus = { ...LOGGED_IN, version: "2.1.206 (Claude Code)", required_version: "2.1.259" };
 
 const ALL_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -164,7 +164,7 @@ describe("CliAgentSettings", () => {
     claudeStatus(NPM_ONLY);
     renderSettings();
     expect(
-      await screen.findByText("Found an npm install of Claude Code — NexQ needs the native installer"),
+      await screen.findByText("Found an npm install of Claude Code — Lucid needs the native installer"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("claude-status-dot")).toHaveAttribute("data-state", "npm_only");
     expect(screen.getByRole("link", { name: /install claude code/i })).toHaveAttribute(
@@ -180,7 +180,7 @@ describe("CliAgentSettings", () => {
     expect(screen.getByTestId("claude-status-dot")).toHaveAttribute("data-state", "outdated");
     expect(screen.getByText("Needs update")).toBeInTheDocument();
     expect(
-      screen.getByText("NexQ needs Claude Code 2.1.259 or newer. Update it, then check the connection."),
+      screen.getByText("Lucid needs Claude Code 2.1.259 or newer. Update it, then check the connection."),
     ).toBeInTheDocument();
     expect(screen.getByTestId("update-command")).toHaveTextContent(
       "& 'C:\\Users\\me\\.local\\bin\\claude.exe' update",
@@ -361,7 +361,7 @@ describe("CliAgentSettings", () => {
     renderSettings();
     expect(screen.getByText("Beta")).toBeInTheDocument();
     expect(
-      screen.getByText("Uses your own Claude, Antigravity or Codex login on this PC. NexQ never sees your credentials."),
+      screen.getByText("Uses your own Claude, Antigravity or Codex login on this PC. Lucid never sees your credentials."),
     ).toBeInTheDocument();
     await screen.findByText(/me@example\.com/);
   });
@@ -615,7 +615,7 @@ describe("CliAgentSettings: Antigravity and Codex", () => {
     expect(await screen.findByText("me@openai.example · Plus")).toBeInTheDocument();
     expect(screen.getByText(/0\.171\.0/)).toBeInTheDocument();
     expect(screen.queryByText(/me@example\.com/)).not.toBeInTheDocument();
-    expect(screen.getByText("Viewing Codex. NexQ is using another provider.")).toBeInTheDocument();
+    expect(screen.getByText("Viewing Codex. Lucid is using another provider.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Use Codex" })).toBeEnabled();
     expect(screen.getByText("Answers while Codex is unavailable (not logged in, usage limit, crash).")).toBeInTheDocument();
   });

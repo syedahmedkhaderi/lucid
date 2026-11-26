@@ -1,12 +1,12 @@
 [package]
-name = "nexq"
-version = "3.0.0"
-description = "AI Meeting Assistant & Real-Time Interview Copilot"
-authors = ["NexQ"]
+name = "lucid"
+version = "0.1.0"
+description = "Local-first AI meeting assistant"
+authors = ["Lucid contributors"]
 edition = "2021"
 
 [lib]
-name = "nexq_lib"
+name = "lucid_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

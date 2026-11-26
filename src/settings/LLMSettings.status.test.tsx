@@ -117,11 +117,11 @@ describe("LLM provider cards: in use, viewing, status", () => {
     expect(screen.queryByRole("button", { name: /\bactive\b/i })).not.toBeInTheDocument();
   });
 
-  it("viewing a provider that isn't in use says what NexQ is using, with the switch right there", async () => {
+  it("viewing a provider that isn't in use says what Lucid is using, with the switch right there", async () => {
     useConfigStore.setState({ llmProvider: "claude_cli", llmModel: "haiku" });
     render(<LLMSettings />);
     fireEvent.click(card(/^Ollama\b/));
-    expect(screen.getByText("Viewing Ollama. NexQ is using Claude (subscription).")).toBeInTheDocument();
+    expect(screen.getByText("Viewing Ollama. Lucid is using Claude (subscription).")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Use Ollama" })).toBeEnabled();
     // Viewing is a quiet ring, not the In use pill.
     expect(card(/^Ollama\b/)).toHaveAttribute("aria-pressed", "true");
@@ -137,7 +137,7 @@ describe("LLM provider cards: in use, viewing, status", () => {
   it("viewing Claude while another provider is in use says so", async () => {
     render(<LLMSettings />);
     fireEvent.click(card(/^Claude\b/));
-    expect(await screen.findByText("Viewing Claude. NexQ is using Groq.")).toBeInTheDocument();
+    expect(await screen.findByText("Viewing Claude. Lucid is using Groq.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Use Claude" })).toBeInTheDocument();
   });
 

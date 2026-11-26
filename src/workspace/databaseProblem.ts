@@ -26,8 +26,8 @@ export function fileNameOf(path: string): string {
 }
 
 export const PROBLEM_COPY: Record<DatabaseProblemKind, { title: string; what: string }> = {
-  unreadable: { title: "NexQ couldn't open your meetings", what: "The file that holds them couldn't be read." },
-  newer: { title: "Your meetings were saved by a newer NexQ", what: "This version is older than the one that last used them, so it leaves them alone." },
-  upgrade_failed: { title: "NexQ couldn't finish updating your data", what: "Bringing your meetings up to this version didn't complete." },
-  locked: { title: "Your meetings are in use", what: "Another NexQ or program is using the file right now." },
+  unreadable: { title: "Lucid couldn't open your meetings", what: "The file that holds them couldn't be read." },
+  newer: { title: "Your meetings were saved by a newer Lucid", what: "This version is older than the one that last used them, so it leaves them alone." },
+  upgrade_failed: { title: "Lucid couldn't finish updating your data", what: "Bringing your meetings up to this version didn't complete." },
+  locked: { title: "Your meetings are in use", what: "Another Lucid or program is using the file right now." },
 };

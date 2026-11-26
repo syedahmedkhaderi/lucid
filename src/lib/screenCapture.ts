@@ -100,7 +100,7 @@ let capturing = false;
  * to the Ask box (never sent). Every press runs the Ctrl+B show path (show,
  * unminimize, focus), also when the overlay is already visible, so the
  * cursor ends up in the Ask box, and a failure is seen. The overlay is shown
- * after the capture, so NexQ is only in the picture when it was already on
+ * after the capture, so Lucid is only in the picture when it was already on
  * screen (and not hidden from screen share). Failures show a toast.
  */
 export async function captureScreenIntoAsk(): Promise<void> {
