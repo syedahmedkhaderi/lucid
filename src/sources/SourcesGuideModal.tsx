@@ -17,7 +17,7 @@ const NOTES_TOPICS: Topic[] = [
   },
   {
     title: "What it can't do",
-    body: "Change, create or delete a note. Notes are read only. NexQ tells the AI to treat what it reads in your notes as information, not as instructions.",
+    body: "Change, create or delete a note. Notes are read only. Lucid tells the AI to treat what it reads in your notes as information, not as instructions.",
   },
   {
     title: "Subscription providers only",
@@ -40,7 +40,7 @@ const TOOLS_TOPICS: Topic[] = [
   },
   {
     title: "What it can't do",
-    body: "Call a tool you switched off. Tools whose names suggest they change something (add, send, edit, delete) start off, and you should still read the list. NexQ tells the AI to treat what a tool returns as information, not as instructions.",
+    body: "Call a tool you switched off. Tools whose names suggest they change something (add, send, edit, delete) start off, and you should still read the list. Lucid tells the AI to treat what a tool returns as information, not as instructions.",
   },
   {
     title: "Subscription providers only",
@@ -52,7 +52,7 @@ const TOOLS_TOPICS: Topic[] = [
   },
   {
     title: "How to add one",
-    body: "Open the server's README, copy its mcpServers JSON, choose Add server and paste it. You can also fill in a form, or import a server from Claude Code. NexQ checks it right away and shows its tools, so you can look before switching it on.",
+    body: "Open the server's README, copy its mcpServers JSON, choose Add server and paste it. You can also fill in a form, or import a server from Claude Code. Lucid checks it right away and shows its tools, so you can look before switching it on.",
   },
 ];
 

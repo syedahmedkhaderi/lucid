@@ -33,7 +33,7 @@ impl DatabaseManager {
             DatabaseError::Init(format!("Failed to create data directory: {}", e))
         })?;
 
-        let db_path = app_data_dir.join("nexq.db");
+        let db_path = app_data_dir.join("lucid.db");
         log::info!("Opening database at: {}", db_path.display());
 
         let conn = Connection::open(&db_path).map_err(|e| {
@@ -172,7 +172,7 @@ mod open_tests {
     #[test]
     fn a_damaged_database_is_reported_with_its_copies_and_nothing_is_created_or_changed() {
         let d = dir("damaged");
-        std::fs::write(d.join("nexq.db"), vec![7u8; 6000]).unwrap();
+        std::fs::write(d.join("lucid.db"), vec![7u8; 6000]).unwrap();
         // A good copy from an earlier upgrade.
         let copy = Connection::open(d.join("nexq-before-workspaces.db")).unwrap();
         copy.execute_batch("CREATE TABLE meetings (id TEXT); INSERT INTO meetings VALUES ('a'),('b'); PRAGMA user_version = 8;").unwrap();
@@ -183,10 +183,10 @@ mod open_tests {
             Ok(_) => panic!("a damaged file must not open"),
         };
         assert_eq!(problem.kind, ProblemKind::Unreadable);
-        assert!(problem.path.ends_with("nexq.db"));
+        assert!(problem.path.ends_with("lucid.db"));
         assert_eq!(problem.backups.len(), 1);
         assert_eq!((problem.backups[0].name.as_str(), problem.backups[0].meetings), ("nexq-before-workspaces.db", Some(2)));
-        assert_eq!(std::fs::read(d.join("nexq.db")).unwrap(), vec![7u8; 6000], "not a byte changed");
+        assert_eq!(std::fs::read(d.join("lucid.db")).unwrap(), vec![7u8; 6000], "not a byte changed");
         assert_eq!(names(&d), before, "no new file: no -wal, no copy, no migration");
         let _ = std::fs::remove_dir_all(d);
     }
@@ -194,13 +194,13 @@ mod open_tests {
     #[test]
     fn a_database_from_a_newer_version_is_left_alone() {
         let d = dir("newer");
-        let conn = Connection::open(d.join("nexq.db")).unwrap();
+        let conn = Connection::open(d.join("lucid.db")).unwrap();
         conn.execute_batch(&format!("CREATE TABLE t (x); PRAGMA user_version = {};", health::top_version() + 3)).unwrap();
         drop(conn);
-        let before = std::fs::read(d.join("nexq.db")).unwrap();
+        let before = std::fs::read(d.join("lucid.db")).unwrap();
         let problem = open_or_problem(d.clone()).err().expect("newer must not open");
         assert_eq!(problem.kind, ProblemKind::Newer);
-        assert_eq!(std::fs::read(d.join("nexq.db")).unwrap(), before);
+        assert_eq!(std::fs::read(d.join("lucid.db")).unwrap(), before);
         let _ = std::fs::remove_dir_all(d);
     }
 
@@ -218,23 +218,23 @@ mod open_tests {
     #[test]
     fn a_recovery_cut_short_by_a_power_loss_is_finished_by_the_next_start() {
         let d = dir("resume");
-        // The old file is already aside, the note says what to restore, and nexq.db is not there.
+        // The old file is already aside, the note says what to restore, and lucid.db is not there.
         let good = Connection::open(d.join("nexq-before-workspaces.db")).unwrap();
         migrations::run(&good).unwrap();
         good.execute("INSERT INTO meetings (id, title, start_time) VALUES ('only', 't', 'x')", []).unwrap();
         good.execute_batch("PRAGMA journal_mode = DELETE").unwrap();
         drop(good);
-        std::fs::write(d.join("nexq.db.damaged-5"), b"damaged").unwrap();
+        std::fs::write(d.join("lucid.db.damaged-5"), b"damaged").unwrap();
         std::fs::write(
-            d.join("nexq.db.pending-restore"),
+            d.join("lucid.db.pending-restore"),
             r#"{"action":"restore","source":"nexq-before-workspaces.db","stamp":5,"phase":"aside"}"#,
         )
         .unwrap();
         let mgr = open_or_problem(d.clone()).ok().expect("the start finishes the restore and opens it");
         let n: i64 = mgr.connection().query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 1, "the restored meetings, not an empty database");
-        assert_eq!(std::fs::read(d.join("nexq.db.damaged-5")).unwrap(), b"damaged");
-        assert!(!d.join("nexq.db.pending-restore").exists());
+        assert_eq!(std::fs::read(d.join("lucid.db.damaged-5")).unwrap(), b"damaged");
+        assert!(!d.join("lucid.db.pending-restore").exists());
         drop(mgr);
         let _ = std::fs::remove_dir_all(d);
     }

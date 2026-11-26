@@ -136,7 +136,7 @@ pub fn silence_samples_for(idle: Duration) -> usize {
     idle.min(MAX_SILENCE_FILL).as_millis() as usize * SAMPLE_RATE / 1000
 }
 
-/// A Flux server message, as far as NexQ reads it.
+/// A Flux server message, as far as Lucid reads it.
 #[derive(Debug)]
 pub enum FluxMessage {
     Connected,
@@ -338,7 +338,7 @@ mod tests {
             diarize: true,
             dictation: true,
             numerals: true,
-            keyterms: vec!["NexQ".into(), "turn detection".into()],
+            keyterms: vec!["Lucid".into(), "turn detection".into()],
             ..DeepgramConfig::default()
         }
     }
@@ -362,7 +362,7 @@ mod tests {
         for expected in [
             "model=flux-general-en", "encoding=linear16", "sample_rate=16000",
             "eager_eot_threshold=0.4", "eot_threshold=0.7", "eot_timeout_ms=6000",
-            "numerals=true", "keyterm=NexQ", "keyterm=turn%20detection",
+            "numerals=true", "keyterm=Lucid", "keyterm=turn%20detection",
         ] {
             assert!(p.contains(&expected.to_string()), "missing {expected} in {url}");
         }

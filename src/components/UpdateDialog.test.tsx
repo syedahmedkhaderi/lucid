@@ -18,7 +18,7 @@ vi.mock("@tauri-apps/plugin-shell", () => ({
 
 vi.mock("../lib/version", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/version")>()),
-  NEXQ_VERSION: "2.32.0",
+  LUCID_VERSION: "2.32.0",
 }));
 
 import { UpdateDialog } from "./UpdateDialog";

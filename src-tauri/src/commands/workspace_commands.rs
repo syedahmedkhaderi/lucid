@@ -675,7 +675,7 @@ pub async fn delete_workspace(id: String, mode: DeleteMode, state: State<'_, App
 }
 
 /// Each meeting in its own transaction, then its recording files (only inside
-/// NexQ's recordings folder). A failure is reported and the next meeting goes on.
+/// Lucid's recordings folder). A failure is reported and the next meeting goes on.
 fn delete_meetings_blocking(
     db: &std::sync::Arc<std::sync::Mutex<crate::db::DatabaseManager>>,
     ids: &[String],

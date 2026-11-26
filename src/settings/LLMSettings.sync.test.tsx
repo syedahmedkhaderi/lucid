@@ -129,7 +129,7 @@ describe("Settings ↔ footer sync of the active LLM", () => {
     });
 
     // Reported: a new token was saved but the custom endpoint in use kept
-    // the old one (401) until NexQ restarted; the pasted key had spaces too.
+    // the old one (401) until Lucid restarted; the pasted key had spaces too.
     it("a token changed while Custom is in use applies at once, without spaces around it", async () => {
       render(<LLMSettings />);
       const token = await screen.findByPlaceholderText("Bearer token...");

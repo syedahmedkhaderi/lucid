@@ -146,7 +146,7 @@ export function meetingEndRoute(windowLabel: string, overlayActive: boolean): "h
 
 /**
  * What the meeting shortcut (Ctrl+M) does: end the running meeting, start
- * one, or nothing while a deferred quit is pending (NexQ is about to exit).
+ * one, or nothing while a deferred quit is pending (Lucid is about to exit).
  */
 export function meetingShortcutAction(hasMeeting: boolean, quitPending: boolean): "end" | "start" | "ignore" {
   if (hasMeeting) return "end";
@@ -156,7 +156,7 @@ export function meetingShortcutAction(hasMeeting: boolean, quitPending: boolean)
 /**
  * Where Ctrl+B goes: from the overlay to the dashboard, back to the meeting
  * overlay during a meeting, and otherwise to the dashboard, so the shortcut
- * always brings NexQ back (it has no taskbar button under stealth mode).
+ * always brings Lucid back (it has no taskbar button under stealth mode).
  */
 export function switchShortcutTarget(overlayVisible: boolean, hasMeeting: boolean): "launcher" | "overlay" {
   if (overlayVisible) return "launcher";

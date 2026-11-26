@@ -1,5 +1,5 @@
 /// Windows Credential Manager via windows-rs crate.
-/// Key naming convention: `NexQ:{provider}`
+/// Key naming convention: `Lucid:{provider}`
 use std::slice;
 
 use windows::core::{PCWSTR, PWSTR};
@@ -11,7 +11,7 @@ use windows::Win32::Security::Credentials::{
 
 /// Format the credential target name.
 fn target_name(provider: &str) -> String {
-    format!("NexQ:{}", provider)
+    format!("Lucid:{}", provider)
 }
 
 /// Convert a Rust string to a null-terminated wide (UTF-16) string.

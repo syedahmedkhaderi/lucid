@@ -7,14 +7,14 @@
 //! `live_*` tests talk to the real `codex` on this machine and are `#[ignore]`d:
 //! `cargo test --test codex_session -- --ignored --nocapture`.
 
-use nexq_lib::llm::cli_agent::codex::launch::{discover_user_mcp_servers, find_codex};
-use nexq_lib::llm::cli_agent::codex::models::probe_models;
-use nexq_lib::llm::cli_agent::codex::{CodexLaunch, CodexPolicy, CodexSession};
-use nexq_lib::llm::cli_agent::protocol::AgentErrorKind;
-use nexq_lib::llm::cli_agent::session::{
+use lucid_lib::llm::cli_agent::codex::launch::{discover_user_mcp_servers, find_codex};
+use lucid_lib::llm::cli_agent::codex::models::probe_models;
+use lucid_lib::llm::cli_agent::codex::{CodexLaunch, CodexPolicy, CodexSession};
+use lucid_lib::llm::cli_agent::protocol::AgentErrorKind;
+use lucid_lib::llm::cli_agent::session::{
     decode_activity, decode_tool_result, is_activity, AgentError, SessionTimeouts, THINKING_SIGNAL,
 };
-use nexq_lib::llm::provider::CancelToken;
+use lucid_lib::llm::provider::CancelToken;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -42,12 +42,21 @@ fn fake_bin() -> PathBuf {
         }
         let out = cmd.output().expect("run cargo build --example fake_codex");
         assert!(out.status.success(), "building fake_codex failed:\n{}", String::from_utf8_lossy(&out.stderr));
-        let profile_dir = std::env::current_exe().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
+        let profile_dir = cargo_profile_dir();
         let bin = profile_dir.join("examples").join(format!("fake_codex{}", std::env::consts::EXE_SUFFIX));
         assert!(bin.is_file(), "missing {}", bin.display());
         bin
     })
     .clone()
+}
+
+fn cargo_profile_dir() -> PathBuf {
+    std::env::current_exe()
+        .unwrap()
+        .ancestors()
+        .find(|path| matches!(path.file_name().and_then(|name| name.to_str()), Some("debug" | "release")))
+        .expect("Cargo profile directory in test executable path")
+        .to_path_buf()
 }
 
 fn scratch(tag: &str) -> PathBuf {
@@ -573,7 +582,7 @@ async fn live_real_codex_starts_fast_and_answers_or_reports_the_limit() {
         eprintln!("codex not installed; skipping");
         return;
     };
-    let cwd = nexq_lib::llm::cli_agent::command::sandbox_dir();
+    let cwd = lucid_lib::llm::cli_agent::command::sandbox_dir();
     let mut l = CodexLaunch::new(program, prefix, cwd, String::new());
     l.effort = Some("low".into());
     l.system_prompt = "You are a terse assistant. Answer in one short sentence.".into();
@@ -615,16 +624,16 @@ async fn live_real_codex_lists_models() {
 #[tokio::test]
 #[ignore = "talks to the real Codex CLI and the user's account"]
 async fn live_real_codex_reads_a_note_through_the_notes_server() {
-    use nexq_lib::llm::cli_agent::command::SourcesLaunch;
-    use nexq_lib::llm::cli_agent::sources_convert::{adapt_system_prompt, codex_sources_for};
+    use lucid_lib::llm::cli_agent::command::SourcesLaunch;
+    use lucid_lib::llm::cli_agent::sources_convert::{adapt_system_prompt, codex_sources_for};
     let Some((program, prefix)) = find_codex() else { return };
     let notes = scratch("live-notes");
     std::fs::write(notes.join("falcon.md"), "Project Falcon launches on March 3.").unwrap();
     let sources = codex_sources_for(
         Some(&SourcesLaunch { add_dirs: vec![notes.clone()], ..Default::default() }),
-        Some(Path::new(env!("CARGO_BIN_EXE_nexq"))),
+        Some(Path::new(env!("CARGO_BIN_EXE_lucid"))),
     );
-    let mut l = CodexLaunch::new(program, prefix, nexq_lib::llm::cli_agent::command::sandbox_dir(), String::new());
+    let mut l = CodexLaunch::new(program, prefix, lucid_lib::llm::cli_agent::command::sandbox_dir(), String::new());
     l.effort = Some("low".into());
     l.system_prompt = adapt_system_prompt("Answer in one short sentence.", true);
     l.mcp_servers = sources.mcp_servers;

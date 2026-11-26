@@ -1,4 +1,4 @@
-; NexQ's copy of Tauri's NSIS template (tauri-cli 2.12.4), set in tauri.conf.json
+; Lucid's copy of Tauri's NSIS template (tauri-cli 2.12.4), set in tauri.conf.json
 ; as bundle.windows.nsis.template. Install, update and uninstall logic is Tauri's,
 ; unchanged. Only the page setup differs, marked NEXQ below; the screens themselves
 ; are in nexq-ui.nsh. When upgrading tauri-cli, compare against its new template:

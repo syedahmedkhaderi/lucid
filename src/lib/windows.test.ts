@@ -68,7 +68,7 @@ describe("switchShortcutTarget (Ctrl+B)", () => {
     expect(switchShortcutTarget(false, true)).toBe("overlay");
   });
 
-  it("opens the dashboard when no meeting is running, so NexQ is never out of reach", () => {
+  it("opens the dashboard when no meeting is running, so Lucid is never out of reach", () => {
     expect(switchShortcutTarget(false, false)).toBe("launcher");
   });
 });

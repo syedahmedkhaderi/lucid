@@ -28,7 +28,9 @@ import { MODE_COLORS } from "../lib/speakerColors";
 import { showLauncherWindow } from "../lib/windows";
 import { SCREENSHOT_EVENT } from "../lib/screenCapture";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { currentMonitor, getCurrentWindow, LogicalSize, PhysicalPosition, PhysicalSize, primaryMonitor } from "@tauri-apps/api/window";
 import { useDemoStore } from "../demo/demoStore";
+import { compactOverlayBounds } from "./compactOverlay";
 import {
   Dock,
   LayoutMenuButton,
@@ -65,6 +67,7 @@ import {
   MoreHorizontal,
   PanelRightClose,
   Eye,
+  ChevronUp,
   ScreenShare,
   ScreenShareOff,
 } from "lucide-react";
@@ -87,7 +90,10 @@ let returnFocusToSettings = false;
 
 // ════════════════════════════════════════════════════════════════
 export function OverlayView() {
+  const [compactOverlay, setCompactOverlay] = useState(false);
+  const expandedBounds = useRef<{ position: PhysicalPosition; size: PhysicalSize } | null>(null);
   const activeMeeting = useMeetingStore((s) => s.activeMeeting);
+  const elapsedMs = useMeetingStore((s) => s.elapsedMs);
   const recordingEnabled = useConfigStore((s) => s.recordingEnabled);
   const audioMode = useMeetingStore((s) => s.audioMode);
   const endMeetingFlow = useMeetingStore((s) => s.endMeetingFlow);
@@ -306,7 +312,7 @@ export function OverlayView() {
   // view, so RETURN, Ctrl+B or the tray bring it straight back.
   // Under stealth mode AND an active meeting, hide the overlay to the tray
   // instead of revealing the launcher — showing the dashboard full-size
-  // during a meeting would leak NexQ to anyone looking at the screen.
+  // during a meeting would leak Lucid to anyone looking at the screen.
   const stealthHide = stealthMode && !!activeMeeting;
   const handleMinimizeToDashboard = useCallback(async () => {
     if (stealthHide) {
@@ -325,7 +331,60 @@ export function OverlayView() {
     showLauncherWindow().catch(() => {});
   }, [stealthHide]);
 
-  const meetingTitle = activeMeeting?.title || "NexQ";
+  const toggleCompactOverlay = useCallback(async () => {
+    try {
+      const win = getCurrentWindow();
+      if (!compactOverlay) {
+        const [position, size, current] = await Promise.all([win.outerPosition(), win.outerSize(), currentMonitor()]);
+        const monitor = current ?? await primaryMonitor();
+        if (!monitor) throw new Error("No display is available for the compact overlay.");
+        expandedBounds.current = { position, size };
+        const bounds = compactOverlayBounds(monitor);
+        await win.setMinSize(new LogicalSize(148, 88));
+        await win.setSize(new LogicalSize(148, 88));
+        await win.setPosition(new PhysicalPosition(bounds.x, bounds.y));
+        setCompactOverlay(true);
+      } else {
+        const saved = expandedBounds.current;
+        await win.setMinSize(new LogicalSize(400, 480));
+        if (saved) {
+          await win.setSize(saved.size);
+          await win.setPosition(saved.position);
+        } else {
+          await win.setSize(new LogicalSize(500, 700));
+        }
+        expandedBounds.current = null;
+        setCompactOverlay(false);
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Couldn't change overlay size", "error");
+    }
+  }, [compactOverlay]);
+
+  const meetingTitle = activeMeeting?.title || "Lucid";
+
+  const compactOverlayMarkup = (
+      <div className="relative flex h-full w-full items-start justify-center overflow-hidden bg-transparent">
+        <button
+          type="button"
+          aria-label="Expand meeting overlay"
+          onClick={() => { void toggleCompactOverlay(); }}
+          className="relative flex h-full w-full items-start justify-center border-0 bg-transparent p-0 text-foreground cursor-pointer ui-focus"
+        >
+          <svg className="absolute inset-0 h-full w-full drop-shadow-lg" viewBox="0 0 148 88" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M74 3 L145 85 H3 Z" fill="hsl(var(--background) / 0.94)" stroke="hsl(var(--primary) / 0.7)" strokeWidth="2" />
+          </svg>
+          <span className="relative z-10 mt-3 flex max-w-[108px] flex-col items-center gap-1 text-center">
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold leading-tight">
+              {recordingEnabled && <span className="h-2 w-2 animate-pulse rounded-full bg-destructive" aria-label="Recording" />}
+              <span className="max-w-[92px] truncate">{meetingTitle}</span>
+            </span>
+            <span className="text-[9px] tabular-nums text-muted-foreground">{formatDuration(elapsedMs)}</span>
+            <ChevronUp className="h-3 w-3 text-primary" aria-hidden="true" />
+          </span>
+        </button>
+      </div>
+  );
 
   // A narrow window gives the header two rows, not three: the view toggles move into one menu
   // (every one still reachable, with its key and state).
@@ -402,6 +461,8 @@ export function OverlayView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
+
+  if (compactOverlay) return compactOverlayMarkup;
 
   return (
     <div className="overlay-bg flex h-full flex-col rounded-xl border border-border/20 shadow-xl" style={{ background: `hsl(var(--background) / ${windowAlpha.toFixed(3)})`, backdropFilter: overlayOpacity > 0.9 ? "blur(12px) saturate(1.1)" : "none", ...transparencyStyle }}>
@@ -511,6 +572,7 @@ export function OverlayView() {
           />
           {!compactHeader && <HeaderBtn icon={<Eye className="h-3.5 w-3.5" />} onClick={cycleOpacity} tooltip={`Transparency: ${Math.round(overlayOpacity * 100)}% (click to cycle)`} />}
           <HeaderBtn icon={<Settings className="h-3.5 w-3.5" />} onClick={() => { returnFocusToSettings = true; setCurrentView("settings"); }} tooltip="Settings" />
+          <HeaderBtn icon={<ChevronUp className="h-3.5 w-3.5" />} onClick={() => { void toggleCompactOverlay(); }} tooltip="Compact top-center overlay" />
           <HeaderBtn icon={<Minus className="h-3.5 w-3.5" />} onClick={handleMinimizeToDashboard} tooltip={stealthHide ? `Hide to ${isMacPlatform() ? "menu bar" : "tray"} (${formatShortcut("CmdOrCtrl+B")} brings it back)` : `Minimize to Dashboard (${formatShortcut("CmdOrCtrl+B")} brings it back)`} />
 
           {/* Translation controls */}

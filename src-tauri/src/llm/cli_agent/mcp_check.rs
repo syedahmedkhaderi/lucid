@@ -6,7 +6,7 @@
 //! after it connected its MCP servers. That init lists every tool
 //! (`mcp__<key>__<tool>`) and each server's status.
 //!
-//! Without Claude (a PC with only Antigravity or Codex), NexQ connects to the
+//! Without Claude (a PC with only Antigravity or Codex), Lucid connects to the
 //! server itself with a minimal MCP client (`mcp_handshake`: `initialize`, then
 //! `tools/list`), so the server still gets its tool list and can be used. A
 //! failed Check of either kind then starts the server alone to find the cause.
@@ -29,7 +29,7 @@ pub const CHECK_MCP_TIMEOUT_MS: u32 = 60_000;
 pub const CHECK_INIT_TIMEOUT: Duration = Duration::from_secs(75);
 
 /// System prompt of the check session. It is never answered: no model call.
-const CHECK_SYSTEM_PROMPT: &str = "NexQ is checking an MCP server. No answer is needed.";
+const CHECK_SYSTEM_PROMPT: &str = "Lucid is checking an MCP server. No answer is needed.";
 
 /// The full names (`mcp__<key>__<tool>`) of server `key`'s tools in `info`, or
 /// why the server is not usable: it did not connect (`failed`, `needs-auth`),
@@ -44,7 +44,7 @@ pub fn tools_of_server(info: &InitInfo, key: &str) -> Result<Vec<String>, String
         Some("failed") => Err(
             "The server failed to start. Check its command, arguments and sign-in values.".to_string(),
         ),
-        Some("needs-auth") => Err("The server needs a sign-in, which NexQ doesn't support yet.".to_string()),
+        Some("needs-auth") => Err("The server needs a sign-in, which Lucid doesn't support yet.".to_string()),
         Some("pending") => Err(
             "The server didn't answer in time. A first run can take a while to download; try Check again.".to_string(),
         ),
@@ -64,7 +64,7 @@ pub fn check_launch(
 }
 
 /// Start `server` alone and list its tools: through Claude when it is
-/// installed, else through NexQ's own MCP client. `secret` looks a saved value up by
+/// installed, else through Lucid's own MCP client. `secret` looks a saved value up by
 /// credential id. Takes up to [`CHECK_INIT_TIMEOUT`] (a hung server holds
 /// `system/init` back for [`CHECK_MCP_TIMEOUT_MS`]), then up to
 /// [`super::mcp_diagnose::DIAGNOSE_LIMIT`] more to find the cause.
@@ -76,7 +76,7 @@ pub async fn list_server_tools(
 }
 
 /// [`list_server_tools`] with the server's own hints (`readOnlyHint`,
-/// `destructiveHint`) for tools it listed. The hints come from NexQ's own
+/// `destructiveHint`) for tools it listed. The hints come from Lucid's own
 /// handshake, so a Check through the CLI runs one too; if that fails the
 /// hints are simply empty (every tool then asks).
 pub async fn list_server_tools_with_hints(
@@ -85,7 +85,7 @@ pub async fn list_server_tools_with_hints(
 ) -> Result<mcp_handshake::Listed, String> {
     let launch = check_launch(server, secret)?;
     // A Claude that is too old counts as no Claude here: the Check is about the
-    // server, so NexQ's own client answers (Settings says Claude needs an update).
+    // server, so Lucid's own client answers (Settings says Claude needs an update).
     let bin = tokio::task::spawn_blocking(|| find_current_claude().ok()).await.ok().flatten();
     let bin_was_used = bin.is_some();
     let failure = match bin {
@@ -113,7 +113,7 @@ pub async fn list_server_tools_with_hints(
                 Err(e) => return Err(e.to_string()),
             }
         }
-        // No Claude: NexQ's own MCP client asks the server.
+        // No Claude: Lucid's own MCP client asks the server.
         None => {
             return match mcp_handshake::list_tools_with_hints(server, secret).await {
                 Ok(listed) => Ok(listed),

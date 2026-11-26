@@ -8,7 +8,7 @@ const isFinding = (f: unknown): f is DbIntegrityFinding => !!f && typeof f === "
 
 /** The notice's words: what was found, that work goes on, and where the copies are. */
 export function damageText(f: DbIntegrityFinding): { title: string; lines: string[] } {
-  const lines = ["NexQ keeps working with it and has changed nothing."];
+  const lines = ["Lucid keeps working with it and has changed nothing."];
   lines.push(
     f.copies.length > 0
       ? `${f.copies.length === 1 ? "A copy of your meetings exists" : `${f.copies.length} copies of your meetings exist`} in the app data folder: ${f.folder}`

@@ -69,7 +69,7 @@ pub fn ensure_loaded() -> Result<(), String> {
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!(
-                    "ONNX Runtime not found. Looked in: {} — reinstall NexQ to restore it",
+                    "ONNX Runtime not found. Looked in: {} — reinstall Lucid to restore it",
                     searched
                 )
             })?;

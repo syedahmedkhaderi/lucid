@@ -479,7 +479,7 @@ impl DeepgramSTT {
 
         // Epoch time the speech started (the frontend orders lines by it, and
         // the pause before it decides whether it starts a new line). `start`
-        // is on Deepgram's clock, which skips the silence NexQ doesn't send;
+        // is on Deepgram's clock, which skips the silence Lucid doesn't send;
         // without a mapping, the result arrived about when the speech ended.
         let duration_ms = response.duration.map(|d| (d.max(0.0) * 1000.0).round() as u64);
         let timestamp_ms = response

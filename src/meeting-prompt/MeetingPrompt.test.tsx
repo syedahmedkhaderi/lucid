@@ -63,7 +63,7 @@ describe("MeetingPrompt", () => {
     fireEvent.keyDown(window, { key: "End" });
     fireEvent.keyDown(window, { key: "Enter" });
     expect(screen.getByRole("button", { name: "Meeting type: Board review" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Start NexQ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Lucid/ }));
     expect(onStart).toHaveBeenCalledWith(expect.any(String), "custom_1");
   });
 
@@ -77,7 +77,7 @@ describe("MeetingPrompt", () => {
     const onStart = vi.fn();
     render(<MeetingPrompt info={{ ...info(), default_scenario: "custom_deleted" }} onStart={onStart} onDismiss={() => {}} />);
     expect(screen.getByRole("button", { name: "Meeting type: Team Meeting" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Start NexQ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Lucid/ }));
     expect(onStart).toHaveBeenCalledWith(expect.any(String), "team_meeting");
   });
 
@@ -86,7 +86,7 @@ describe("MeetingPrompt", () => {
     render(<MeetingPrompt info={info({ title: "Weekly sync" })} onStart={onStart} onDismiss={() => {}} />);
     expect(screen.getByText("Zoom meeting detected")).toBeInTheDocument();
     expect(screen.getByLabelText("Meeting name")).toHaveValue("Weekly sync");
-    fireEvent.click(screen.getByRole("button", { name: /Start NexQ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Lucid/ }));
     expect(onStart).toHaveBeenCalledWith("Weekly sync — Meeting 2026-10-23 15:02", "interview");
   });
 
@@ -99,7 +99,7 @@ describe("MeetingPrompt", () => {
     fireEvent.change(screen.getByLabelText("Meeting name"), { target: { value: "Board review" } });
     fireEvent.click(screen.getByRole("button", { name: /Meeting type/ }));
     fireEvent.click(screen.getByRole("option", { name: /Team Meeting/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Start NexQ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Lucid/ }));
     expect(onStart).toHaveBeenLastCalledWith("Board review — Meeting 2026-10-23 15:02", "team_meeting");
   });
 
@@ -143,7 +143,7 @@ describe("MeetingPrompt", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(onStart).not.toHaveBeenCalled(); // Enter chose, it didn't start
 
-    fireEvent.click(screen.getByRole("button", { name: /Start NexQ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Lucid/ }));
     expect(onStart).toHaveBeenLastCalledWith("Zoom — Meeting 2026-10-23 15:02", "webinar");
   });
 
@@ -192,7 +192,7 @@ describe("MeetingPrompt workspaces", () => {
     const onStart = vi.fn();
     render(<MeetingPrompt info={info()} onStart={onStart} onDismiss={() => {}} />);
     expect(screen.getByRole("button", { name: "Workspace: General" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Start NexQ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Lucid/ }));
     expect(onStart).toHaveBeenCalledWith(expect.any(String), "interview");
   });
 
@@ -211,7 +211,7 @@ describe("MeetingPrompt workspaces", () => {
     expect(screen.getByRole("button", { name: "Workspace: Acme" })).toBeInTheDocument();
     // The workspace's scenario replaces "Start as" until one is picked here.
     expect(screen.getByRole("button", { name: "Meeting type: Webinar" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Start NexQ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Lucid/ }));
     expect(onStart).toHaveBeenCalledWith(expect.any(String), "webinar", "acme");
   });
 
@@ -222,7 +222,7 @@ describe("MeetingPrompt workspaces", () => {
     fireEvent.click(screen.getByRole("option", { name: /Team Meeting/ }));
     fireEvent.click(screen.getByRole("button", { name: "Workspace: General" }));
     fireEvent.click(screen.getByRole("option", { name: /Acme/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Start NexQ/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Lucid/ }));
     expect(onStart).toHaveBeenCalledWith(expect.any(String), "team_meeting", "acme");
   });
 

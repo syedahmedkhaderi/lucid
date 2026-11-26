@@ -32,7 +32,7 @@ interface UpdaterState {
   refreshVersion?: string;
   /** The "what's new" dialog shown before installing. */
   dialogOpen: boolean;
-  /** An install is under way (NexQ is about to restart): nothing else should pop up. */
+  /** An install is under way (Lucid is about to restart): nothing else should pop up. */
   installing: boolean;
   /** The one-time "update ready" notice is on screen. */
   readyToastVisible: boolean;

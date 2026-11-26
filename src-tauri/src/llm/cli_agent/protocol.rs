@@ -99,7 +99,7 @@ pub struct PermissionAsk {
 
 /// The line that allows the call. `input` is the question's own `input`,
 /// untouched: the user approved what was shown, and that is what runs.
-/// Shape (captured live, as sent by NexQ and accepted by the CLI):
+/// Shape (captured live, as sent by Lucid and accepted by the CLI):
 /// `{"type":"control_response","response":{"subtype":"success","request_id":ID,
 ///   "response":{"behavior":"allow","updatedInput":INPUT}}}`
 pub fn permission_allow(request_id: &str, input: &Value) -> String {
@@ -175,11 +175,11 @@ pub enum AgentEvent {
     /// A `rate_limit_event` whose status is a warning or a rejection.
     RateLimit(PlanLimit),
     /// A `control_request` of subtype `can_use_tool`: the CLI asks the host
-    /// (NexQ) whether a tool call may run (`--permission-prompts host`).
+    /// (Lucid) whether a tool call may run (`--permission-prompts host`).
     PermissionRequest(PermissionAsk),
     /// A `control_cancel_request`: the CLI withdrew a question (`request_id`).
     PermissionCancelled(String),
-    /// Any event NexQ does not act on (status, assistant, user, other deltas...).
+    /// Any event Lucid does not act on (status, assistant, user, other deltas...).
     Other,
 }
 
@@ -425,7 +425,7 @@ pub fn user_message_with_images(text: &str, query: bool, images: &[ImageAttachme
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentErrorKind {
     NotInstalled,
-    /// Claude Code is installed but older than NexQ needs (see
+    /// Claude Code is installed but older than Lucid needs (see
     /// `detect::MIN_CLAUDE_VERSION`). A real outage like `NotInstalled`.
     Outdated,
     NotLoggedIn,
@@ -456,7 +456,7 @@ pub fn classify_error(text: &str) -> AgentErrorKind {
     let t = text.to_lowercase();
     // First: the refusal text of `detect::outdated_message`, and before the
     // crash pattern ("exited") that an old binary's own error would match.
-    if t.contains("is too old for nexq") {
+    if t.contains("is too old for lucid") || t.contains("is too old for nexq") {
         AgentErrorKind::Outdated
     } else if t.contains("not logged in") || t.contains("/login") || t.contains("please log in") {
         AgentErrorKind::NotLoggedIn
@@ -733,8 +733,9 @@ pub(crate) mod tests {
 
     #[test]
     fn classify_outdated() {
-        let refusal = "Claude Code 2.1.206 is too old for NexQ. Update it to 2.1.259 or newer.";
+        let refusal = "Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer.";
         assert_eq!(classify_error(refusal), AgentErrorKind::Outdated);
+        assert_eq!(classify_error("Claude Code 2.1.206 is too old for NexQ."), AgentErrorKind::Outdated);
         assert_eq!(classify_error(&format!("could not start the CLI agent: {refusal}")), AgentErrorKind::Outdated);
         // Before the crash pattern.
         assert_eq!(classify_error(&format!("claude exited unexpectedly: {refusal}")), AgentErrorKind::Outdated);

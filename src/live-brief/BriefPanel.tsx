@@ -186,7 +186,7 @@ export function BriefPanel() {
         {!enabled ? (
           <div className="rs-empty">
             <h3>Brief</h3>
-            <p>While you talk, NexQ looks through this workspace for what is known about the topic and keeps a short sheet. Live answers use it. It sends the transcript and the matching passages to your chosen model.</p>
+            <p>While you talk, Lucid looks through this workspace for what is known about the topic and keeps a short sheet. Live answers use it. It sends the transcript and the matching passages to your chosen model.</p>
             <p data-testid="brief-model-line">{modelLine({ provider: settings?.provider ?? null, label: describeModel({ provider: settings?.provider ?? null, model: settings?.model ?? null, effort: null }) }, automatic)}</p>
             <Button variant="primary"  onClick={() => void store.getState().turnOn()} className="mt-3">
               Turn on the brief

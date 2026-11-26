@@ -114,14 +114,14 @@ export function DatabaseProblemScreen({ problem }: { problem: DatabaseProblem })
     return (
       <Shell>
         <h1 ref={heading} tabIndex={-1} style={{ outline: "none" }} className="ui-title text-foreground">
-          NexQ needs to restart
+          Lucid needs to restart
         </h1>
         <p role="status" className="ui-body ui-measure mt-2 text-muted-foreground">
           {phase.what} Restart to open your meetings.
         </p>
         <div className="mt-5">
           <Button ref={restart} variant="primary" size="lg" onClick={() => void run("Restarting", restartApp, { kind: "idle" })} disabled={busy}>
-            Restart NexQ
+            Restart Lucid
           </Button>
         </div>
       </Shell>
@@ -173,7 +173,7 @@ export function DatabaseProblemScreen({ problem }: { problem: DatabaseProblem })
         <div className="flex flex-wrap items-center gap-2">
           {problem.kind === "newer" && (
             <Button variant="primary" onClick={() => openUpdateDialog()}>
-              Install the newer NexQ
+              Install the newer Lucid
             </Button>
           )}
           {problem.kind === "upgrade_failed" && (
@@ -214,7 +214,7 @@ export function DatabaseProblemScreen({ problem }: { problem: DatabaseProblem })
       <ConfirmDialog
         open={confirmEmpty}
         title="Start with an empty database?"
-        body={`NexQ will make a new, empty one. The damaged file, ${fileName}, is not deleted: it is kept aside under its name, in the same folder, so it can still be recovered.`}
+        body={`Lucid will make a new, empty one. The damaged file, ${fileName}, is not deleted: it is kept aside under its name, in the same folder, so it can still be recovered.`}
         confirmLabel="Start empty"
         onCancel={() => setConfirmEmpty(false)}
         onConfirm={() => {

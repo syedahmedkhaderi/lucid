@@ -16,6 +16,7 @@ import { load } from "@tauri-apps/plugin-store";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useUpdaterStore } from "../stores/updaterStore";
+import { LUCID_UPDATES_ENABLED } from "../lib/version";
 import { useMeetingStore } from "../stores/meetingStore";
 import { showToast } from "../stores/toastStore";
 import { meetingEndRoute } from "../lib/windows";
@@ -37,7 +38,7 @@ import {
 } from "../lib/events";
 
 // Same keys are read by Rust at quit time — keep in sync with updater_commands.rs.
-const STORE_NAME = "nexq-settings.json";
+const STORE_NAME = "lucid-settings.json";
 const SKIPPED_VERSION_KEY = "skipped_version";
 const AUTO_UPDATE_KEY = "auto_update";
 
@@ -259,12 +260,12 @@ export async function endMeetingFromThisWindow(): Promise<boolean> {
 }
 
 /**
- * Install the downloaded update now; NexQ exits and relaunches on the new
+ * Install the downloaded update now; Lucid exits and relaunches on the new
  * version. If a meeting is running, confirm first and end it in every window
  * before installing. Never installs if the meeting didn't end cleanly.
  */
 export async function restartToUpdate(): Promise<void> {
-  // From here until it fails or is cancelled, NexQ is on its way out: other
+  // From here until it fails or is cancelled, Lucid is on its way out: other
   // notices (the star prompt) must not appear in between.
   useUpdaterStore.getState().setInstalling(true);
   try {
@@ -289,7 +290,7 @@ async function installAfterEndingMeeting(): Promise<void> {
   if (!inDemo && useMeetingStore.getState().activeMeeting) {
     const { confirm } = await import("@tauri-apps/plugin-dialog");
     const ok = await confirm(
-      "Your meeting will be saved, then NexQ restarts on the new version.",
+      "Your meeting will be saved, then Lucid restarts on the new version.",
       {
         title: "End meeting and update?",
         kind: "warning",
@@ -332,6 +333,7 @@ export async function skipVersion(version: string): Promise<void> {
 /** Runs the update loop. Mount once at the app root; active only in the launcher window. */
 export function useUpdater(): void {
   useEffect(() => {
+    if (!LUCID_UPDATES_ENABLED) return;
     let label = "";
     try {
       label = getCurrentWebviewWindow().label;

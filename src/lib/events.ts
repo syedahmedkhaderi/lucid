@@ -1,5 +1,5 @@
 // ============================================================================
-// NexQ Events — Typed listen() wrappers for all IPC events
+// Lucid Events — Typed listen() wrappers for all IPC events
 // ============================================================================
 
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -391,7 +391,7 @@ export function onDetectedMeetingEnded(handler: () => void): Promise<UnlistenFn>
   return listen("detected_meeting_ended", () => handler());
 }
 
-/** Prompt -> launcher: start a NexQ meeting for the detected call. */
+/** Prompt -> launcher: start a Lucid meeting for the detected call. */
 export interface StartDetectedMeetingEvent {
   title: string;
   scenario: AIScenario;

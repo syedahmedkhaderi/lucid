@@ -9,7 +9,7 @@ export interface TrackedQuestion extends DetectedQuestion {
   heldBack?: boolean;
 }
 
-/** An automatic answer NexQ started, so it knows what it may stop. */
+/** An automatic answer Lucid started, so it knows what it may stop. */
 export interface AutoAnswerRef {
   requestId: string;
   /** Transcript line the question came from. */
@@ -44,7 +44,7 @@ interface QuestionState {
   dismiss: (index: number) => void;
   clear: () => void;
 
-  /** The newest automatic answer NexQ started (it may have finished since). */
+  /** The newest automatic answer Lucid started (it may have finished since). */
   autoAnswer: AutoAnswerRef | null;
   setAutoAnswer: (ref: AutoAnswerRef | null) => void;
   /** Shows `question` as the line's question, answered (a new card if the line has none). */

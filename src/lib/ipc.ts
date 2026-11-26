@@ -1,5 +1,5 @@
 // ============================================================================
-// NexQ IPC — Typed invoke() wrappers for all Tauri commands
+// Lucid IPC — Typed invoke() wrappers for all Tauri commands
 // Each sub-PRD fills its section. Stubs return placeholder data.
 // ============================================================================
 
@@ -750,7 +750,7 @@ export async function rebuildTrayMenu(meetingActive: boolean): Promise<void> {
   return invoke("rebuild_tray_menu", { meetingActive });
 }
 
-/** Stealth mode: keep every NexQ window out of screen sharing, recordings and screenshots. */
+/** Stealth mode: keep every Lucid window out of screen sharing, recordings and screenshots. */
 export async function setStealthMode(enabled: boolean): Promise<void> {
   return invoke("set_stealth_mode", { enabled });
 }
@@ -974,7 +974,7 @@ export async function listClaudeCodeMcpServers(): Promise<ClaudeCodeMcpServer[]>
   return invoke<ClaudeCodeMcpServer[]>("list_claude_code_mcp_servers");
 }
 
-/** Copy the named Claude Code servers into NexQ (OAuth ones come back off, `needs_sign_in`). */
+/** Copy the named Claude Code servers into Lucid (OAuth ones come back off, `needs_sign_in`). */
 export async function importClaudeCodeMcpServers(names: string[]): Promise<McpServer[]> {
   return invoke<McpServer[]>("import_claude_code_mcp_servers", { names });
 }
@@ -1058,7 +1058,7 @@ export async function getWorkspacesStatus(): Promise<WorkspacesStatus> {
 
 // == IPC: the meetings file did not open ==
 // All of these refuse when it opened normally. None deletes a file: the damaged
-// ones are kept as nexq.db.damaged-<time>*. After a restore or a new start, call restartApp.
+// ones are kept as lucid.db.damaged-<time>*. After a restore or a new start, call restartApp.
 
 /** Restore one of `db.backups` by name (never a path). */
 export async function restoreDatabaseCopy(name: string): Promise<void> {

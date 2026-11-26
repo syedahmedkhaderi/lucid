@@ -5,7 +5,7 @@
 use super::rules::WindowInfo;
 
 /// Lowercase executable names of processes capturing from any microphone
-/// right now (active WASAPI capture sessions), excluding NexQ itself.
+/// right now (active WASAPI capture sessions), excluding Lucid itself.
 /// The calling thread must have COM initialized.
 #[cfg(target_os = "windows")]
 pub fn capturing_processes() -> Vec<String> {

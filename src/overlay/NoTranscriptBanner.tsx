@@ -27,7 +27,7 @@ export function NoTranscriptBanner({ onOpenDevLog }: { onOpenDevLog?: () => void
             <div className="min-w-0 flex-1">
               <p className="text-meta leading-relaxed text-amber-200/80">
                 <span className="font-semibold text-amber-400">No transcript from {who}.</span>{" "}
-                NexQ has heard {NO_TRANSCRIPT_AFTER_MS / 1000}s of audio, but {provider} hasn&apos;t
+                Lucid has heard {NO_TRANSCRIPT_AFTER_MS / 1000}s of audio, but {provider} hasn&apos;t
                 returned any text.
               </p>
               <div className="mt-1 flex gap-3 text-meta font-medium">

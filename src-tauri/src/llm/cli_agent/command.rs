@@ -138,7 +138,7 @@ pub fn build_args(
         }
         Some(_) => {}
     }
-    // A workspace chat that can ask hands its prompts to NexQ (`host`: the CLI
+    // A workspace chat that can ask hands its prompts to Lucid (`host`: the CLI
     // sends a `can_use_tool` control request); everyone else is never asked.
     let ask = cfg.approvals.as_ref().filter(|a| a.can_ask && sources.is_some());
     args.extend([s("--permission-prompts"), s(if ask.is_some() { "host" } else { "none" }), s("--no-session-persistence")]);
@@ -174,7 +174,7 @@ pub fn build_args(
     args
 }
 
-/// `%LOCALAPPDATA%\NexQ\agent-sandbox`: the empty cwd the agent runs in.
+/// `%LOCALAPPDATA%\Lucid\agent-sandbox`: the empty cwd the agent runs in.
 pub fn sandbox_dir() -> PathBuf {
     crate::app_paths::local_root().join("agent-sandbox")
 }

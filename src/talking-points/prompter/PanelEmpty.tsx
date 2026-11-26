@@ -37,7 +37,7 @@ export function PanelEmpty({
     <div className="flex h-full items-center">
       <EmptyState
         title="Write your first talking points"
-        body="Keep what you want to say in front of you. NexQ can follow your voice and tick off what you have covered."
+        body="Keep what you want to say in front of you. Lucid can follow your voice and tick off what you have covered."
         action={
           <Button variant="primary"  onClick={onStart}>
             Write a note

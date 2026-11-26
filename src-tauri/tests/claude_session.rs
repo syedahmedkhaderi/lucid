@@ -4,13 +4,13 @@
 //! (`fake_mode=...`, `fake_record=...`): the session controls the child's
 //! environment and parallel tests cannot share process env vars.
 
-use nexq_lib::llm::cli_agent::command::{SessionConfig, SourcesLaunch};
-use nexq_lib::llm::cli_agent::CliAgentKind;
-use nexq_lib::llm::cli_agent::detect::find_claude_binary;
-use nexq_lib::llm::cli_agent::models::probe_models;
-use nexq_lib::llm::cli_agent::protocol::AgentErrorKind;
-use nexq_lib::llm::cli_agent::session::{AgentError, ClaudeSession, SessionTimeouts};
-use nexq_lib::llm::provider::CancelToken;
+use lucid_lib::llm::cli_agent::command::{SessionConfig, SourcesLaunch};
+use lucid_lib::llm::cli_agent::CliAgentKind;
+use lucid_lib::llm::cli_agent::detect::find_claude_binary;
+use lucid_lib::llm::cli_agent::models::probe_models;
+use lucid_lib::llm::cli_agent::protocol::AgentErrorKind;
+use lucid_lib::llm::cli_agent::session::{AgentError, ClaudeSession, SessionTimeouts};
+use lucid_lib::llm::provider::CancelToken;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -50,13 +50,7 @@ fn fake_bin() -> PathBuf {
             "building fake_claude failed:\n{}",
             String::from_utf8_lossy(&out.stderr)
         );
-        let profile_dir = std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_path_buf();
+        let profile_dir = cargo_profile_dir();
         let bin = profile_dir
             .join("examples")
             .join(format!("fake_claude{}", std::env::consts::EXE_SUFFIX));
@@ -64,6 +58,15 @@ fn fake_bin() -> PathBuf {
         bin
     })
     .clone()
+}
+
+fn cargo_profile_dir() -> PathBuf {
+    std::env::current_exe()
+        .unwrap()
+        .ancestors()
+        .find(|path| matches!(path.file_name().and_then(|name| name.to_str()), Some("debug" | "release")))
+        .expect("Cargo profile directory in test executable path")
+        .to_path_buf()
 }
 
 fn cfg(mode: &str, record: Option<&Path>) -> SessionConfig {
@@ -535,7 +538,7 @@ fn solid_png_base64(width: u32, height: u32, rgba: [u8; 4]) -> String {
 #[tokio::test]
 #[ignore]
 async fn real_claude_image() {
-    use nexq_lib::llm::cli_agent::protocol::ImageAttachment;
+    use lucid_lib::llm::cli_agent::protocol::ImageAttachment;
     let bin = find_claude_binary().expect("claude.exe not found");
     let cfg = SessionConfig {
         kind: CliAgentKind::Claude,

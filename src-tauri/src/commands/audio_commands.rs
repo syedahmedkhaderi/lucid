@@ -1037,7 +1037,7 @@ pub async fn get_audio_sessions() -> Result<String, String> {
 
 /// Whether a party's STT needs the OS default mic switched to its device (IPolicyConfig).
 /// Web Speech and Windows Speech only hear the default recording device; every
-/// other provider reads NexQ's own capture of the chosen device. A party whose
+/// other provider reads Lucid's own capture of the chosen device. A party whose
 /// STT is skipped needs no switch.
 fn needs_default_mic_override(config: &crate::audio::PartyAudioConfig, stt_skipped: bool) -> bool {
     let provider = config.stt_provider.as_str();
@@ -3261,7 +3261,7 @@ mod tests {
         let headset = "Microphone (Logi USB Headset H340)";
         assert!(needs_default_mic_override(&party("web_speech", headset, true), false));
         assert!(needs_default_mic_override(&party("windows_native", headset, true), false));
-        // Every other provider reads NexQ's own capture of the chosen device.
+        // Every other provider reads Lucid's own capture of the chosen device.
         assert!(!needs_default_mic_override(&party("cartesia", headset, true), false));
         assert!(!needs_default_mic_override(&party("parakeet_tdt", headset, true), false));
         // Already the default, or an output device: nothing to switch.

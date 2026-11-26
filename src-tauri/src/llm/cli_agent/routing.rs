@@ -958,7 +958,7 @@ pub async fn ask_meeting_session(
 /// messages are laid out.
 pub fn live_system_prompt(scenario_prompt: &str, speaker_context: &str, custom_instructions: &str, data_rules: &str) -> String {
     let base = if scenario_prompt.trim().is_empty() {
-        "You are NexQ, a real-time AI meeting assistant. Help the user follow the \
+        "You are Lucid, a real-time AI meeting assistant. Help the user follow the \
          meeting and respond well: accurate, concise, actionable."
     } else {
         scenario_prompt.trim()
@@ -1031,7 +1031,7 @@ pub fn earlier_exchange(question: &str, answer: &str) -> String {
 
 const LIVE_SESSION_RULES: &str = "\
 ## How this session works
-You are connected to a live meeting through NexQ. Context documents and the \
+You are connected to a live meeting through Lucid. Context documents and the \
 transcript arrive as messages. Each request carries only the transcript lines \
 that are new since the previous request (\"[mm:ss] [SEGMENT_ID] Speaker: \
 text\"), then \"## Task instructions\" and, when present, the question. A \
@@ -1046,7 +1046,7 @@ otherwise never mention them. Answer directly, without preamble, and never \
 repeat the transcript back. Respond in the language used in the meeting.";
 
 const PAST_SESSION_PROMPT: &str = "\
-You are NexQ's assistant for a meeting that has already ended. Its summary \
+You are Lucid's assistant for a meeting that has already ended. Its summary \
 (when one exists) and full transcript arrive as context messages; each \
 transcript line reads \"[mm:ss] [SEGMENT_ID] Speaker: text\". Each request \
 carries \"## Task instructions\" and, when present, a question. Follow the \
@@ -1427,7 +1427,7 @@ mod tests {
             Some(AgentErrorKind::NotInstalled)
         );
         // Too old: a real outage, never restarted (it would fail the same way).
-        let too_old = AgentError::Spawn("Claude Code 2.1.206 is too old for NexQ. Update it to 2.1.259 or newer.".into());
+        let too_old = AgentError::Spawn("Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer.".into());
         assert!(!is_restartable(&too_old));
         assert_eq!(unavailable_kind(&too_old), Some(AgentErrorKind::Outdated));
         assert_eq!(
@@ -1509,7 +1509,7 @@ mod tests {
     #[test]
     fn routing_system_prompts() {
         let p = live_system_prompt("", "", "Be brief.", "");
-        assert!(p.starts_with("You are NexQ, a real-time AI meeting assistant."));
+        assert!(p.starts_with("You are Lucid, a real-time AI meeting assistant."));
         assert!(p.contains("Additional Instructions: Be brief."));
         assert!(p.contains("## How this session works"));
         let p = live_system_prompt("Interview coach.", "Them = interviewer", "", "");

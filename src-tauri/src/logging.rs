@@ -4,8 +4,8 @@
 //! thread (which redacts and writes it) over a bounded channel (lines are dropped, and counted, if it ever
 //! fills). Audio callbacks and STT loops can log without stalling.
 //!
-//! - Windows: `%LOCALAPPDATA%\com.nexq.app\logs\nexq.log`
-//! - macOS: `~/Library/Logs/com.nexq.app/nexq.log`
+//! - Windows: `%LOCALAPPDATA%\com.lucid.desktop\logs\lucid.log`
+//! - macOS: `~/Library/Logs/com.lucid.desktop/lucid.log`
 //!
 //! The file rotates at `MAX_FILE_BYTES`, keeping `KEPT_FILES` older files, so
 //! logs never take more than ~20 MB. Lines are scrubbed of anything that looks
@@ -21,12 +21,12 @@ use std::time::Duration;
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
 
-pub const LOG_FILE: &str = "nexq.log";
+pub const LOG_FILE: &str = "lucid.log";
 const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
 const KEPT_FILES: usize = 4;
 const CHANNEL_CAPACITY: usize = 8192;
 /// Our own crate's targets; dependencies only log warnings and errors.
-const APP_TARGET: &str = "nexq";
+const APP_TARGET: &str = "lucid";
 
 static SENDER: OnceLock<SyncSender<Msg>> = OnceLock::new();
 static DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -67,7 +67,7 @@ impl Log for Logger {
 }
 
 fn enabled(target: &str, level: Level, verbose: bool) -> bool {
-    let ours = target == APP_TARGET || target.starts_with("nexq_lib") || target.starts_with("nexq::");
+    let ours = target == APP_TARGET || target.starts_with("lucid_lib") || target.starts_with("lucid::");
     let max = match (ours, verbose) {
         (true, true) => Level::Debug,
         (true, false) => Level::Info,
@@ -79,7 +79,7 @@ fn enabled(target: &str, level: Level, verbose: bool) -> bool {
 }
 
 fn format_line(time: &str, level: Level, target: &str, message: &str) -> String {
-    let target = target.strip_prefix("nexq_lib::").unwrap_or(target);
+    let target = target.strip_prefix("lucid_lib::").unwrap_or(target);
     format!("{time} {level:<5} [{target}] {message}\n")
 }
 
@@ -112,7 +112,7 @@ pub fn init() {
     install_panic_hook();
 }
 
-/// Start writing to `dir/nexq.log` (Tauri's `app_log_dir`).
+/// Start writing to `dir/lucid.log` (Tauri's `app_log_dir`).
 pub fn open_dir(dir: PathBuf, verbose: bool) {
     set_verbose(verbose);
     let _ = DIR.set(dir.clone());
@@ -212,7 +212,7 @@ impl Sink {
     }
 }
 
-/// `nexq.log` → `nexq.1.log` → … → `nexq.{kept}.log` (the oldest is removed).
+/// `lucid.log` → `lucid.1.log` → … → `lucid.{kept}.log` (the oldest is removed).
 fn rotate_files(path: &Path, kept: usize) {
     let numbered = |n: usize| path.with_extension(format!("{n}.log"));
     let _ = fs::remove_file(numbered(kept));
@@ -261,7 +261,7 @@ fn writer_loop(rx: Receiver<Msg>) {
                     let _ = s.file.flush();
                     sink = Some(s);
                 }
-                Err(e) => eprintln!("NexQ: can't open the log file in {}: {e}", dir.display()),
+                Err(e) => eprintln!("Lucid: can't open the log file in {}: {e}", dir.display()),
             },
             Some(Msg::Flush(ack)) => {
                 if let Some(s) = sink.as_mut() {
@@ -298,7 +298,7 @@ fn writer_loop(rx: Receiver<Msg>) {
 
 fn session_header() -> String {
     format!(
-        "\n===== NexQ v{} started {} | {} {} =====\n",
+        "\n===== Lucid v{} started {} | {} {} =====\n",
         env!("CARGO_PKG_VERSION"),
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S %:z"),
         std::env::consts::OS,
@@ -440,7 +440,7 @@ mod tests {
         assert_eq!(redact("url?key=AIzaSyA1234567890abcdefghij&x=1"), "url?key=[redacted]&x=1");
         assert_eq!(redact(r#"{"api_key": "gsk_0123456789abcdefghijkl"}"#), r#"{"api_key": "[redacted]"}"#);
         assert_eq!(
-            redact(r#"LLM provider set to: {"provider_type":"gemini","api_key":"AQ.Ab8RN6Lq0123456789abcdef"}"#),
+            redact(r#"LLM provider set to: {"provider_type":"gemini","api_key":"TEST_ONLY_NOT_A_REAL_KEY"}"#),
             r#"LLM provider set to: {"provider_type":"gemini","api_key":"[redacted]"}"#
         );
         // A custom provider's token has no known prefix.
@@ -467,9 +467,9 @@ mod tests {
 
     #[test]
     fn filters_dependencies_harder_than_our_code() {
-        assert!(enabled("nexq_lib::audio", Level::Info, false));
-        assert!(!enabled("nexq_lib::audio", Level::Debug, false));
-        assert!(enabled("nexq_lib::audio", Level::Debug, true));
+        assert!(enabled("lucid_lib::audio", Level::Info, false));
+        assert!(!enabled("lucid_lib::audio", Level::Debug, false));
+        assert!(enabled("lucid_lib::audio", Level::Debug, true));
         assert!(!enabled("reqwest::connect", Level::Info, false));
         assert!(enabled("reqwest::connect", Level::Warn, false));
         assert!(enabled("reqwest::connect", Level::Info, true));
@@ -479,7 +479,7 @@ mod tests {
     #[test]
     fn formats_one_line_per_record() {
         assert_eq!(
-            format_line("2026-10-24 10:00:00.000", Level::Warn, "nexq_lib::stt::deepgram", "closed"),
+            format_line("2026-10-24 10:00:00.000", Level::Warn, "lucid_lib::stt::deepgram", "closed"),
             "2026-10-24 10:00:00.000 WARN  [stt::deepgram] closed\n"
         );
     }
@@ -495,9 +495,9 @@ mod tests {
             rotate_files(&path, 3);
         }
         assert!(!path.exists());
-        assert_eq!(fs::read_to_string(dir.join("nexq.1.log")).unwrap(), "gen 5");
-        assert_eq!(fs::read_to_string(dir.join("nexq.3.log")).unwrap(), "gen 3");
-        assert!(!dir.join("nexq.4.log").exists());
+        assert_eq!(fs::read_to_string(dir.join("lucid.1.log")).unwrap(), "gen 5");
+        assert_eq!(fs::read_to_string(dir.join("lucid.3.log")).unwrap(), "gen 3");
+        assert!(!dir.join("lucid.4.log").exists());
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -513,7 +513,7 @@ mod tests {
         log::debug!("hidden unless verbose");
         frontend(Level::Error, "overlay", "Unhandled rejection: boom");
         let text = tail(50).unwrap();
-        assert!(text.contains(&format!("===== NexQ v{}", env!("CARGO_PKG_VERSION"))));
+        assert!(text.contains(&format!("===== Lucid v{}", env!("CARGO_PKG_VERSION"))));
         assert!(text.contains("before the folder is known"));
         assert!(text.contains("key [redacted]"));
         assert!(!text.contains("abcdefghijklmnop"));

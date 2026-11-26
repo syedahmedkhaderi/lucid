@@ -98,7 +98,7 @@ export function normalizeAccelerator(accelerator: string, mac = isMacPlatform())
 }
 
 /**
- * Shortcuts NexQ already uses (global: Ctrl+M, Ctrl+B, Ctrl+,; in-window:
+ * Shortcuts Lucid already uses (global: Ctrl+M, Ctrl+B, Ctrl+,; in-window:
  * Ctrl+Shift+L dev log, Ctrl+Shift+D demo). A user binding must not take one.
  */
 export const RESERVED_SHORTCUTS: Record<string, string> = {

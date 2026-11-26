@@ -7,7 +7,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
-import { NEXQ_VERSION, NEXQ_BUILD_DATE, NEXQ_DEVELOPER } from "../lib/version";
+import { LUCID_VERSION, LUCID_BUILD_DATE, LUCID_DEVELOPER, LUCID_UPDATES_ENABLED } from "../lib/version";
 import { useEffect, useState } from "react";
 import { getLogInfo, getRecentLogs, openLogFolder, setVerboseLogging } from "../lib/ipc";
 import type { LogInfo } from "../lib/types";
@@ -24,7 +24,7 @@ import {
 } from "../hooks/useUpdater";
 import { open } from "@tauri-apps/plugin-shell";
 
-const GITHUB_URL = "https://github.com/naxhq/NexQ";
+const UPSTREAM_URL = "https://github.com/naxhq/NexQ";
 
 function timeSince(ms: number): string {
   const secs = Math.floor((Date.now() - ms) / 1000);
@@ -84,7 +84,7 @@ function Diagnostics() {
       <div>
         <p className="text-sm font-medium text-foreground">Diagnostics</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          NexQ keeps a log on this computer to help diagnose problems. API keys are removed
+          Lucid keeps a log on this computer to help diagnose problems. API keys are removed
           automatically; attach it when you report an issue.
         </p>
         {info && (
@@ -146,7 +146,7 @@ export function AboutSettings() {
 
   // The update loop lives in the launcher; this page may open in either window.
   useEffect(() => {
-    hydrateUpdater();
+    if (LUCID_UPDATES_ENABLED) hydrateUpdater();
   }, []);
 
   const pct =
@@ -175,7 +175,7 @@ export function AboutSettings() {
   } else if (phase === "ready" && version) {
     dotClass = "bg-primary";
     title = `v${version} ready to install`;
-    detail = autoUpdate ? "Installs when you quit NexQ" : "Open it to install";
+    detail = autoUpdate ? "Installs when you quit Lucid" : "Open it to install";
     action = { label: "What's new", onClick: () => openUpdateDialog(), primary: true };
   } else if (phase === "error") {
     dotClass = "bg-destructive";
@@ -197,11 +197,11 @@ export function AboutSettings() {
       {/* App Identity Card */}
       <div className="rounded-xl border border-border/30 bg-card/50 p-6">
         <div className="flex items-start gap-5">
-          <img src="/nexq-icon.png" alt="NexQ" className="h-14 w-14 shrink-0 rounded-2xl" />
+          <img src="/lucid-mark.svg" alt="Lucid" className="h-14 w-14 shrink-0 rounded-2xl" />
           <div>
-            <h3 className="text-lg font-bold text-foreground">NexQ</h3>
+            <h3 className="text-lg font-bold text-foreground">Lucid</h3>
             <p className="text-xs text-muted-foreground">
-              v{NEXQ_VERSION}
+              v{LUCID_VERSION}
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
               AI Meeting Assistant &amp; Real-Time Interview Copilot
@@ -214,7 +214,7 @@ export function AboutSettings() {
                 React + Rust
               </span>
               <span className="inline-flex items-center rounded-full bg-secondary/50 px-3 py-1 text-meta font-medium text-muted-foreground">
-                Windows x64
+                Windows / macOS
               </span>
             </div>
           </div>
@@ -226,13 +226,13 @@ export function AboutSettings() {
         <div className="rounded-xl border border-border/30 bg-card/50 p-4">
           <p className="text-meta text-muted-foreground/60">Build Date</p>
           <p className="mt-1 text-sm font-medium text-foreground">
-            {formatBuildDate(NEXQ_BUILD_DATE)}
+            {formatBuildDate(LUCID_BUILD_DATE)}
           </p>
         </div>
         <div className="rounded-xl border border-border/30 bg-card/50 p-4">
           <p className="text-meta text-muted-foreground/60">Developer</p>
           <p className="mt-1 text-sm font-medium text-foreground">
-            {NEXQ_DEVELOPER}
+            {LUCID_DEVELOPER}
           </p>
         </div>
         <div className="rounded-xl border border-border/30 bg-card/50 p-4">
@@ -246,6 +246,7 @@ export function AboutSettings() {
       </div>
 
       {/* Updates */}
+      {LUCID_UPDATES_ENABLED ? (
       <div className="rounded-xl border border-border/30 bg-card/50 p-5 space-y-5">
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -306,45 +307,51 @@ export function AboutSettings() {
           </button>
         </div>
       </div>
+      ) : (
+        <div className="rounded-xl border border-border/30 bg-card/50 p-5">
+          <p className="text-sm font-medium text-foreground">Updates</p>
+          <p className="mt-1 text-xs text-muted-foreground">Lucid release updates are not configured yet.</p>
+        </div>
+      )}
 
       <Diagnostics />
 
       {/* Quick Links Row */}
       <div className="grid grid-cols-4 gap-3">
         <button
-          onClick={() => open(GITHUB_URL)}
+          onClick={() => open(UPSTREAM_URL)}
           className="flex flex-col items-center gap-2 rounded-xl border border-border/30 bg-card/50 p-4 transition-colors hover:bg-secondary/30"
         >
           <Github className="h-4 w-4 text-muted-foreground" />
           <span className="text-meta font-medium text-muted-foreground">
-            GitHub
+            Upstream project
           </span>
         </button>
         <button
-          onClick={() => open(`${GITHUB_URL}/blob/main/CHANGELOG.md`)}
+          onClick={() => open(`${UPSTREAM_URL}/blob/main/CHANGELOG.md`)}
           className="flex flex-col items-center gap-2 rounded-xl border border-border/30 bg-card/50 p-4 transition-colors hover:bg-secondary/30"
         >
           <FileText className="h-4 w-4 text-muted-foreground" />
           <span className="text-meta font-medium text-muted-foreground">
-            Changelog
+            Upstream changes
           </span>
         </button>
         <button
-          onClick={() => open(`${GITHUB_URL}/issues/new/choose`)}
+          onClick={() => open(`${UPSTREAM_URL}/issues/new/choose`)}
           className="flex flex-col items-center gap-2 rounded-xl border border-border/30 bg-card/50 p-4 transition-colors hover:bg-secondary/30"
         >
           <AlertCircle className="h-4 w-4 text-muted-foreground" />
           <span className="text-meta font-medium text-muted-foreground">
-            Report Issue
+            Upstream issue tracker
           </span>
         </button>
         <button
-          onClick={() => open(`${GITHUB_URL}/tree/main/docs/user-guide`)}
+          onClick={() => open(`${UPSTREAM_URL}/tree/main/docs/user-guide`)}
           className="flex flex-col items-center gap-2 rounded-xl border border-border/30 bg-card/50 p-4 transition-colors hover:bg-secondary/30"
         >
           <HelpCircle className="h-4 w-4 text-muted-foreground" />
           <span className="text-meta font-medium text-muted-foreground">
-            Documentation
+            Upstream user guide
           </span>
         </button>
       </div>
@@ -352,7 +359,7 @@ export function AboutSettings() {
       {/* Footer */}
       <div className="rounded-xl border border-border/30 bg-card/50 p-5">
         <p className="text-xs text-muted-foreground/60 leading-relaxed">
-          NexQ is an open desktop application. All processing can run locally
+          Lucid is an open desktop application. All processing can run locally
           with Ollama or LM Studio, or optionally connect to cloud AI providers.
         </p>
       </div>

@@ -66,7 +66,7 @@ fn check(status: OSStatus, operation: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "{operation} failed (CoreAudio status {status}). Allow NexQ system audio recording in System Settings > Privacy & Security."
+            "{operation} failed (CoreAudio status {status}). Allow Lucid system audio recording in System Settings > Privacy & Security."
         ))
     }
 }
@@ -243,7 +243,7 @@ fn run(
         (CFString::new("drift"), CFNumber::from(1i32).as_CFType()),
     ]);
     let description = CFDictionary::from_CFType_pairs(&[
-        (CFString::new("name"), CFString::new("NexQ Output Capture").as_CFType()),
+        (CFString::new("name"), CFString::new("Lucid Output Capture").as_CFType()),
         (CFString::new("uid"), CFString::new(&uuid::Uuid::new_v4().to_string()).as_CFType()),
         (CFString::new("private"), CFNumber::from(1i32).as_CFType()),
         (CFString::new("tapautostart"), CFNumber::from(0i32).as_CFType()),

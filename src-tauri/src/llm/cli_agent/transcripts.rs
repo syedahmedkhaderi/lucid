@@ -3,7 +3,7 @@
 //! A CLI chat that should read earlier meetings gets them as plain files, one
 //! folder per chat, passed to that one session as its only `--add-dir`
 //! ([`TranscriptRoot::launch_for`]). The root is
-//! `%LOCALAPPDATA%\NexQ\chat-transcripts`: inside the user's own profile (user,
+//! `%LOCALAPPDATA%\Lucid\chat-transcripts`: inside the user's own profile (user,
 //! SYSTEM and administrators only by default), and deliberately neither
 //! `agent-private` (which holds secrets, see `sources::private_files`) nor
 //! `agent-sandbox` (the CLI's working directory, readable by every session).
@@ -13,14 +13,14 @@
 //! and a Workspace session has no tool that lists its siblings. Folders go
 //! away when the session closes for any reason (`remove`, wired to the
 //! manager's closed hook by `ai_runs`) and at app start (`cleanup_leftovers`:
-//! every folder whose owning NexQ process is gone).
+//! every folder whose owning Lucid process is gone).
 
 use super::command::{SourcesLaunch, SOURCES_BUILTIN_TOOLS};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-/// `%LOCALAPPDATA%\NexQ\chat-transcripts`.
+/// `%LOCALAPPDATA%\Lucid\chat-transcripts`.
 pub fn default_root() -> PathBuf {
     crate::app_paths::local_root().join("chat-transcripts")
 }
@@ -123,9 +123,9 @@ impl TranscriptRoot {
         })
     }
 
-    /// App start: delete every folder under `root` whose owning NexQ process
+    /// App start: delete every folder under `root` whose owning Lucid process
     /// is gone (a crash or kill left it), and any entry not named like ours.
-    /// Folders of this process and of another running NexQ stay. Returns how
+    /// Folders of this process and of another running Lucid stay. Returns how
     /// many were deleted.
     pub fn cleanup_leftovers(root: &Path) -> usize {
         let Ok(entries) = std::fs::read_dir(root) else { return 0 };

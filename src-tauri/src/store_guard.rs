@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime};
 use serde::Serialize;
 
 /// The settings files the app keeps in its data folder.
-pub const STORES: &[&str] = &["config.json", "nexq-settings.json", "translation-config.json"];
+pub const STORES: &[&str] = &["config.json", "lucid-settings.json", "translation-config.json"];
 /// How many unreadable copies are kept per file.
 pub const KEEP_CORRUPT: usize = 3;
 /// The least time between two good copies of one file.
@@ -190,10 +190,10 @@ mod tests {
     #[test]
     fn with_no_good_copy_the_file_is_set_aside_and_reported_as_not_restored() {
         let d = dir("norestore");
-        fs::write(d.join("nexq-settings.json"), "").unwrap(); // empty = unreadable
+        fs::write(d.join("lucid-settings.json"), "").unwrap(); // empty = unreadable
         let found = guard(&d, 7);
         assert_eq!(found[0].restored, false);
-        assert!(!d.join("nexq-settings.json").exists());
+        assert!(!d.join("lucid-settings.json").exists());
         assert_eq!(fs::read_to_string(d.join(found[0].kept_as.clone().unwrap())).unwrap(), "");
         // A bad good copy is not used either, and valid JSON that is not an object is unreadable.
         fs::write(d.join("config.json"), "[]").unwrap();
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn every_store_the_app_keeps_is_listed() {
-        for name in ["config.json", "nexq-settings.json", "translation-config.json"] {
+        for name in ["config.json", "lucid-settings.json", "translation-config.json"] {
             assert!(STORES.contains(&name), "{name}");
         }
     }

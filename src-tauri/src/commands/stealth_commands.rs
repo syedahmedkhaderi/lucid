@@ -6,7 +6,7 @@ use tauri::{command, AppHandle, Manager, Runtime, Window};
 
 use crate::state::AppState;
 
-/// Stealth mode ("Hide from screen share"): every NexQ window stays visible on
+/// Stealth mode ("Hide from screen share"): every Lucid window stays visible on
 /// the user's own display but is left out of screen sharing, recordings and
 /// screenshots.
 ///
@@ -30,7 +30,7 @@ fn is_taskbar_managed_label(label: &str) -> bool {
     matches!(label, "overlay" | "launcher")
 }
 
-/// What to do with a NexQ window's taskbar button.
+/// What to do with a Lucid window's taskbar button.
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 #[derive(Debug, PartialEq, Eq)]
 enum TabAction {
@@ -96,7 +96,7 @@ pub fn get_stealth_support() -> StealthSupport {
 /// Serializes stealth transitions (and new windows picking up the setting).
 static TRANSITION: Mutex<()> = Mutex::new(());
 
-/// Turn stealth mode on or off for every NexQ window (and for windows opened
+/// Turn stealth mode on or off for every Lucid window (and for windows opened
 /// later, see [`apply_to_new_window`]). All or nothing: if a window refuses,
 /// the windows already changed are put back and the setting stays as it was.
 /// Rebuilds the tray menu so its check mark follows.
@@ -158,10 +158,10 @@ fn transition<W>(
                 .collect();
             let state = if previous { "hidden from" } else { "visible in" };
             return Err(if not_restored.is_empty() {
-                format!("Couldn't change screen-share visibility ({label}: {e}); NexQ is still {state} screen share")
+                format!("Couldn't change screen-share visibility ({label}: {e}); Lucid is still {state} screen share")
             } else {
                 format!(
-                    "Couldn't change screen-share visibility ({label}: {e}), and these windows couldn't be put back: {}. Toggle it again or restart NexQ",
+                    "Couldn't change screen-share visibility ({label}: {e}), and these windows couldn't be put back: {}. Toggle it again or restart Lucid",
                     not_restored.join(", ")
                 )
             });
@@ -250,7 +250,7 @@ fn track_visibility<R: Runtime>(_window: &Window<R>) {}
 
 /// macOS counterpart of the Windows taskbar and edge-cursor handling. While
 /// stealth is on:
-/// - NexQ leaves the Dock. macOS ties the Dock icon to Cmd+Tab and the menu
+/// - Lucid leaves the Dock. macOS ties the Dock icon to Cmd+Tab and the menu
 ///   bar, so those go too; the menu-bar icon and the shortcuts still work.
 /// - The overlay's native resizing is off, so macOS doesn't show its resize
 ///   cursors at the edges; the overlay's own invisible edge handles resize
@@ -656,7 +656,7 @@ mod visibility_hook {
 
 /// At startup, before the webviews load their settings: hide the windows
 /// right away when stealth mode was saved on (the frontend's `config.json`
-/// store, key `stealthMode`), so reopening NexQ mid-share never shows them.
+/// store, key `stealthMode`), so reopening Lucid mid-share never shows them.
 pub fn restore_on_startup(app: &AppHandle) {
     let saved_on = app
         .path()
@@ -797,7 +797,7 @@ mod tests {
 
     #[test]
     fn only_the_overlay_and_launcher_follow_the_taskbar_skip() {
-        // The two NexQ windows the user sees in the taskbar today.
+        // The two Lucid windows the user sees in the taskbar today.
         assert!(is_taskbar_managed_label("overlay"));
         assert!(is_taskbar_managed_label("launcher"));
         // The meeting-prompt window uses .skip_taskbar(true) at build

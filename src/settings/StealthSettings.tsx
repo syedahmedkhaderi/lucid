@@ -11,7 +11,7 @@ import type { StealthSupport } from "../lib/types";
 
 /**
  * Settings → General: stealth mode ("Hide from screen share"), its shortcut,
- * the Assist shortcut that works without switching to NexQ, and the shortcut
+ * the Assist shortcut that works without switching to Lucid, and the shortcut
  * that captures the screen into Ask.
  */
 export function StealthSettings() {
@@ -75,7 +75,7 @@ export function StealthSettings() {
               Hide from screen share
             </label>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              NexQ stays on your screen but won't appear in screen sharing, recordings or
+              Lucid stays on your screen but won't appear in screen sharing, recordings or
               screenshots (Zoom, Teams, Meet, OBS and others). Use it only where that's allowed.
             </p>
           </div>
@@ -114,7 +114,7 @@ export function StealthSettings() {
         <div>
           <span className="text-xs font-medium text-foreground/80">Assist from any app</span>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            During a meeting, asks for an answer without switching to NexQ. Space works only in the overlay.
+            During a meeting, asks for an answer without switching to Lucid. Space works only in the overlay.
           </p>
         </div>
         <ShortcutButton value={assistShortcut} defaultValue={DEFAULT_ASSIST_SHORTCUT} onChange={setAssistShortcut} others={assistTaken} />

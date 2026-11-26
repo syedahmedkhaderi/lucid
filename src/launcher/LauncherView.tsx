@@ -9,7 +9,7 @@ import { lazyNamed } from "../lib/lazyNamed";
 // Past meetings open in their own chunk.
 const MeetingDetails = lazyNamed(() => import("./meeting-details/MeetingDetailsContainer"), "MeetingDetails");
 import { MeetingSetupModal, type MeetingSetupChoice } from "./MeetingSetupModal";
-import { NEXQ_VERSION, NEXQ_DEVELOPER } from "../lib/version";
+import { LUCID_VERSION, LUCID_DEVELOPER } from "../lib/version";
 import { ServiceStatusBar } from "../components/ServiceStatusBar";
 import { showMeetingOverlay } from "../lib/windows";
 import { endMeetingFromThisWindow } from "../hooks/useUpdater";
@@ -174,8 +174,8 @@ export function LauncherView() {
         <SkipLinks />
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-2.5">
           <div className="flex items-center gap-2.5">
-            <img src="/nexq-icon.png" alt="NexQ" className="h-7 w-7 rounded-lg" />
-            <span className="text-sm font-bold tracking-tight text-foreground">NexQ</span>
+            <img src="/lucid-mark.svg" alt="Lucid" className="h-7 w-7 rounded-lg" />
+            <span className="text-sm font-bold tracking-tight text-foreground">Lucid</span>
           </div>
 
           {activeMeeting && (
@@ -223,9 +223,9 @@ export function LauncherView() {
         <footer id="region-footer" data-region tabIndex={-1} aria-label="Status" className="flex items-center justify-between border-t border-border outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60">
           <ServiceStatusBar />
           <div className="flex shrink-0 items-center gap-2 whitespace-nowrap pr-5 ui-meta text-muted-foreground">
-            <span className="hidden min-[900px]:inline">&copy; {new Date().getFullYear()} {NEXQ_DEVELOPER}</span>
+            <span className="hidden min-[900px]:inline">&copy; {new Date().getFullYear()} {LUCID_DEVELOPER}</span>
             <span className="hidden text-muted-foreground/60 min-[900px]:inline">|</span>
-            <span className="font-medium">NexQ v{NEXQ_VERSION}</span>
+            <span className="font-medium">Lucid v{LUCID_VERSION}</span>
           </div>
         </footer>
 

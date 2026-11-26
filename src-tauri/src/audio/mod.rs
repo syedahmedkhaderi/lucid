@@ -208,7 +208,7 @@ impl AudioCaptureManager {
                     self.sides.push(side);
                     if replaced {
                         self.warnings.push(format!(
-                            "Your microphone '{mic_device_id}' isn't available, so NexQ is using the default microphone."
+                            "Your microphone '{mic_device_id}' isn't available, so Lucid is using the default microphone."
                         ));
                     }
                     log::info!("Mic capture started");
@@ -269,7 +269,7 @@ impl AudioCaptureManager {
                     if let Some(reason) = started.and_then(|s| s.replaced) {
                         log::warn!("Output '{system_device_id}' failed ({reason}); capturing the default output instead");
                         self.warnings.push(format!(
-                            "The other side's device '{system_device_id}' isn't available, so NexQ is capturing your default output instead."
+                            "The other side's device '{system_device_id}' isn't available, so Lucid is capturing your default output instead."
                         ));
                     }
                     log::info!("System output audio capture started");

@@ -317,7 +317,7 @@ export function LLMSetupStep({
         {agent && (
           <div className="space-y-3 rounded-xl border border-border/30 bg-secondary/20 px-5 py-4">
             <p className="text-xs text-muted-foreground">
-              Uses your own {agent.name} login on this PC. NexQ never sees your credentials.
+              Uses your own {agent.name} login on this PC. Lucid never sees your credentials.
             </p>
             {agentOutdated && (
               <p className="text-xs font-medium text-warning">
@@ -510,7 +510,7 @@ export function LLMSetupStep({
             <span className="font-medium text-foreground">Tip: </span>
             {hasLocalLLM
               ? "For privacy and speed, we recommend using Ollama with llama3.2. Your conversations never leave your machine."
-              : "For the best experience, we recommend Anthropic Claude. For local privacy, install Ollama and run it before starting NexQ."}
+              : "For the best experience, we recommend Anthropic Claude. For local privacy, install Ollama and run it before starting Lucid."}
           </p>
         </div>
       </div>

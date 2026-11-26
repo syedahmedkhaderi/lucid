@@ -4,6 +4,8 @@ target/
 
 # Build output
 dist/
+work/
+Lucid_*.dmg
 src-tauri/nsis/release-info.nsh
 .astro/
 

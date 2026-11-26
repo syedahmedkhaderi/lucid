@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# build-mac.sh — one-command macOS build + install for NexQ.
+# build-mac.sh — one-command macOS build + install for Lucid.
 #
 #   ./build-mac.sh                 Build (app + dmg) and install to /Applications
 #   ./build-mac.sh --no-install    Build only, don't touch /Applications
@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-APP_NAME="NexQ"
+APP_NAME="Lucid"
 INSTALL_DIR="${INSTALL_DIR:-/Applications}"
 
 DO_INSTALL=1
@@ -89,7 +89,7 @@ if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
 fi
 
 # ── Build ────────────────────────────────────────────────────────────────────
-echo "▶ Building NexQ ($PROFILE) ..."
+echo "▶ Building Lucid ($PROFILE) ..."
 if [[ ${#BUILD_ARGS[@]} -gt 0 ]]; then
   npm run tauri build -- "${BUILD_ARGS[@]}"
 else

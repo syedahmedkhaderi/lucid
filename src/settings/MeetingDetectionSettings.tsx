@@ -32,7 +32,7 @@ const CHECK_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 10, label: "Every 10 seconds" },
 ];
 
-/** Settings → General: offer to start NexQ when a call app starts a meeting. */
+/** Settings → General: offer to start Lucid when a call app starts a meeting. */
 export function MeetingDetectionSettings() {
   const config = useConfigStore((s) => s.meetingDetection);
   const setConfig = useConfigStore((s) => s.setMeetingDetection);
@@ -56,8 +56,8 @@ export function MeetingDetectionSettings() {
               Detect meetings
             </label>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              When a call starts in one of these apps, a small prompt offers to start NexQ, named after the call.
-              NexQ only checks which app is using your microphone; it never listens until you start.
+              When a call starts in one of these apps, a small prompt offers to start Lucid, named after the call.
+              Lucid only checks which app is using your microphone; it never listens until you start.
             </p>
           </div>
         </div>

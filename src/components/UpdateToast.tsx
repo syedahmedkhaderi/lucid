@@ -49,7 +49,7 @@ export function UpdateReadyToast() {
         <ArrowUpCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground/90">
-            NexQ v{visibleVersion} is ready
+            Lucid v{visibleVersion} is ready
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {autoUpdate

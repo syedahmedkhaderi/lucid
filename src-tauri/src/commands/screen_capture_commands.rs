@@ -6,7 +6,7 @@
 //!
 //! Windows only for now: GDI `BitBlt` from the screen device context. It
 //! respects `WDA_EXCLUDEFROMCAPTURE`, so with "Hide from screen share" on,
-//! NexQ's windows are left out of the shot. NexQ never hides, moves or
+//! Lucid's windows are left out of the shot. Lucid never hides, moves or
 //! re-flags its own windows to keep them out. Other systems get a clear error.
 
 use std::io::Cursor;

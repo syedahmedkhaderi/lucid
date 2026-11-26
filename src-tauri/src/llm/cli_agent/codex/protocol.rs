@@ -14,16 +14,16 @@ use serde_json::{json, Map, Value};
 /// `clientInfo.name`; Codex reports it as the thread's `originator`.
 pub const CLIENT_NAME: &str = "nexq";
 
-/// Approval policy of every NexQ thread. `untrusted` asks for anything but
+/// Approval policy of every Lucid thread. `untrusted` asks for anything but
 /// Codex's own list of side-effect-free commands, and every ask is answered by
 /// the policy in `policy.rs`.
 pub const APPROVAL_POLICY: &str = "untrusted";
 
-/// Sandbox of every NexQ thread (`SandboxMode`).
+/// Sandbox of every Lucid thread (`SandboxMode`).
 pub const SANDBOX_MODE: &str = "read-only";
 
 // ---------------------------------------------------------------------------
-// Requests and notifications NexQ sends
+// Requests and notifications Lucid sends
 // ---------------------------------------------------------------------------
 
 fn request(id: u64, method: &str, params: Value) -> String {
@@ -35,7 +35,7 @@ pub fn initialize_request(id: u64, client_version: &str) -> String {
         id,
         "initialize",
         json!({
-            "clientInfo": { "name": CLIENT_NAME, "title": "NexQ", "version": client_version },
+            "clientInfo": { "name": CLIENT_NAME, "title": "Lucid", "version": client_version },
             "capabilities": { "experimentalApi": false },
         }),
     )
@@ -64,7 +64,7 @@ pub struct ThreadStart {
     pub base_instructions: String,
     /// Extra developer message (the notes folders the model may read).
     pub developer_instructions: String,
-    /// Per-thread config overrides (`thread/start`'s `config`): NexQ's own MCP
+    /// Per-thread config overrides (`thread/start`'s `config`): Lucid's own MCP
     /// servers, secrets included. Sent over the pipe, so it never shows on the
     /// process's command line. `None`: nothing to add.
     pub config: Option<Value>,
@@ -329,7 +329,7 @@ fn parse_item(v: &Value) -> Item {
     }
 }
 
-/// A server notification NexQ cares about; everything else is `Other` (it
+/// A server notification Lucid cares about; everything else is `Other` (it
 /// still counts as a sign of life).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Notification {
@@ -462,9 +462,9 @@ pub enum ServerRequest {
     McpElicitation { server: String, message: String, meta: Value },
     /// `item/tool/requestUserInput`.
     UserInput,
-    /// `item/tool/call` (a client-implemented tool; NexQ has none).
+    /// `item/tool/call` (a client-implemented tool; Lucid has none).
     DynamicToolCall,
-    /// `account/chatgptAuthTokens/refresh`: NexQ never supplies tokens.
+    /// `account/chatgptAuthTokens/refresh`: Lucid never supplies tokens.
     AuthTokensRefresh,
     Unknown { method: String },
 }
@@ -504,7 +504,7 @@ fn parse_server_request(method: &str, p: &Value) -> ServerRequest {
     }
 }
 
-/// What NexQ answers a [`ServerRequest`] with.
+/// What Lucid answers a [`ServerRequest`] with.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Reply {
     Result(Value),
@@ -550,7 +550,7 @@ pub fn reply_line(id: &Value, reply: &Reply) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Responses NexQ reads
+// Responses Lucid reads
 // ---------------------------------------------------------------------------
 
 /// `account/read` result: how Codex is signed in.
@@ -590,7 +590,7 @@ pub fn parse_turn_start(result: &Value) -> Option<String> {
     Some(result.get("turn")?.get("id")?.as_str()?.to_string())
 }
 
-/// Codex's own cause of a failed turn mapped to NexQ's error kind; falls back
+/// Codex's own cause of a failed turn mapped to Lucid's error kind; falls back
 /// to the message text. `None` info and an unrecognised message is `Other`.
 pub fn classify_turn_error(err: &TurnError) -> crate::llm::cli_agent::protocol::AgentErrorKind {
     use crate::llm::cli_agent::protocol::{classify_error, AgentErrorKind};

@@ -1,5 +1,5 @@
 // ============================================================================
-// NexQ Export Utilities — multi-format meeting export
+// Lucid Export Utilities — multi-format meeting export
 // ============================================================================
 
 import type { Meeting, TranscriptSegment, AIScenario, SpeakerIdentity } from "./types";

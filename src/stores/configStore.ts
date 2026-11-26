@@ -372,7 +372,7 @@ interface ConfigState {
   trayAutoDetectMeeting: boolean;
   trayStealthEnabled: boolean;
   /**
-   * Stealth mode ("Hide from screen share"): NexQ's windows stay visible to
+   * Stealth mode ("Hide from screen share"): Lucid's windows stay visible to
    * the user but are left out of screen sharing, recordings and screenshots.
    */
   stealthMode: boolean;
@@ -381,7 +381,7 @@ interface ConfigState {
   assistShortcut: string;
   /** Global shortcut that captures the screen under the pointer into Ask. */
   captureShortcut: string;
-  /** Offer to start NexQ when Zoom, Teams, Meet… start a call. */
+  /** Offer to start Lucid when Zoom, Teams, Meet… start a call. */
   meetingDetection: MeetingDetectionConfig;
 
   // Loading state

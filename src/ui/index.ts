@@ -1,4 +1,4 @@
-// NexQ UI kit: small, accessible, tokens-only primitives. No native select,
+// Lucid UI kit: small, accessible, tokens-only primitives. No native select,
 // `title` tooltip or colour input (they can escape hide-from-screen-share).
 export { Menu, type MenuItemSpec, type MenuProps, type MenuTriggerProps } from "./Menu";
 export { Select, Combobox, type SelectOption, type SelectProps } from "./Select";

@@ -13,7 +13,7 @@
 //! | `--safe-mode` with `--allowedTools Read Grep Glob` | `Read` of an absolute path outside the cwd and `--add-dir` worked. No confinement. | Not usable with sources. |
 //! | `--restricted --strict-mcp-config --mcp-config` | Server `connected`, tools named `mcp__<key>__<tool>`. Your user settings, `~/.claude/CLAUDE.md`, user-scope MCP servers and claude.ai connectors stay out. | Use it for with-sources; plain sessions keep `--safe-mode`. |
 //! | `--add-dir` under `--restricted` | Reads fine, also a path with spaces and `@` as one argv entry. | One argv entry per folder. |
-//! | Confinement under `--restricted` with `--allowedTools Read Grep Glob` | Absolute outside paths, `..\` paths, and Grep/Glob on the parent were all refused. | No path-scoped rules needed (a deny rule still covers NexQ's private folder). |
+//! | Confinement under `--restricted` with `--allowedTools Read Grep Glob` | Absolute outside paths, `..\` paths, and Grep/Glob on the parent were all refused. | No path-scoped rules needed (a deny rule still covers Lucid's private folder). |
 //! | `--allowedTools` form | Separate argv entries work. The flag is variadic, so the prompt goes on stdin, never as a positional. | One value per argv entry. |
 //! | Tool name | `mcp__<key>__<tool>`; every character outside `[A-Za-z0-9_-]` becomes `_`; `a__b` is ambiguous. | Keys are `[a-z0-9-]` and never contain `__`; tool names are checked (`config::is_valid_tool_full_name`). |
 //! | A write tool missing from the allow list | Denied automatically with `--permission-prompts none`. | Use the allow list and also `--disallowedTools` for switched-off tools. |

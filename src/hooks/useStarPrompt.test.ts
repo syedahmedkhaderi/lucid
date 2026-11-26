@@ -18,7 +18,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
   getCurrentWebviewWindow: () => ({ label: windowLabel.value }),
 }));
 
-// In-memory plugin-store: `data` is nexq-settings.json; `broken` makes it unreadable.
+// In-memory plugin-store: `data` is lucid-settings.json; `broken` makes it unreadable.
 const settings = vi.hoisted(() => ({ data: new Map<string, unknown>(), broken: false }));
 vi.mock("@tauri-apps/plugin-store", () => ({
   load: async () => {

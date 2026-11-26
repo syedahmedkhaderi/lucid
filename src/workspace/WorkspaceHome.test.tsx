@@ -178,7 +178,7 @@ describe("the home at other widths", () => {
     mount();
     expect(screen.getByRole("heading", { level: 1, name: "Acme account" })).toBeInTheDocument();
     expect(document.querySelector("[data-workspace-chat]")).not.toBeNull();
-    expect(screen.queryByText(/NexQ encountered an error/)).toBeNull();
+    expect(screen.queryByText(/Lucid encountered an error/)).toBeNull();
   });
 
   it("below 1100 the Library is a sheet opened from a button", async () => {

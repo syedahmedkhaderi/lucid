@@ -122,7 +122,7 @@ impl Failure {
             Self::Credentials => "Azure rejected the Speech resource key or region. Make sure they match and that key authentication is enabled.",
             Self::Model => "Azure rejected MAI-Transcribe-2-Streaming. Check the Speech resource region and model availability.",
             Self::Network => "Azure MAI Streaming could not reach the Speech service. Check the connection to Azure and try again.",
-            Self::Launcher => "The NexQ launcher stopped responding to Azure MAI Streaming. Reopen the launcher or restart capture.",
+            Self::Launcher => "The Lucid launcher stopped responding to Azure MAI Streaming. Reopen the launcher or restart capture.",
             Self::Sdk => "Azure MAI Streaming could not start or finish a Speech SDK session.",
         }
     }
@@ -172,7 +172,7 @@ impl Session {
         let bridge = app.state::<MaiBridge>();
         let host_slot = bridge.host.lock().unwrap();
         let host = host_slot.clone().ok_or(
-            "Azure MAI Streaming SDK is unavailable in the launcher. Restart NexQ and try again.",
+            "Azure MAI Streaming SDK is unavailable in the launcher. Restart Lucid and try again.",
         )?;
         let host_generation = bridge.host_generation.load(Ordering::Relaxed);
         drop(host_slot);

@@ -79,7 +79,7 @@ pub fn read_claude_code_entries(
 }
 
 /// `claude_code`: an HTTP server without headers (or with an `oauth` block) is
-/// one Claude Code signs in to itself, which NexQ cannot do.
+/// one Claude Code signs in to itself, which Lucid cannot do.
 fn parse_server(name: &str, entry: &Value, claude_code: bool) -> Result<RawServer, String> {
     let obj = entry
         .as_object()

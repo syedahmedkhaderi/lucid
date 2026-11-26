@@ -58,7 +58,7 @@ pub(crate) fn policy(available: bool, tables: TablesState) -> Policy {
 }
 
 /// The text shown when a request can't use a workspace's material.
-pub const MATERIAL_UNAVAILABLE: &str = "NexQ couldn't read this workspace's material, so answers don't use it";
+pub const MATERIAL_UNAVAILABLE: &str = "Lucid couldn't read this workspace's material, so answers don't use it";
 
 /// Event `workspace_material_unavailable` `{ meeting_id: string | null, message: string }`.
 #[derive(serde::Serialize, Clone)]

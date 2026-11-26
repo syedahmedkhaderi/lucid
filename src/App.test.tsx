@@ -215,7 +215,7 @@ describe("a capture side reconnecting mid-meeting", () => {
     const switched = "Your microphone disconnected. Using Microphone (Realtek) for now.";
     await deliver({ side: "you", state: "recovered", device: "Microphone (Realtek)", message: switched });
     const lost =
-      "The speakers or headphones you hear the call on disconnected. NexQ reconnects them when they're back, or pick another device in Audio & Devices.";
+      "The speakers or headphones you hear the call on disconnected. Lucid reconnects them when they're back, or pick another device in Audio & Devices.";
     await deliver({ side: "them", state: "lost", device: "Speakers", message: lost });
     expect(useToastStore.getState().toasts.map((t) => [t.message, t.type])).toEqual([
       [switched, "info"],

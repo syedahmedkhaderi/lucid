@@ -274,7 +274,7 @@ export function CliAgentSettings({ selectedProvider, activeProvider, inUseLabel,
         </span>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Uses your own Claude, Antigravity or Codex login on this PC. NexQ never sees your credentials.
+        Uses your own Claude, Antigravity or Codex login on this PC. Lucid never sees your credentials.
       </p>
 
       <div className="mt-4 grid grid-cols-3 gap-2.5">
@@ -416,7 +416,7 @@ function AgentDetails({
       {!active && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
           <p className="text-xs text-muted-foreground">
-            Viewing {agent.name}. NexQ is using {inUseLabel ?? "another provider"}.
+            Viewing {agent.name}. Lucid is using {inUseLabel ?? "another provider"}.
           </p>
           <button
             type="button"
@@ -471,7 +471,7 @@ function AgentDetails({
           >
             <p className="text-xs text-muted-foreground">
               {state === "npm_only"
-                ? "NexQ runs Claude Code's native app, not the npm package. Install it with the native installer, log in once, then check the connection."
+                ? "Lucid runs Claude Code's native app, not the npm package. Install it with the native installer, log in once, then check the connection."
                 : agent.installHint}
             </p>
             {agent.installUrl && (

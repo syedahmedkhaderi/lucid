@@ -41,7 +41,7 @@ import type { NotetakerState } from "../lib/types";
 
 const CASES = [
   { name: "stopped", fixture: stopped, heading: "Stopped", sentence: "You stopped the notes.", never: ["closed", "another meeting"] },
-  { name: "interrupted", fixture: interrupted, heading: "Interrupted", sentence: "NexQ was closed before the notes were finished.", never: ["You stopped", "another meeting"] },
+  { name: "interrupted", fixture: interrupted, heading: "Interrupted", sentence: "Lucid was closed before the notes were finished.", never: ["You stopped", "another meeting"] },
   { name: "other_meeting", fixture: otherMeeting, heading: "Stopped for another meeting", sentence: "The notes stopped because another meeting started.", never: ["closed", "You stopped"] },
 ] as const;
 

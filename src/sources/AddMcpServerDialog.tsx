@@ -354,7 +354,7 @@ export function AddMcpServerDialog({ onClose, onAdded, editing }: AddMcpServerDi
 
       {activeTab === "claude" && (
         <div role="tabpanel" className="space-y-3">
-          <p className="text-xs text-muted-foreground">Pick the servers from your Claude Code setup to copy into NexQ.</p>
+          <p className="text-xs text-muted-foreground">Pick the servers from your Claude Code setup to copy into Lucid.</p>
           {!ccServers && !ccError && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />

@@ -1,5 +1,5 @@
 // ============================================================================
-// NexQ Prompt Templates — TypeScript mirror of src-tauri/src/intelligence/prompt_templates.rs
+// Lucid Prompt Templates — TypeScript mirror of src-tauri/src/intelligence/prompt_templates.rs
 // Reads from aiActionsStore first, falls back to hardcoded defaults.
 // ============================================================================
 import type { IntelligenceMode } from "./types";

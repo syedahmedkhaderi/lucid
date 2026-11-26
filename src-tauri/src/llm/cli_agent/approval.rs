@@ -380,7 +380,7 @@ pub enum ApprovalSupport {
 /// The oldest Claude version shown to carry `--permission-prompts host` and the
 /// `can_use_tool` / `control_response` / `control_cancel_request` strings: the
 /// installed 2.1.328, 2.1.329 and 2.1.330 binaries all do (string search of the
-/// binaries; not run). Versions between NexQ's minimum (2.1.259) and 2.1.328
+/// binaries; not run). Versions between Lucid's minimum (2.1.259) and 2.1.328
 /// were not available to look at, so they stay unsupported.
 pub const CLAUDE_ASK_MIN_VERSION: super::detect::ClaudeVersion = (2, 1, 328);
 
@@ -393,7 +393,7 @@ pub fn claude_support_for_version(version: Option<super::detect::ClaudeVersion>)
             super::detect::format_version(v),
             super::detect::format_version(CLAUDE_ASK_MIN_VERSION)
         )),
-        None => ApprovalSupport::Unsupported("NexQ couldn't read Claude's version, so it can't ask before a tool runs.".into()),
+        None => ApprovalSupport::Unsupported("Lucid couldn't read Claude's version, so it can't ask before a tool runs.".into()),
     }
 }
 
@@ -947,7 +947,7 @@ pub fn refusal_text(why: &str, tool: &str) -> String {
     match why {
         "the tool is not allowed" => format!("{tool} is turned off for this server. Turn it on in Settings > Personal Sources."),
         "an unknown tool" => {
-            format!("{tool} is not a tool NexQ has checked for this server. Check the server again in Settings > Personal Sources.")
+            format!("{tool} is not a tool Lucid has checked for this server. Check the server again in Settings > Personal Sources.")
         }
         other => format!("{tool} was refused: {other}."),
     }

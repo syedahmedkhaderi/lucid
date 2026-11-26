@@ -1,4 +1,4 @@
-// Workspace hues. Blue, green, amber and red carry meaning in NexQ (primary,
+// Workspace hues. Blue, green, amber and red carry meaning in Lucid (primary,
 // live, interviewer, destructive), so a workspace never uses them. The values
 // live in src/index.css (`--hue-<id>`, light and dark) and reach 4.5:1 on both
 // backgrounds; hues.test.ts checks that.

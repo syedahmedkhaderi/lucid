@@ -121,7 +121,7 @@ mod file_stem_tests {
 }
 
 /// Loads, caches, and serves context text from files.
-/// Files stored in %APPDATA%/com.nexq.app/context/
+/// Files stored in %APPDATA%/com.lucid.desktop/context/
 pub struct ContextManager {
     context_dir: PathBuf,
     resources: Vec<ContextResource>,
@@ -139,7 +139,7 @@ pub struct ContextManager {
 
 impl ContextManager {
     pub fn new() -> Self {
-        // Determine the context directory: %APPDATA%/com.nexq.app/context/
+        // Determine the context directory: %APPDATA%/com.lucid.desktop/context/
         let context_dir = Self::get_context_dir();
 
         // Ensure the directory exists

@@ -6,7 +6,7 @@ import { useToastStore } from "../stores/toastStore";
 import { NEXQ_NEW_ISSUE_URL, NEXQ_REPO_URL } from "../lib/links";
 import { THANKS_CLOSE_MS } from "../lib/starPrompt";
 
-export const STAR_PROMPT_TITLE = "Is NexQ working for you?";
+export const STAR_PROMPT_TITLE = "Is Lucid working for you?";
 export const STAR_PROMPT_BODY = "It's free and open source. A star on GitHub helps other people find it.";
 export const STAR_PROMPT_THANKS = "Thanks. GitHub is open in your browser.";
 export const STAR_PROMPT_OPEN_FAILED = "Couldn't open your browser.";

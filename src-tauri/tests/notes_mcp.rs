@@ -18,7 +18,7 @@ struct Server {
 impl Server {
     fn start(dirs: &[&Path]) -> Server {
         let list: Vec<String> = dirs.iter().map(|d| d.to_string_lossy().into_owned()).collect();
-        let mut child = Command::new(env!("CARGO_BIN_EXE_nexq"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_lucid"))
             .arg("--notes-mcp")
             .env("NEXQ_NOTES_DIRS", serde_json::to_string(&list).unwrap())
             .stdin(Stdio::piped())

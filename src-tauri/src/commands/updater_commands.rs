@@ -11,7 +11,7 @@ use crate::state::AppState;
 
 /// Plugin-store file and keys for the updater preferences ("Automatic updates",
 /// "Skip this version"). Written by the frontend (`useUpdater`); read at quit.
-const SETTINGS_STORE: &str = "nexq-settings.json";
+const SETTINGS_STORE: &str = "lucid-settings.json";
 const AUTO_UPDATE_KEY: &str = "auto_update";
 const SKIPPED_VERSION_KEY: &str = "skipped_version";
 
@@ -21,8 +21,8 @@ const RECORDING_WAIT_LIMIT: Duration = Duration::from_secs(120);
 const QUIT_RECORDING_WAIT_LIMIT: Duration = Duration::from_secs(600);
 
 /// Passed to the installer for an install on quit. The NSIS installer
-/// forwards everything after `/ARGS` to the NexQ it relaunches (`/R`), and
-/// a NexQ started with this argument exits at once (`run`), so quitting
+/// forwards everything after `/ARGS` to the Lucid it relaunches (`/R`), and
+/// a Lucid started with this argument exits at once (`run`), so quitting
 /// with an update installs it without reopening the app.
 pub const POST_UPDATE_QUIT_ARG: &str = "--nexq-post-update-quit";
 
@@ -59,7 +59,7 @@ impl UpdateInfo {
 
 /// A downloaded update waiting to be installed (on Restart or on quit).
 pub struct PendingUpdate {
-    /// Installs and reopens NexQ (Restart).
+    /// Installs and reopens Lucid (Restart).
     pub update: Update,
     /// The same release with [`POST_UPDATE_QUIT_ARG`] for the installer
     /// (installs on quit without reopening). `None` if it couldn't be
@@ -176,11 +176,11 @@ async fn quit_variant(app: &AppHandle, version: &str) -> Option<Update> {
     match checked {
         Ok(Some(update)) if update.version == version => Some(update),
         Ok(_) => {
-            log::warn!("Install-on-quit variant of v{version} not found; quit will reopen NexQ after installing");
+            log::warn!("Install-on-quit variant of v{version} not found; quit will reopen Lucid after installing");
             None
         }
         Err(e) => {
-            log::warn!("Install-on-quit variant of v{version} unavailable ({e}); quit will reopen NexQ after installing");
+            log::warn!("Install-on-quit variant of v{version} unavailable ({e}); quit will reopen Lucid after installing");
             None
         }
     }
@@ -197,10 +197,10 @@ pub async fn get_pending_update(state: State<'_, AppState>) -> Result<Option<Upd
 }
 
 /// Install the downloaded update now. On Windows the NSIS installer is launched
-/// in passive mode (`/P /R`: progress only, relaunches NexQ) and this process
+/// in passive mode (`/P /R`: progress only, relaunches Lucid) and this process
 /// exits, so on success this never returns. On macOS the bundle is replaced
-/// in place and NexQ restarts itself. (Install on quit passes
-/// [`POST_UPDATE_QUIT_ARG`] so the relaunched NexQ exits at once.)
+/// in place and Lucid restarts itself. (Install on quit passes
+/// [`POST_UPDATE_QUIT_ARG`] so the relaunched Lucid exits at once.)
 ///
 /// Waits (up to 2 min) for post-meeting recording pipelines first, so ending a
 /// meeting right before the restart doesn't lose its recording.
@@ -240,7 +240,7 @@ async fn wait_for_recordings(state: &AppState, limit: Duration) -> bool {
 /// Why the downloaded update is installed.
 #[derive(Clone, Copy)]
 enum InstallFor {
-    /// Restart pill: NexQ reopens after installing.
+    /// Restart pill: Lucid reopens after installing.
     Restart,
     /// Quit: the installer's relaunch exits at once.
     Quit,
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn relaunch_after_install_on_quit_is_recognised() {
-        assert!(is_post_update_quit([r"C:\NexQ\nexq.exe", POST_UPDATE_QUIT_ARG]));
+        assert!(is_post_update_quit([r"C:\Lucid\nexq.exe", POST_UPDATE_QUIT_ARG]));
         assert!(is_post_update_quit(vec![
             std::ffi::OsString::from("nexq.exe"),
             std::ffi::OsString::from("--flag"),

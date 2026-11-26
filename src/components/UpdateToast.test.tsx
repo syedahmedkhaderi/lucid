@@ -24,7 +24,7 @@ describe("UpdateReadyToast tells the rest of the app when it is on screen", () =
     expect(useUpdaterStore.getState().readyToastVisible).toBe(false);
 
     act(() => useUpdaterStore.getState().setReady("9.9.9", "notes"));
-    expect(screen.getByText("NexQ v9.9.9 is ready")).toBeInTheDocument();
+    expect(screen.getByText("Lucid v9.9.9 is ready")).toBeInTheDocument();
     expect(useUpdaterStore.getState().readyToastVisible).toBe(true);
 
     act(() => {

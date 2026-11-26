@@ -13,7 +13,7 @@ pub struct NotesFolderInfo {
     pub md_count: usize,
     /// The walk stopped at the entry limit; `md_count` is a lower bound.
     pub truncated: bool,
-    /// Why this folder can't be a notes folder (a whole drive, NexQ's private
+    /// Why this folder can't be a notes folder (a whole drive, Lucid's private
     /// files, the user's home); set by the command, not by [`inspect_folder`].
     #[serde(default)]
     pub problem: Option<String>,

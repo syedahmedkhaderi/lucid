@@ -28,14 +28,14 @@ fn recovery_allowed(state: &AppState) -> Result<health::ProblemKind, String> {
 /// left alone (it may be fine).
 fn check_kind_for_restore(kind: ProblemKind) -> Result<(), String> {
     if kind == ProblemKind::Locked {
-        return Err("Another program is using the meetings file. Close it and restart NexQ".to_string());
+        return Err("Another program is using the meetings file. Close it and restart Lucid".to_string());
     }
     Ok(())
 }
 
 /// Restores the database from one of the copies listed in `get_workspaces_status`
-/// (by name only). The damaged files are put aside as `nexq.db.damaged-<time>*`,
-/// never deleted. NexQ must restart afterwards (`restart_app`).
+/// (by name only). The damaged files are put aside as `lucid.db.damaged-<time>*`,
+/// never deleted. Lucid must restart afterwards (`restart_app`).
 #[command]
 pub async fn restore_database_copy(name: String, state: State<'_, AppState>) -> Result<(), String> {
     let kind = recovery_allowed(&state)?;
@@ -66,7 +66,7 @@ pub struct RetryOpenResult {
     /// The file can be opened now.
     pub ok: bool,
     /// The open database cannot be swapped into the running app (every part of it was
-    /// started against "no database"), so NexQ must restart to use the file.
+    /// started against "no database"), so Lucid must restart to use the file.
     pub needs_restart: bool,
 }
 
@@ -80,7 +80,7 @@ fn retry_probe(dir: &std::path::Path) -> Result<RetryOpenResult, String> {
     }
 }
 
-/// The locked case's "Try again": looks at the file again and says whether NexQ can use it
+/// The locked case's "Try again": looks at the file again and says whether Lucid can use it
 /// now. The running app has no database slot to fill after start (`AppState` is built once),
 /// so a file that opens is reported with `needs_restart` and nothing is initialised halfway.
 #[command]
@@ -101,13 +101,13 @@ pub async fn get_db_integrity() -> Option<crate::db::integrity::IntegrityFinding
     crate::db::integrity::current()
 }
 
-/// Opens NexQ's data folder in the file manager.
+/// Opens Lucid's data folder in the file manager.
 #[command]
 pub async fn open_data_folder() -> Result<(), String> {
     crate::workspace::reveal::open_directory(&crate::app_paths::data_dir())
 }
 
-/// Restarts NexQ (after a recovery). Refused while a meeting is active or a
+/// Restarts Lucid (after a recovery). Refused while a meeting is active or a
 /// recording is still being saved.
 #[command]
 pub async fn restart_app(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {

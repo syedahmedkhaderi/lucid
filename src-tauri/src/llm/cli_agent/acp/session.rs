@@ -52,7 +52,7 @@ const CLOSE_GRACE: Duration = Duration::from_secs(2);
 const STDERR_TAIL_LINES: usize = 20;
 
 /// Env vars removed from the child on top of the Claude ones
-/// (`command::STRIPPED_ENV`): an API key or a Vertex/ADC switch in NexQ's
+/// (`command::STRIPPED_ENV`): an API key or a Vertex/ADC switch in Lucid's
 /// environment must never turn a subscription session into paid API billing.
 pub const ACP_STRIPPED_ENV: [&str; 8] = [
     "GEMINI_API_KEY",
@@ -71,7 +71,7 @@ pub struct AcpLaunch {
     /// The executable (`agy.exe`, see `launch::find_agy`).
     pub program: PathBuf,
     pub args: Vec<String>,
-    /// The process cwd and the session's `cwd`: an empty folder of NexQ's.
+    /// The process cwd and the session's `cwd`: an empty folder of Lucid's.
     pub cwd: PathBuf,
     /// Delete `cwd` (with whatever the agent put in it) when the session ends.
     /// Set for a folder made for this one session.
@@ -80,7 +80,7 @@ pub struct AcpLaunch {
     pub model: String,
     pub system_prompt: String,
     /// `session/new`'s `mcpServers`: `{name, command, args, env:[{name,value}]}`
-    /// (stdio) or `{type, name, url, headers}`, NexQ's `nexq_notes` server
+    /// (stdio) or `{type, name, url, headers}`, Lucid's `nexq_notes` server
     /// included. They hold secrets: never logged.
     pub mcp_servers: Vec<Value>,
     pub policy: PermissionPolicy,
@@ -152,7 +152,7 @@ struct Shared {
     exit_status: Mutex<Option<String>>,
     /// Short name of the agent for messages (`agy`).
     label: String,
-    /// `toolCallId` -> what NexQ answered to its permission request, this turn.
+    /// `toolCallId` -> what Lucid answered to its permission request, this turn.
     /// A call that is not here was never asked about.
     decisions: Mutex<HashMap<String, Decision>>,
     /// A folder made for this session, deleted with the process.
@@ -209,7 +209,7 @@ impl Shared {
         }
     }
 
-    /// What NexQ answered for this tool call, `None` when it was never asked
+    /// What Lucid answered for this tool call, `None` when it was never asked
     /// (and always for an empty id).
     fn decision(&self, tool_call_id: &str) -> Option<Decision> {
         self.decisions.lock().unwrap().get(tool_call_id).cloned()
@@ -242,7 +242,7 @@ impl Shared {
     }
 }
 
-/// NexQ's answer to one permission request.
+/// Lucid's answer to one permission request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Decision {
     /// The tool name the request carried.
@@ -250,10 +250,10 @@ struct Decision {
     allowed: bool,
 }
 
-/// Does this tool update break the rules? `decision` is what NexQ answered
+/// Does this tool update break the rules? `decision` is what Lucid answered
 /// for the call's id (`None`: never asked); `initial` is the `tool_call`
 /// announcement, as opposed to a `tool_call_update`. `Some(reason)` means the
-/// agent ran, or is running, something NexQ did not approve.
+/// agent ran, or is running, something Lucid did not approve.
 ///
 /// What `agy` 1.5.14 sends (checked live): `tool_call` `in_progress`, then
 /// `tool_call_update` `pending`, the permission request, then for a refused
@@ -272,14 +272,14 @@ fn tool_breach(decision: Option<&Decision>, info: &acp::ToolCallInfo, initial: b
             }
             None
         }
-        Some(_) => (status == Some("completed")).then(|| format!("the agent ran {shown} after NexQ refused it")),
+        Some(_) => (status == Some("completed")).then(|| format!("the agent ran {shown} after Lucid refused it")),
         None => {
             let ran = match status {
                 Some("completed" | "failed") => true,
                 Some("in_progress") => !initial,
                 _ => false,
             };
-            ran.then(|| format!("the agent ran {shown} without NexQ's approval"))
+            ran.then(|| format!("the agent ran {shown} without Lucid's approval"))
         }
     }
 }
@@ -287,7 +287,7 @@ fn tool_breach(decision: Option<&Decision>, info: &acp::ToolCallInfo, initial: b
 fn breach_error(tool: &str) -> AgentError {
     AgentError::Cli(
         AgentErrorKind::Other,
-        format!("Antigravity used its own {tool} tool, which NexQ does not allow. The session was closed."),
+        format!("Antigravity used its own {tool} tool, which Lucid does not allow. The session was closed."),
     )
 }
 
@@ -645,7 +645,7 @@ async fn drive_turn(
                         } else if !info.title.is_empty() {
                             tool_names.entry(info.id.clone()).or_insert_with(|| info.title.clone());
                         }
-                        // A tool that ran (or runs) without NexQ's approval: the agent
+                        // A tool that ran (or runs) without Lucid's approval: the agent
                         // auto-allowed it. Kill the process (a cancel would only ask
                         // the agent to stop itself).
                         let initial = update["sessionUpdate"].as_str() == Some("tool_call");
@@ -672,7 +672,7 @@ async fn drive_turn(
                     // was announced but never asked about (it ran, or may have).
                     if outcome.is_ok() {
                         if let Some(tool) = undecided_builtin(&announced, &tool_names, &shared, &servers) {
-                            shared.terminate(&format!("the agent started {tool} without asking NexQ"));
+                            shared.terminate(&format!("the agent started {tool} without asking Lucid"));
                             break Err(breach_error(&tool));
                         }
                     }

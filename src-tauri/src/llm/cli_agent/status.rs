@@ -41,9 +41,9 @@ pub struct CliAgentStatus {
     /// `email` are filled where the CLI tells.
     pub auth: Option<ClaudeAuthStatus>,
     /// Claude only: not installed, but an npm install (`claude.cmd`) was found:
-    /// NexQ needs the native installer's `claude.exe`.
+    /// Lucid needs the native installer's `claude.exe`.
     pub npm_only: bool,
-    /// Claude only: `Some("2.1.259")` (the oldest Claude Code NexQ can launch)
+    /// Claude only: `Some("2.1.259")` (the oldest Claude Code Lucid can launch)
     /// when it is installed, its version is known and older than that. `None`
     /// otherwise, and always for Codex and Antigravity.
     pub required_version: Option<String>,
@@ -71,7 +71,7 @@ pub const CODEX_API_KEY_NOTE: &str =
     "This Codex login uses an API key, not your ChatGPT subscription. Run `codex login` and choose Sign in with ChatGPT.";
 
 /// `agy.exe`, `codex` (and the args that go before `app-server`/`--version`):
-/// a program NexQ can spawn.
+/// a program Lucid can spawn.
 pub fn find_binary(kind: CliAgentKind) -> Option<(PathBuf, Vec<String>)> {
     match kind {
         CliAgentKind::Claude => find_claude_binary().map(|p| (p, Vec::new())),

@@ -194,7 +194,7 @@ pub fn run_once(dir: &Path, now_ms: i64, busy: &AtomicBool) -> Pass {
 }
 
 /// Starts the background check: the last finding is shown at once, then a pass runs after
-/// a delay and again every half hour until one completes, then daily while NexQ stays open.
+/// a delay and again every half hour until one completes, then daily while Lucid stays open.
 /// `busy` is true during a meeting or while a recording is saved; `on_damage` announces a finding.
 pub fn spawn(
     dir: std::path::PathBuf,

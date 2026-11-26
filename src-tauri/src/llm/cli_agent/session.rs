@@ -104,7 +104,7 @@ pub struct InitInfo {
 }
 
 /// Names of the MCP servers that did not start (`failed`, or `needs-auth`:
-/// NexQ cannot sign in). A server still `pending` is not counted.
+/// Lucid cannot sign in). A server still `pending` is not counted.
 pub fn failed_mcp_servers(info: &InitInfo) -> Vec<String> {
     info.mcp_servers
         .iter()

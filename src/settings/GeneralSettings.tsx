@@ -116,7 +116,7 @@ export function GeneralSettings() {
               Start on Login
             </label>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Launch NexQ automatically when you log in
+              Launch Lucid automatically when you log in
             </p>
           </div>
           <button
@@ -183,7 +183,7 @@ export function GeneralSettings() {
         <div className="mb-3">
           <label className="text-sm font-medium text-foreground">Window positions</label>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            NexQ remembers where each window was for every monitor setup. If a window ended up out of reach, put both back on your main screen.
+            Lucid remembers where each window was for every monitor setup. If a window ended up out of reach, put both back on your main screen.
           </p>
         </div>
         <button

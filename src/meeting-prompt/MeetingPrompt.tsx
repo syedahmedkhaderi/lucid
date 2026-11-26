@@ -17,7 +17,7 @@ type MenuKind = "scenario" | "workspace";
 
 /**
  * The meeting-detection prompt: a small always-on-top card at the top of the
- * screen when Zoom, Teams, Meet… start a call. Start opens a NexQ meeting
+ * screen when Zoom, Teams, Meet… start a call. Start opens a Lucid meeting
  * named after the call; it goes away on its own after a while.
  */
 export function MeetingPrompt({
@@ -157,7 +157,7 @@ export function MeetingPrompt({
           </button>
 
           <div className="flex items-center gap-3 py-3 pl-8 pr-3">
-            <img src="/nexq-icon.png" alt="" className="h-9 w-9 shrink-0 rounded-xl" />
+            <img src="/lucid-mark.svg" alt="" className="h-9 w-9 shrink-0 rounded-xl" />
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 truncate whitespace-nowrap text-[11px] font-medium text-muted-foreground">
                 <span className="relative flex h-1.5 w-1.5 shrink-0" aria-hidden="true">
@@ -187,7 +187,7 @@ export function MeetingPrompt({
                 className="flex items-center gap-1.5 py-2 pl-3.5 pr-3 text-xs font-semibold transition-all duration-150 hover:brightness-110 active:scale-[0.97] cursor-pointer"
               >
                 <Play className="h-3 w-3 fill-current" aria-hidden="true" />
-                Start NexQ
+                Start Lucid
               </button>
               <button
                 ref={chevronRef}

@@ -249,7 +249,7 @@ describe("AgentStatusChip", () => {
       setSessions(
         session({
           state: "error",
-          detail: "could not start the CLI agent: Claude Code 2.1.206 is too old for NexQ. Update it to 2.1.259 or newer.",
+          detail: "could not start the CLI agent: Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer.",
           error_kind: "outdated",
         }),
       ),
@@ -258,7 +258,7 @@ describe("AgentStatusChip", () => {
     expect(screen.getByText("Needs update")).toBeInTheDocument();
     const tip = cardText();
     expect(tip).toContain("Claude Code 2.1.206 is too old.");
-    expect(tip).toContain("NexQ needs Claude Code 2.1.259 or newer. Update it, then check the connection.");
+    expect(tip).toContain("Lucid needs Claude Code 2.1.259 or newer. Update it, then check the connection.");
   });
 
   it("names an npm-only install outside a meeting", async () => {
@@ -267,7 +267,7 @@ describe("AgentStatusChip", () => {
     render(<AgentStatusChip />);
     await act(async () => {});
     expect(screen.getByTestId("agent-status-dot")).toHaveAttribute("data-state", "attention");
-    expect(cardText()).toContain("NexQ needs the native installer");
+    expect(cardText()).toContain("Lucid needs the native installer");
   });
 
   it("ignores sessions of other meetings and scopes", async () => {

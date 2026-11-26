@@ -96,7 +96,7 @@ describe("answers the launcher reads", () => {
       get_workspaces_status: {
         available: false,
         error: null,
-        db: { kind: "unreadable", message: "bad", path: "C:/x/nexq.db", backups: [{ name: "a.db", created_at: 1_700_000_000_000, bytes: 10, meetings: 2 }] },
+        db: { kind: "unreadable", message: "bad", path: "C:/x/lucid.db", backups: [{ name: "a.db", created_at: 1_700_000_000_000, bytes: 10, meetings: 2 }] },
       },
     });
     const s = (await ipc.getWorkspacesStatus()) as unknown as { db: { kind: string; path: string; backups: Array<Record<string, unknown>> } };

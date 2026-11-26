@@ -1,4 +1,4 @@
-; NexQ's installer screens, drawn with plain Win32 controls so no extra plugin
+; Lucid's installer screens, drawn with plain Win32 controls so no extra plugin
 ; ships in the installer. installer.nsi includes this after its Var declarations.
 ;
 ; One layout carries through every screen: the version number, the release's
@@ -584,7 +584,7 @@ FunctionEnd
   !insertmacro NqText "" $0 ${NQ_PLATE_VALUE_X} ${Y} 148 18 "${VALUE}" $NqFontSmall ${NQ_TEXT2}
 !macroend
 
-; For someone who has never used NexQ, "what's new" means nothing yet: tell them what
+; For someone who has never used Lucid, "what's new" means nothing yet: tell them what
 ; it does. The wording comes from the README's own description.
 Function NqPaintIntro
   !insertmacro NqText "" $0 ${NQ_LEFT} ${NQ_INFO_Y} 400 18 "What ${PRODUCTNAME} does" $NqFontSmall ${NQ_TEXT3}
@@ -621,7 +621,7 @@ Function NqPaintPlate
   ${EndIf}
 FunctionEnd
 
-; Is NexQ already here, and which way does this installer take it?
+; Is Lucid already here, and which way does this installer take it?
 Function NqDetectInstalled
   StrCpy $NqCompare ""
   StrCpy $NqPrevious ""
@@ -644,7 +644,7 @@ FunctionEnd
 
 Function NqChooseFolder
   Pop $0
-  nsDialogs::SelectFolderDialog "Install NexQ in" "$INSTDIR"
+  nsDialogs::SelectFolderDialog "Install Lucid in" "$INSTDIR"
   Pop $0
   ${If} $0 != error
   ${AndIf} $0 != ""
@@ -830,13 +830,13 @@ Function NqJustClose
   SendMessage $HWNDPARENT 0x408 1 0
 FunctionEnd
 
-; The last screen. Updates and passive installs reopen NexQ by themselves.
+; The last screen. Updates and passive installs reopen Lucid by themselves.
 Function NqDoneShow
   ${If} $PassiveMode = 1
     Abort
   ${EndIf}
 
-  ; Enter presses the main action, so opening NexQ is the default. Close opts out.
+  ; Enter presses the main action, so opening Lucid is the default. Close opts out.
   StrCpy $NqRunOnClose 1
   StrCpy $NqPrimaryDanger 0
   Call NqBeginPage
@@ -847,7 +847,7 @@ Function NqDoneShow
   ${NSD_OnClick} $NqPrimary NqGoNext
 
   ${If} $NqCompare == ""
-    ; What comes next, for someone opening NexQ for the first time
+    ; What comes next, for someone opening Lucid for the first time
     !insertmacro NqText "" $0 ${NQ_LEFT} ${NQ_INFO_Y} 400 18 "What happens next" $NqFontSmall ${NQ_TEXT3}
     !define /math NQ_NEXT_Y ${NQ_INFO_Y} + 26
     !insertmacro NqLabel "" $0 STATIC ${NQ_STATIC} ${NQ_LEFT} ${NQ_NEXT_Y} 420 76 "${PRODUCTNAME} opens with a short setup: your microphone and call audio, then the speech and AI services you'd like to use. They can run on this PC or in the cloud." $NqFontBody ${NQ_TEXT} ${NQ_BG}

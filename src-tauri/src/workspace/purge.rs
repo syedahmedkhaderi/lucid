@@ -132,7 +132,7 @@ fn recording_files(conn: &Connection, meeting_id: &str) -> Vec<PathBuf> {
 }
 
 /// Deletes `paths`, but only files that really are inside `dir` (symlinks and
-/// `..` are resolved first), and returns how many went. A path outside NexQ's
+/// `..` are resolved first), and returns how many went. A path outside Lucid's
 /// recordings folder is never touched, whatever the database says.
 pub fn delete_files_inside(dir: &Path, paths: &[PathBuf]) -> usize {
     let Ok(root) = std::fs::canonicalize(dir) else {
@@ -155,7 +155,7 @@ pub fn delete_files_inside(dir: &Path, paths: &[PathBuf]) -> usize {
     deleted
 }
 
-/// NexQ's recordings folder (where the recorder writes).
+/// Lucid's recordings folder (where the recorder writes).
 pub fn recordings_dir() -> Option<PathBuf> {
     // The recorder's own folder: the one function both use.
     Some(crate::app_paths::recordings_dir())

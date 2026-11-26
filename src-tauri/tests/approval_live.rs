@@ -11,15 +11,15 @@
 //!
 //! `cargo test --test approval_live live_claude -- --ignored --nocapture --test-threads=1`
 
-use nexq_lib::llm::cli_agent::approval::{
+use lucid_lib::llm::cli_agent::approval::{
     ApprovalEvent, ApprovalNotice, ApprovalPolicy, ChatApprovals, WorkspaceApprovals,
 };
-use nexq_lib::llm::cli_agent::command::{SessionConfig, SourcesLaunch};
-use nexq_lib::llm::cli_agent::detect::find_claude_binary;
-use nexq_lib::llm::cli_agent::session::{ClaudeSession, SessionTimeouts};
-use nexq_lib::llm::cli_agent::CliAgentKind;
-use nexq_lib::llm::provider::CancelToken;
-use nexq_lib::sources::config::{McpServer, McpTool};
+use lucid_lib::llm::cli_agent::command::{SessionConfig, SourcesLaunch};
+use lucid_lib::llm::cli_agent::detect::find_claude_binary;
+use lucid_lib::llm::cli_agent::session::{ClaudeSession, SessionTimeouts};
+use lucid_lib::llm::cli_agent::CliAgentKind;
+use lucid_lib::llm::provider::CancelToken;
+use lucid_lib::sources::config::{McpServer, McpTool};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};

@@ -469,7 +469,7 @@ mod tests {
                 Operation::new("BT", vec![]),
                 Operation::new("Tf", vec!["F1".into(), 24.into()]),
                 Operation::new("Td", vec![72.into(), 700.into()]),
-                Operation::new("Tj", vec![Object::string_literal("Hello NexQ")]),
+                Operation::new("Tj", vec![Object::string_literal("Hello Lucid")]),
                 Operation::new("Td", vec![0.into(), (-30).into()]),
                 Operation::new(
                     "TJ",
@@ -514,7 +514,7 @@ mod tests {
         let text = extract_text_from_pdf(path.to_str().unwrap());
         let _ = std::fs::remove_file(&path);
         let text = text.unwrap();
-        assert!(text.contains("Hello NexQ"), "got: {text:?}");
+        assert!(text.contains("Hello Lucid"), "got: {text:?}");
         assert!(text.contains("upgrade"), "got: {text:?}");
     }
 
@@ -525,7 +525,7 @@ mod tests {
         let text = extract_with_lopdf(path.to_str().unwrap());
         let _ = std::fs::remove_file(&path);
         let text = text.unwrap();
-        assert!(text.contains("Hello NexQ"), "got: {text:?}");
+        assert!(text.contains("Hello Lucid"), "got: {text:?}");
         assert!(text.contains("PDFupgrade"), "got: {text:?}");
     }
 

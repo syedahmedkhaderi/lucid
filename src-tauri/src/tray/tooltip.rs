@@ -25,9 +25,9 @@ pub fn build_tooltip(
     match state {
         TrayState::Idle => {
             if let Some(text) = custom_text {
-                format!("NexQ — Idle · {}", text)
+                format!("Lucid — Idle · {}", text)
             } else {
-                "NexQ — Idle".to_string()
+                "Lucid — Idle".to_string()
             }
         }
         TrayState::Recording => {
@@ -35,29 +35,29 @@ pub fn build_tooltip(
                 .map(|s| format_elapsed(s))
                 .unwrap_or_else(|| "00:00".to_string());
             if is_muted {
-                format!("NexQ — Recording (Mic Muted) · {} elapsed", elapsed)
+                format!("Lucid — Recording (Mic Muted) · {} elapsed", elapsed)
             } else {
-                format!("NexQ — Recording · {} elapsed", elapsed)
+                format!("Lucid — Recording · {} elapsed", elapsed)
             }
         }
         TrayState::Muted => {
             let elapsed = meeting_start
                 .map(|s| format_elapsed(s))
                 .unwrap_or_else(|| "00:00".to_string());
-            format!("NexQ — Recording (Mic Muted) · {} elapsed", elapsed)
+            format!("Lucid — Recording (Mic Muted) · {} elapsed", elapsed)
         }
         TrayState::Stealth => {
             let elapsed = meeting_start
                 .map(|s| format_elapsed(s))
                 .unwrap_or_else(|| "00:00".to_string());
-            format!("NexQ — Recording (Overlay Hidden) · {} elapsed", elapsed)
+            format!("Lucid — Recording (Overlay Hidden) · {} elapsed", elapsed)
         }
-        TrayState::AiProcessing => "NexQ — AI Processing...".to_string(),
+        TrayState::AiProcessing => "Lucid — AI Processing...".to_string(),
         TrayState::Indexing => {
             if let Some(text) = custom_text {
-                format!("NexQ — {}", text)
+                format!("Lucid — {}", text)
             } else {
-                "NexQ — Indexing files...".to_string()
+                "Lucid — Indexing files...".to_string()
             }
         }
     }

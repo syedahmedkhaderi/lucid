@@ -13,7 +13,7 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// A Claude Code version, `(major, minor, patch)`. Tuples compare numerically.
 pub type ClaudeVersion = (u32, u32, u32);
 
-/// The oldest Claude Code NexQ can launch. It comes from `--permission-prompts`
+/// The oldest Claude Code Lucid can launch. It comes from `--permission-prompts`
 /// (added in 2.1.259), which every session passes. The other flags are older:
 /// `--restricted` needs 2.1.248 and `--safe-mode` 2.1.169, so this covers them.
 pub const MIN_CLAUDE_VERSION: ClaudeVersion = (2, 1, 259);
@@ -50,11 +50,11 @@ pub fn is_too_old(v: ClaudeVersion) -> bool {
 }
 
 /// What a session, model list or connection test says instead of starting a
-/// Claude Code that is too old. The phrase "is too old for NexQ" is what
+/// Claude Code that is too old. The phrase "is too old for Lucid" is what
 /// `classify_error` reads as `Outdated`.
 pub fn outdated_message(found: ClaudeVersion) -> String {
     format!(
-        "Claude Code {} is too old for NexQ. Update it to {} or newer.",
+        "Claude Code {} is too old for Lucid. Update it to {} or newer.",
         format_version(found),
         format_version(MIN_CLAUDE_VERSION)
     )
@@ -153,7 +153,7 @@ fn claude_candidates() -> impl Iterator<Item = PathBuf> {
         .chain(std::iter::once(()).flat_map(|_| find_on_path("claude").into_iter().filter(|p| has_extension(p, "exe"))))
 }
 
-/// An npm install of Claude Code (`claude.cmd` on PATH). NexQ can't use it:
+/// An npm install of Claude Code (`claude.cmd` on PATH). Lucid can't use it:
 /// it spawns `claude.exe` directly, never through a shell.
 #[cfg(windows)]
 pub fn find_npm_claude() -> Option<PathBuf> {
@@ -555,7 +555,7 @@ mod tests {
     fn the_refusal_names_both_versions_and_reads_as_outdated() {
         use crate::llm::cli_agent::protocol::{classify_error, AgentErrorKind};
         let message = outdated_message((2, 1, 206));
-        assert_eq!(message, "Claude Code 2.1.206 is too old for NexQ. Update it to 2.1.259 or newer.");
+        assert_eq!(message, "Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer.");
         assert_eq!(classify_error(&message), AgentErrorKind::Outdated);
     }
 

@@ -14,7 +14,7 @@ pub(crate) enum Entry {
 
 use Entry::{Item, ScreenShare, Separator};
 
-/// Idle: opening the dashboard comes first, since NexQ has no taskbar
+/// Idle: opening the dashboard comes first, since Lucid has no taskbar
 /// button under stealth mode and the tray is the way back to it.
 pub(crate) const IDLE_MENU: &[Entry] = &[
     Item("open_dashboard", "Open Dashboard"),
@@ -28,7 +28,7 @@ pub(crate) const IDLE_MENU: &[Entry] = &[
     ScreenShare,
     Item("bring_windows", "Bring windows to this screen"),
     Item("settings", "Settings"),
-    Item("quit", "Quit NexQ"),
+    Item("quit", "Quit Lucid"),
 ];
 
 /// During a meeting: back to the meeting or to the dashboard first.
@@ -51,7 +51,7 @@ pub(crate) const MEETING_MENU: &[Entry] = &[
     Item("copy_transcript", "Copy Transcript"),
     Separator,
     Item("settings", "Settings"),
-    Item("quit", "Quit NexQ"),
+    Item("quit", "Quit Lucid"),
 ];
 
 fn build(app: &AppHandle, layout: &[Entry]) -> Result<Menu<Wry>, tauri::Error> {
