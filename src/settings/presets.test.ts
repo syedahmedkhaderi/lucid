@@ -26,13 +26,17 @@ describe("built-in meeting presets vs. the load-time migration", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("never use a batch-only engine", async () => {
+  it("uses only the supported local engines in downloadable offline presets", async () => {
     const { BUILT_IN_PRESETS } = await import("./presets");
-    for (const p of BUILT_IN_PRESETS) {
-      expect(p.you.stt, p.name).not.toBe("whisper_cpp");
-      expect(p.them.stt, p.name).not.toBe("whisper_cpp");
-      expect(p.requiresDownload, p.name).not.toBe("whisper_cpp");
+    const downloadable = BUILT_IN_PRESETS.filter((preset) => preset.requiresDownload);
+    for (const preset of downloadable) {
+      for (const provider of [preset.you.stt, preset.them.stt]) {
+        if (provider === "whisper_cpp" || provider === "parakeet_tdt") continue;
+        expect(provider, preset.name).not.toMatch(/sherpa|ort|moonshine/i);
+      }
     }
+    expect(downloadable.map((preset) => preset.requiresDownload)).toContain("whisper_cpp");
+    expect(downloadable.map((preset) => preset.requiresDownload)).toContain("parakeet_tdt");
   });
 
   it("keep both providers after the next launch", async () => {

@@ -79,15 +79,14 @@ Lucid uses a two-party audio model: **"You"** (microphone) and **"Them"** (syste
 
 See [Choosing AI Providers](ai-providers.md#azure-mai-streaming-public-preview) for portal setup, the exact setup steps, and a live verification checklist.
 
-### Local engines (Sherpa-ONNX, ORT Streaming, Parakeet TDT)
+### Local speech models (Whisper Large v3 Turbo, Parakeet TDT 0.6B v3)
 
-- **Setup**: Download a model from Settings > STT Providers (each local engine has its own model list)
+- **Setup**: On a Mac or a machine with a detected GPU, download and activate one of the two supported models from the Speech-to-Text setup screen
 - **Requires API Key**: No
 - **Runs Locally**: Yes
-- **Best For**: Offline use, privacy-sensitive environments
-- **Live engines**: Sherpa-ONNX, ORT Streaming and Parakeet TDT. These are the local choices for "You" and "Them" in Settings > Audio & Devices
-- **Whisper.cpp**: Not a live engine. It only transcribes recorded meetings in batch, so Settings > Audio & Devices doesn't offer it for a live meeting. A saved setup that still names it is switched to another engine at the next launch
-- **Note**: Local models require significant CPU/RAM. Smaller models are faster but less accurate; larger ones are more accurate but slower.
+- **Whisper**: Live local transcription with the fast Large v3 Turbo model; macOS builds include Metal support.
+- **Parakeet**: Live local transcription with NVIDIA's 0.6B v3 multilingual model.
+- **Unsupported hardware**: local downloads are hidden; Groq Whisper is the cloud fallback and needs an API key plus Cloud Allowed mode.
 
 ### Windows Native Speech
 

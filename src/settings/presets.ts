@@ -44,11 +44,11 @@ export const BUILT_IN_PRESETS: MeetingPreset[] = [
   },
   {
     name: "Fully Offline",
-    description: "Sherpa-ONNX — no internet needed",
+    description: "Whisper Large v3 Turbo for both parties — offline after its one-time download",
     badge: "Free",
-    you: { hint: "default_mic", stt: "sherpa_onnx" },
-    them: { hint: "default_output", stt: "sherpa_onnx" },
-    requiresDownload: "sherpa_onnx",
+    you: { hint: "default_mic", stt: "whisper_cpp" },
+    them: { hint: "default_output", stt: "whisper_cpp" },
+    requiresDownload: "whisper_cpp",
   },
   {
     name: "All Cloud",

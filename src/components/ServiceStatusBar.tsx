@@ -48,7 +48,7 @@ const LLM_LABELS: Record<string, string> = {
 
 export const STT_LABELS: Record<string, string> = {
   web_speech: "Web Speech",
-  whisper_cpp: "Whisper.cpp",
+  whisper_cpp: "Whisper Large v3 Turbo",
   deepgram: "Deepgram",
   whisper_api: "Whisper API",
   azure_speech: "Azure",
@@ -57,7 +57,7 @@ export const STT_LABELS: Record<string, string> = {
   cartesia: "Cartesia",
   sherpa_onnx: "Sherpa-ONNX",
   ort_streaming: "ORT Streaming",
-  parakeet_tdt: "Parakeet TDT",
+  parakeet_tdt: "NVIDIA Parakeet TDT 0.6B v3",
   windows_native: "Windows Speech",
 };
 
@@ -73,9 +73,8 @@ const STT_PROVIDER_OPTIONS: {
 }[] = [
   { value: "web_speech", label: "Web Speech", IconComponent: Globe, requiresKey: false, inputOnly: true },
   { value: "windows_native", label: "Windows Speech", IconComponent: Monitor, requiresKey: false, inputOnly: true },
-  { value: "sherpa_onnx", label: "Sherpa-ONNX", IconComponent: HardDrive, requiresKey: false, requiresDownload: "sherpa_onnx" },
-  { value: "ort_streaming", label: "ORT Streaming", IconComponent: Zap, requiresKey: false, requiresDownload: "ort_streaming" },
-  { value: "parakeet_tdt", label: "Parakeet TDT", IconComponent: Cpu, requiresKey: false, requiresDownload: "parakeet_tdt" },
+  { value: "whisper_cpp", label: "Whisper Large v3 Turbo", IconComponent: HardDrive, requiresKey: false, requiresDownload: "whisper_cpp" },
+  { value: "parakeet_tdt", label: "NVIDIA Parakeet TDT 0.6B v3", IconComponent: Cpu, requiresKey: false, requiresDownload: "parakeet_tdt" },
   { value: "deepgram", label: "Deepgram", IconComponent: Cloud, requiresKey: true },
   { value: "whisper_api", label: "Whisper API", IconComponent: Cloud, requiresKey: true },
   { value: "azure_speech", label: "Azure Speech", IconComponent: Cloud, requiresKey: true },
@@ -99,7 +98,7 @@ const EXCLUSIVE_PROVIDERS: STTProviderType[] = ["web_speech", "windows_native"];
 
 const EXCLUSIVE_FALLBACK_ORDER: STTProviderType[] = [
   "deepgram", "groq_whisper", "whisper_api", "azure_speech", "azure_mai_streaming", "cartesia",
-  "sherpa_onnx", "ort_streaming", "parakeet_tdt",
+  "whisper_cpp", "parakeet_tdt",
 ];
 
 function isExclusiveProvider(provider: string): boolean {
@@ -202,8 +201,6 @@ export function ServiceStatusBar({ compact = false }: { compact?: boolean }) {
   const llmModelLabel = formatModel(shownModel);
 
   const DEFAULT_MODEL_PER_ENGINE: Record<string, string> = {
-    sherpa_onnx: "streaming-zipformer-en-20M",
-    ort_streaming: "zipformer-en-20M",
     parakeet_tdt: "parakeet-tdt-0.6b-v3-int8",
   };
 
@@ -228,12 +225,15 @@ export function ServiceStatusBar({ compact = false }: { compact?: boolean }) {
   const handleProviderChange = useCallback((party: "you" | "them", provider: STTProviderType) => {
     if (!meetingAudioConfig) return;
     const updates: Partial<typeof meetingAudioConfig.you> = { stt_provider: provider };
-    if (provider === "sherpa_onnx" || provider === "ort_streaming" || provider === "parakeet_tdt") {
+    if (provider === "parakeet_tdt") {
       const activeModelPerEngine = useConfigStore.getState().activeModelPerEngine;
-      const engineModel = activeModelPerEngine[provider]
-        ?? DEFAULT_MODEL_PER_ENGINE[provider]
-        ?? useConfigStore.getState().activeWhisperModel;
+      const engineModel = activeModelPerEngine.parakeet_tdt
+        ?? DEFAULT_MODEL_PER_ENGINE.parakeet_tdt;
       if (engineModel) updates.local_model_id = engineModel;
+    } else if (provider === "whisper_cpp") {
+      updates.local_model_id = useConfigStore.getState().activeWhisperModel ?? "large-v3-turbo";
+    } else {
+      updates.local_model_id = undefined;
     }
     setMeetingAudioConfig({
       ...meetingAudioConfig,
@@ -791,6 +791,11 @@ function STTPickerDropdown({
     }
 
     const updatedConfig = { ...freshConfig };
+    const fallbackModel = fallback === "whisper_cpp"
+      ? useConfigStore.getState().activeWhisperModel ?? "large-v3-turbo"
+      : fallback === "parakeet_tdt"
+        ? useConfigStore.getState().activeModelPerEngine.parakeet_tdt ?? "parakeet-tdt-0.6b-v3-int8"
+        : undefined;
     updatedConfig[thisRole] = {
       ...updatedConfig[thisRole],
       stt_provider: stealTarget,
@@ -799,7 +804,7 @@ function STTPickerDropdown({
     updatedConfig[otherRole] = {
       ...updatedConfig[otherRole],
       stt_provider: fallback,
-      local_model_id: undefined,
+      local_model_id: fallbackModel,
     };
     useConfigStore.getState().setMeetingAudioConfig(updatedConfig);
 

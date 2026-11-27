@@ -1993,6 +1993,14 @@ async fn create_stt_provider_for_party(
     let stt_type = STTProviderType::from_str(&config.stt_provider)
         .ok_or_else(|| format!("Unknown STT provider: {}", config.stt_provider))?;
     crate::privacy::ensure_stt_allowed(&stt_type)?;
+    if matches!(&stt_type, STTProviderType::WhisperCpp | STTProviderType::ParakeetTdt)
+        && !crate::stt::local_engines::capabilities::current().local_models_available
+    {
+        return Err(
+            "Local STT models require a Mac or a detected GPU. Use Groq Whisper on this device."
+                .into(),
+        );
+    }
     // This side's own language when it has one, else the shared transcription language.
     let stt_language = config.effective_language(&get_stt_language(state));
     let deepgram_config = matches!(&stt_type, STTProviderType::Deepgram)

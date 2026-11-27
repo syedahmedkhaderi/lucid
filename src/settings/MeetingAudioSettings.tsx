@@ -53,7 +53,7 @@ import {
 } from "lucide-react";
 import { BUILT_IN_PRESETS, type MeetingPreset, applyPreset } from "./presets";
 
-// STT provider options — whisper_cpp excluded (batch-only, not for live STT)
+// Local providers here must support the meeting's live audio stream.
 const STT_OPTIONS: {
   value: STTProviderType;
   label: string;
@@ -80,25 +80,17 @@ const STT_OPTIONS: {
     inputOnly: true,
   },
   {
-    value: "sherpa_onnx",
-    label: "Sherpa-ONNX",
-    shortLabel: "Sherpa-ONNX",
+    value: "whisper_cpp",
+    label: "Whisper Large v3 Turbo",
+    shortLabel: "Whisper Turbo",
     icon: <HardDrive className="h-3.5 w-3.5" />,
     requiresKey: false,
-    requiresDownload: "sherpa_onnx",
-  },
-  {
-    value: "ort_streaming",
-    label: "ORT Streaming",
-    shortLabel: "ORT",
-    icon: <Zap className="h-3.5 w-3.5" />,
-    requiresKey: false,
-    requiresDownload: "ort_streaming",
+    requiresDownload: "whisper_cpp",
   },
   {
     value: "parakeet_tdt",
-    label: "Parakeet TDT (Best Local)",
-    shortLabel: "Parakeet",
+    label: "NVIDIA Parakeet TDT 0.6B v3",
+    shortLabel: "Parakeet TDT",
     icon: <Cpu className="h-3.5 w-3.5" />,
     requiresKey: false,
     requiresDownload: "parakeet_tdt",
@@ -162,7 +154,7 @@ const EXCLUSIVE_PROVIDERS: STTProviderType[] = ["web_speech", "windows_native"];
 
 const EXCLUSIVE_FALLBACK_ORDER: STTProviderType[] = [
   "deepgram", "groq_whisper", "whisper_api", "azure_speech", "azure_mai_streaming", "cartesia",
-  "sherpa_onnx", "ort_streaming", "parakeet_tdt",
+  "whisper_cpp", "parakeet_tdt",
 ];
 
 
@@ -227,13 +219,13 @@ export function MeetingAudioSettings() {
       role: "You",
       device_id: micDeviceId ?? "default",
       is_input_device: true,
-      stt_provider: "web_speech",
+      stt_provider: "groq_whisper",
     },
     them: {
       role: "Them",
       device_id: systemDeviceId ?? "default",
       is_input_device: false,
-      stt_provider: "deepgram",
+      stt_provider: "groq_whisper",
     },
     recording_enabled: recordingEnabled,
     preset_name: null,
@@ -774,20 +766,14 @@ function PartyPanel({
 
   function handleProviderChange(newProvider: STTProviderType) {
     const updates: Partial<PartyAudioConfig> = { stt_provider: newProvider };
-    if (newProvider === "sherpa_onnx" || newProvider === "ort_streaming" || newProvider === "parakeet_tdt") {
-      // Use per-engine active model, falling back to legacy activeWhisperModel
+    if (newProvider === "parakeet_tdt") {
       const activeModelPerEngine = useConfigStore.getState().activeModelPerEngine;
-      const DEFAULT_MODEL_PER_ENGINE: Record<string, string> = {
-        sherpa_onnx: "streaming-zipformer-en-20M",
-        ort_streaming: "zipformer-en-20M",
-        parakeet_tdt: "parakeet-tdt-0.6b-v3-int8",
-      };
-      const engineModel = activeModelPerEngine[newProvider]
-        ?? DEFAULT_MODEL_PER_ENGINE[newProvider]
-        ?? activeWhisperModel;
+      const engineModel = activeModelPerEngine.parakeet_tdt ?? "parakeet-tdt-0.6b-v3-int8";
       if (engineModel) updates.local_model_id = engineModel;
+    } else if (newProvider === "whisper_cpp") {
+      updates.local_model_id = activeWhisperModel ?? "large-v3-turbo";
     } else {
-      updates.local_model_id = newProvider === "whisper_cpp" ? activeWhisperModel ?? undefined : undefined;
+      updates.local_model_id = undefined;
     }
     // Dev log: provider change
     import("../stores/devLogStore").then(({ useDevLogStore }) => {
@@ -1062,6 +1048,11 @@ function ProviderSelect({
     }
 
     const updatedConfig = { ...freshConfig };
+    const fallbackModel = fallback === "whisper_cpp"
+      ? useConfigStore.getState().activeWhisperModel ?? "large-v3-turbo"
+      : fallback === "parakeet_tdt"
+        ? useConfigStore.getState().activeModelPerEngine.parakeet_tdt ?? "parakeet-tdt-0.6b-v3-int8"
+        : undefined;
     updatedConfig[thisRole] = {
       ...updatedConfig[thisRole],
       stt_provider: stealTarget,
@@ -1070,7 +1061,7 @@ function ProviderSelect({
     updatedConfig[otherRole] = {
       ...updatedConfig[otherRole],
       stt_provider: fallback,
-      local_model_id: undefined,
+      local_model_id: fallbackModel,
     };
     useConfigStore.getState().setMeetingAudioConfig(updatedConfig);
 

@@ -80,11 +80,11 @@ You can verify by playing audio through your meeting app and checking that the "
 
 Audio capture and speech recognition are separate. Choose a provider for **each** party:
 
-- **Local Parakeet TDT:** download the model once, then select it for both "You" and "Them". It consumes each selected native audio stream without an API key.
-- **Cloud providers:** configure their API key before starting capture.
-- **Web Speech:** depends on the embedded browser's speech service and may return `service-not-allowed` on macOS. It is not a replacement for selected-output capture.
+- **Whisper Large v3 Turbo** and **NVIDIA Parakeet TDT 0.6B v3:** on a Mac, setup offers both local models. Download them from the setup screen; Lucid verifies and makes them selectable after installation. Transcription stays on the computer.
+- **Groq Whisper:** the cloud fallback. Add the key in setup and allow cloud processing in Privacy settings before audio is sent. Groq account limits vary by plan and account.
+- **Unsupported hardware:** without a Mac or detected GPU, Lucid hides local downloads and offers Groq Whisper.
 
-The bundled Parakeet TDT export transcribes utterances after a pause, or splits continuous audio at roughly 20 seconds. Model processing adds latency; an active level meter does not imply an immediate transcript.
+The meter confirms audio capture; it does not by itself confirm that a model is downloaded, active, or returning text.
 
 ## Language for Each Side
 

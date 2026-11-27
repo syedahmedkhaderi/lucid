@@ -877,6 +877,7 @@ pub fn run() {
             settings_commands::set_config,
             // == COMMANDS: models ==
             model_commands::list_local_stt_engines,
+            model_commands::get_local_stt_capabilities,
             model_commands::download_local_stt_model,
             model_commands::cancel_model_download,
             model_commands::delete_local_stt_model,

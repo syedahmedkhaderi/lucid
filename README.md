@@ -4,7 +4,7 @@ Lucid is a local-first desktop meeting assistant for live transcription, documen
 
 ## Status
 
-This checkout is an active development build, not a professional-pilot release. The frontend passes 3,942 tests (2 skipped), all Rust targets pass 2,037 tests (24 ignored), and the macOS app opens to first-run setup. Gemini Live Transcribe and bounded PPTX text extraction are implemented but remain unverified against real provider accounts and production meeting data. See [`PROGRESS.md`](PROGRESS.md) and [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) for verified status and gaps.
+This checkout is an active development build, not a professional-pilot release. The frontend passes 3,940 tests (2 skipped), all Rust targets pass 2,037 tests (24 ignored), and the installed macOS app launches into the meeting dashboard. Parakeet completed a private, live system-audio smoke test using two synthesized utterances; Whisper's live test returned text but had noticeable recognition errors. Windows packaging and launch checks are configured in GitHub Actions; no Windows runner result is available yet. Gemini Live Transcribe remains unverified against a live provider account. See [`PROGRESS.md`](PROGRESS.md) and [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) for details.
 
 ## Current capabilities inherited from NexQ
 
@@ -13,6 +13,7 @@ This checkout is an active development build, not a professional-pilot release. 
 - Local SQLite meeting history and workspace-scoped document retrieval.
 - A scope-bound live brief that caches up to six source-linked facts and rejects facts whose cited passage lacks the stated numbers or names.
 - Local speech/model options and configurable cloud providers.
+- In-app download and activation for only Whisper Large v3 Turbo and NVIDIA Parakeet TDT 0.6B v3 on supported macOS/GPU systems, with Groq Whisper as the cloud alternative on unsupported hardware.
 - Gemini Live multilingual speech transcription with interim/final text, automatic language detection, and pre-limit session refresh.
 - Local PPTX slide text and basic table-row extraction with slide markers.
 - Individually validated and tab-separated bulk credential profiles stored in the OS credential store, with manual selection and no quota-triggered rotation.
@@ -21,7 +22,7 @@ These features are inherited and selectively rebranded. The compact overlay has 
 
 ## Build from source
 
-Install Node.js 22.22.2+ or 24.15.0+, Rust stable, CMake, and the platform toolchain (Xcode Command Line Tools on macOS; Visual Studio C++ Build Tools on Windows). From the project directory, run:
+Install Node.js 22.22.2+ or 24.15.0+, Rust stable, CMake, and the platform toolchain (Xcode Command Line Tools on macOS; Visual Studio C++ Build Tools on Windows). On Windows, also install LLVM/Clang, NSIS, and the WebView2 Runtime. Then, from the project directory, one command builds and installs the app or produces the Windows installer:
 
 ```sh
 npm run setup

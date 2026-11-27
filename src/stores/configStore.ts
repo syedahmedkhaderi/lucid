@@ -514,7 +514,7 @@ function followFallback(provider: string): void {
 export const useConfigStore = create<ConfigState>((set) => ({
   theme: "dark",
   privacyMode: "private_local",
-  sttProvider: "windows_native",
+  sttProvider: "groq_whisper",
   sttLanguage: "en-US",
   llmProvider: "ollama",
   llmModel: "",
@@ -1248,18 +1248,8 @@ export const useConfigStore = create<ConfigState>((set) => ({
         console.log("[configStore] Migrated legacy audio config to meetingAudioConfig");
       }
 
-      // Migrate whisper_cpp → correct defaults (whisper_cpp is batch-only, not for live STT)
-      // Only run on first load to avoid overwriting user settings mid-meeting.
       if (!alreadyLoaded && resolvedMeetingConfig) {
         let migrated = false;
-        if ((resolvedMeetingConfig.you.stt_provider as string) === "whisper_cpp") {
-          resolvedMeetingConfig.you = { ...resolvedMeetingConfig.you, stt_provider: "web_speech", local_model_id: undefined };
-          migrated = true;
-        }
-        if ((resolvedMeetingConfig.them.stt_provider as string) === "whisper_cpp") {
-          resolvedMeetingConfig.them = { ...resolvedMeetingConfig.them, stt_provider: "deepgram", local_model_id: undefined };
-          migrated = true;
-        }
         // windows_native only works with mic input; migrate Them (non-input) away from it
         if (
           (resolvedMeetingConfig.them.stt_provider as string) === "windows_native" &&
@@ -1291,12 +1281,12 @@ export const useConfigStore = create<ConfigState>((set) => ({
         }
       }
 
-      // Migrate top-level sttProvider away from whisper_cpp (first load only)
+      // Whisper.cpp supports live dual-pass transcription. Keep saved local selections.
       let resolvedSttProvider = sttProvider;
-      if (!alreadyLoaded && (!resolvedSttProvider || (resolvedSttProvider as string) === "whisper_cpp")) {
-        resolvedSttProvider = "windows_native" as STTProviderType;
+      if (!alreadyLoaded && !resolvedSttProvider) {
+        resolvedSttProvider = "groq_whisper" as STTProviderType;
         await store.set("sttProvider", resolvedSttProvider);
-        console.log("[configStore] Migrated top-level sttProvider to windows_native");
+        console.log("[configStore] Set default STT provider to Groq Whisper");
       }
 
       // If no meetingAudioConfig was found after all migrations, create a default (first load only)
@@ -1306,19 +1296,19 @@ export const useConfigStore = create<ConfigState>((set) => ({
             role: "You",
             device_id: "default",
             is_input_device: true,
-            stt_provider: "web_speech",
+            stt_provider: "groq_whisper",
           },
           them: {
             role: "Them",
             device_id: "default",
             is_input_device: false,
-            stt_provider: "deepgram",
+            stt_provider: "groq_whisper",
           },
           recording_enabled: false,
           preset_name: null,
         };
         await store.set("meetingAudioConfig", resolvedMeetingConfig);
-        console.log("[configStore] Created default meetingAudioConfig (Web Speech + Deepgram)");
+        console.log("[configStore] Created default meetingAudioConfig (Groq Whisper)");
       }
 
       set((state) => ({
@@ -1404,6 +1394,7 @@ export const useConfigStore = create<ConfigState>((set) => ({
       if (resolvedMeetingConfig) {
         const amp = activeModelPerEngine ?? {};
         const defaultModels: Record<string, string> = {
+          whisper_cpp: "large-v3-turbo",
           sherpa_onnx: "streaming-zipformer-en-20M",
           ort_streaming: "zipformer-en-20M",
           parakeet_tdt: "parakeet-tdt-0.6b-v3-int8",

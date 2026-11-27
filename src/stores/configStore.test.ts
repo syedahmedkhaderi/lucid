@@ -440,15 +440,14 @@ describe("configStore: STT migration and the preset chip", () => {
     preset_name: preset,
   });
 
-  it("clears the preset name when the migration swaps an engine (old In-Person config using whisper_cpp)", async () => {
+  it("preserves a live Whisper.cpp selection and its preset", async () => {
     saved.set("meetingAudioConfig", inPerson("whisper_cpp", "In-Person"));
     const store = await freshStore();
     await store.getState().loadConfig();
 
     const config = store.getState().meetingAudioConfig;
-    expect(config?.them.stt_provider).toBe("deepgram");
-    expect(config?.preset_name).toBeNull();
-    expect((saved.get("meetingAudioConfig") as { preset_name: unknown }).preset_name).toBeNull();
+    expect(config?.them.stt_provider).toBe("whisper_cpp");
+    expect(config?.preset_name).toBe("In-Person");
   });
 
   it("keeps the preset name when nothing was migrated", async () => {

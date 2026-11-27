@@ -44,7 +44,6 @@ lopdf = "0.47"
 tokio-tungstenite = { version = "0.30", features = ["native-tls"] }
 url = "2"
 unicode-normalization = "0.1"
-whisper-rs = "0.16"
 sha2 = "0.11"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 quick-xml = "0.42"
@@ -67,6 +66,7 @@ encoding_rs = "0.8"
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 cpal = "0.18"
+whisper-rs = "0.16"
 
 # Windows-specific
 [target.'cfg(windows)'.dependencies]
@@ -111,6 +111,7 @@ windows = { version = "0.62", features = [
 # macOS-specific
 [target.'cfg(target_os = "macos")'.dependencies]
 cpal = "0.18"
+whisper-rs = { version = "0.16", features = ["metal"] }
 # Used by src/commands/stealth_commands.rs to set the overlay NSWindow's
 # `sharingType` to NSWindowSharingNone (equivalent of Windows' WDA_EXCLUDEFROMCAPTURE).
 objc2 = "0.6"

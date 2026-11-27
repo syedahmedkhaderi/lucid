@@ -1,101 +1,69 @@
-import { cleanup, render, screen, fireEvent } from "@testing-library/react";
+import { cleanup, render, screen, fireEvent, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const keys = vi.hoisted(() => ({ saved: {} as Record<string, boolean> }));
-vi.mock("../../lib/ipc", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../lib/ipc")>()),
-  hasApiKey: async (provider: string) => keys.saved[provider] ?? false,
+const native = vi.hoisted(() => ({ localAvailable: false, commands: [] as string[] }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: async (command: string) => {
+    native.commands.push(command);
+    if (command === "get_local_stt_capabilities") return JSON.stringify({
+      platform: "Test", has_gpu: native.localAvailable,
+      local_models_available: native.localAvailable,
+      reason: native.localAvailable ? "GPU detected." : "No local GPU detected.",
+    });
+    if (command === "list_local_stt_engines") return "[]";
+    return null;
+  },
 }));
 vi.mock("@tauri-apps/plugin-store", () => ({
   load: async () => ({ get: async () => undefined, set: async () => {}, onKeyChange: async () => () => {} }),
 }));
-vi.mock("@tauri-apps/api/core", () => ({ invoke: async () => null }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 
 import { STTSetupStep } from "./STTSetupStep";
 
 beforeEach(() => {
-  keys.saved = {};
+  native.localAvailable = false;
+  native.commands = [];
 });
 afterEach(cleanup);
 
-describe("first-run STT step: missing API key", () => {
-  it("shows Azure MAI Streaming's model and Public Preview label in the setup choices", async () => {
-    render(<STTSetupStep />);
-    const choices = await screen.findAllByRole("radio", { name: /Azure MAI Streaming/ });
-    expect(choices).toHaveLength(2);
-    for (const choice of choices) {
-      expect(choice).toHaveTextContent("MAI-Transcribe-2-Streaming");
-      expect(choice).toHaveTextContent("Public Preview");
-    }
-  });
-
-  it("tells the user in one plain line when the selected engine has no saved key", async () => {
-    render(<STTSetupStep />);
-    // Them defaults to Deepgram, which has no key here
-    const note = await screen.findByText(/Deepgram needs an API key/);
-    expect(note.textContent).toContain("Settings > STT Providers");
-    expect(note.textContent).toContain("download and activate Parakeet TDT");
-    expect(note.textContent).toContain("Presets > Free");
-    expect(note.textContent).toContain("465 MB");
-  });
-
-  it("shows no note when the key is saved", async () => {
-    keys.saved.deepgram = true;
-    render(<STTSetupStep />);
-    await screen.findAllByRole("img", { name: "API key saved" });
-    expect(screen.queryByText(/needs an API key/)).toBeNull();
-  });
-
-  it("gives the key status icons a text label", async () => {
-    keys.saved.deepgram = true;
-    render(<STTSetupStep />);
-    expect((await screen.findAllByRole("img", { name: "API key saved" })).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("img", { name: "API key missing" }).length).toBeGreaterThan(0);
-  });
-
-  it("exposes the choices as radios with the selection checked", async () => {
+describe("first-run STT setup", () => {
+  it("uses Groq as the only choice when no local GPU or Mac is detected", async () => {
     render(<STTSetupStep />);
     const groups = await screen.findAllByRole("radiogroup");
     expect(groups).toHaveLength(2);
-    const them = groups[1];
-    const radios = Array.from(them.querySelectorAll('[role="radio"]'));
-    expect(radios.length).toBeGreaterThan(1);
-    expect(radios.filter((r) => r.getAttribute("aria-checked") === "true")).toHaveLength(1);
-
-    const groq = screen.getAllByRole("radio", { name: /Groq Whisper/ })[1];
-    fireEvent.click(groq);
-    expect(groq.getAttribute("aria-checked")).toBe("true");
-    expect(await screen.findByText(/Groq Whisper needs an API key/)).toBeTruthy();
+    for (const group of groups) {
+      expect(group.querySelectorAll('[role="radio"]')).toHaveLength(1);
+      expect(group).toHaveTextContent("Groq Whisper");
+    }
+    expect(screen.getByText(/No local GPU detected/)).toBeInTheDocument();
+    expect(native.commands).toContain("get_local_stt_capabilities");
+    expect(native.commands).not.toContain("download_local_stt_model");
   });
 
-  it("is one tab stop per group and arrow keys move and select", async () => {
+  it("offers only Whisper Large v3 Turbo, Parakeet TDT and Groq when local support exists", async () => {
+    native.localAvailable = true;
     render(<STTSetupStep />);
-    const groups = await screen.findAllByRole("radiogroup");
-    const radios = (g: HTMLElement) => Array.from(g.querySelectorAll<HTMLElement>('[role="radio"]'));
-    const them = groups[1];
-    expect(radios(them).filter((r) => r.tabIndex === 0)).toHaveLength(1);
-    expect(radios(them).find((r) => r.tabIndex === 0)!.textContent).toContain("Deepgram");
+    expect(await screen.findAllByRole("radio", { name: /Whisper Large v3 Turbo/ })).toHaveLength(2);
+    expect(screen.getAllByRole("radio", { name: /NVIDIA Parakeet TDT 0.6B v3/ })).toHaveLength(2);
+    expect(screen.getAllByRole("radio", { name: /Groq Whisper/ })).toHaveLength(2);
+    expect(screen.getByText("Install local models here")).toBeInTheDocument();
+    expect(native.commands).toContain("list_local_stt_engines");
+  });
 
-    radios(them)[0].focus();
-    fireEvent.keyDown(radios(them)[0], { key: "ArrowDown" });
-    expect(radios(them)[1].getAttribute("aria-checked")).toBe("true");
-    expect(document.activeElement).toBe(radios(them)[1]);
-    expect(radios(them)[1].tabIndex).toBe(0);
-    expect(radios(them)[0].tabIndex).toBe(-1);
+  it("lets the user save a Groq key without leaving setup", async () => {
+    render(<STTSetupStep />);
+    await screen.findAllByRole("radiogroup");
+    const input = within(screen.getByRole("region", { name: "Groq API key" })).getByLabelText("Groq API key");
+    fireEvent.change(input, { target: { value: "gsk-test-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save key" }));
+    expect(await screen.findByText("Saved securely")).toBeInTheDocument();
+    expect(native.commands).toContain("store_api_key");
+  });
 
-    fireEvent.keyDown(radios(them)[1], { key: "ArrowUp" });
-    expect(radios(them)[0].getAttribute("aria-checked")).toBe("true");
-    fireEvent.keyDown(radios(them)[0], { key: "ArrowLeft" });
-    expect(document.activeElement).toBe(radios(them)[radios(them).length - 1]);
-    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(radios(them)[0]);
-    fireEvent.keyDown(document.activeElement!, { key: "End" });
-    expect(document.activeElement).toBe(radios(them)[radios(them).length - 1]);
-    expect(radios(them)[radios(them).length - 1].getAttribute("aria-checked")).toBe("true");
-    fireEvent.keyDown(document.activeElement!, { key: "Home" });
-    expect(document.activeElement).toBe(radios(them)[0]);
-
-    // the You group has its own single stop and is unaffected
-    expect(radios(groups[0]).filter((r) => r.tabIndex === 0)).toHaveLength(1);
+  it("shows a privacy notice before Groq can send cloud audio", async () => {
+    render(<STTSetupStep />);
+    await screen.findAllByRole("radiogroup");
+    expect(screen.getByText(/Cloud transcription is blocked while Private Local is on/)).toBeInTheDocument();
   });
 });

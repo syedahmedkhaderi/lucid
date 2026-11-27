@@ -25,6 +25,7 @@ import type {
   GroqConfig,
   IpolicyStatus,
   LocalSTTEngineInfo,
+  LocalSTTCapabilities,
   Meeting,
   MeetingSummary,
   ModelInfo,
@@ -562,6 +563,11 @@ export async function updateWhisperDualPassConfig(
 }
 
 // == IPC: Local STT Models ==
+
+export async function getLocalSTTCapabilities(): Promise<LocalSTTCapabilities> {
+  const result = await invoke<string>("get_local_stt_capabilities");
+  return JSON.parse(result);
+}
 
 export async function listLocalSTTEngines(): Promise<LocalSTTEngineInfo[]> {
   const result = await invoke<string>("list_local_stt_engines");

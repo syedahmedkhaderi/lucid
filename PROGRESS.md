@@ -28,18 +28,21 @@ Updated: 2026-11-27
 ## Verified on this Apple Silicon Mac
 
 - `npm ci`: passed; 396 packages audited, 0 vulnerabilities. Node 24.1.0 emits a declared engine warning from jsdom (requires 24.15.0+ or 22.22.2+).
-- `npm test -- --reporter=dot`: 258 files passed; 3,942 tests passed; 2 skipped.
+- `npm test -- --reporter=dot`: 258 files passed; 3,940 tests passed; 2 skipped.
 - `npm run build`: passed. Existing Tailwind and ineffective dynamic-import warnings remain.
 - `source scripts/macos-env.sh; export CMAKE_MAKE_PROGRAM="$(command -v ninja)"; cargo test --quiet`: 2,037 passed; 24 ignored; 0 failed across all Rust targets. The explicit Ninja path is needed for the nested Cargo build in the ACP integration tests on this host.
 - Dependency scans: `npm audit --omit=dev` found 0 vulnerabilities. `cargo-audit` 0.23.0 found 0 vulnerable Rust packages after updating `cookie` to 0.18.3, `url` to 2.5.9, and `rustix` to 1.1.6; nine warnings remain for unmaintained/yanked crates and Linux GTK's `glib` unsoundness advisory.
 - Local retrieval evaluation: 100% hit@1 and hit@8 across 30 questions and 42 synthetic English/Japanese/Chinese meetings. Search benchmark: 500 × 10,000-word synthetic transcripts, 24,000 passages, p50 87.9 ms / p95 97.2 ms / max 99.6 ms over 120 warm searches; corpus indexing 6.2 s with SQLite optimized at level 3. Unoptimized SQLite baseline p95 was 109.9 ms. These do not measure generated answer accuracy or end-to-end latency.
-- `./build-mac.sh --no-install --bundles app`: passed after the credential-profile, write-only secret IPC, and updater-config startup fixes. The installed `/Applications/Lucid.app` was launched and reached the Lucid Setup welcome screen. The ARM64 bundle is 86.36 MiB; its `com.lucid.desktop` identifier and `0.1.0` version were checked, and `codesign --verify --deep --strict` passed. Notarization is unavailable because signing credentials are not configured.
-- Added the cross-platform `npm run setup` bootstrap. Both its dry run and full end-to-end macOS build/install passed; the freshly installed app launched and enumerated three microphones and two speakers without requesting microphone access. Windows setup is implemented but could not be exercised on this macOS host.
+- `./build-mac.sh --no-install --bundles app`: passed after the credential-profile, write-only secret IPC, and updater-config startup fixes. The installed `/Applications/Lucid.app` was launched and reached the Lucid dashboard. The ARM64 bundle is 86.99 MiB; its `com.lucid.desktop` identifier and `0.1.0` version were checked, and `codesign --verify --deep --strict` passed. Notarization is unavailable because signing credentials are not configured.
+- Added the cross-platform `npm run setup` bootstrap. Both its dry run and full end-to-end macOS build/install passed; the freshly installed app launched and enumerated three microphones and two speakers without requesting microphone access. The Windows build and installer path is exercised by the new hosted Windows workflow, but no run result is available yet.
 - Tauri's Finder-based DMG layout timed out. Built `src-tauri/target/release/bundle/dmg/Lucid_0.1.0_aarch64_secure_credentials_hfsplus.dmg` from the current app as a 28.5 MB compressed HFS+ image. `hdiutil verify` and read-only mounting passed; the image contains the validly signed `Lucid.app` and `Applications` shortcut. SHA-256: `5145590aeb46eabef5288f8e4baf4654c0c792594e8e11537ddbf7b2a9fdfd75`.
 - Gemini Live provider tests use a local mock WebSocket server; the provider has not been authenticated against Google's live endpoint.
 - A secret scan of non-generated repository files found none of the pasted Gemini key pattern.
 - `npm run license:inventory`: passed; 0 Rust packages lack declared license metadata; all 98 npm packages without declared SPDX expressions had a license-related file in the installed package tree. No legal review or license-text collection has been completed.
 - The test harness paths were updated for Cargo 1.100's build output layout.
+- Mac meeting-mode local STT smoke test: downloaded and checksum-verified Whisper Large v3 Turbo and Parakeet TDT 0.6B v3 through Lucid, selected each for live system-audio capture, and fed two synthesized English utterances through an actual private meeting session. Parakeet returned both utterances accurately; Whisper returned partial/revised text with noticeable recognition errors. This verifies local model loading, system loopback, and live transcript routing only; it is not a human-participant meeting, a broad accuracy benchmark, or a production call. No cloud STT request was used.
+- The setup wizard and Settings expose only Whisper Large v3 Turbo, Parakeet TDT 0.6B v3, and Groq Whisper for the supported transcription path. Local model download and activation are available in the app; unsupported hardware is offered Groq instead. The exact per-party live audio selectors now include installed Whisper Turbo and Parakeet models.
+- Added `.github/workflows/windows-ci.yml` to run frontend and Rust tests, build the app and NSIS installer on a hosted Windows runner, install the package, and smoke-launch the installed app. Hosted result pending.
 - Per-meeting document selection focused tests: 16 frontend tests and 2 Rust tests passed; TypeScript typecheck passed. PDF page extraction, page-aware indexing, page persistence, citation labels, source-exact fact extraction, v21 fact-cache rebuild, and no-generation direct numeric lookup have dedicated tests. Full frontend and Rust suites pass with these features included.
 
 ## Still required for the specified product
@@ -49,7 +52,8 @@ Updated: 2026-11-27
 - Gemini Live real-account and real-audio verification, performance testing, clearer disconnect recovery, provider-reported quota status, and profile last-use/runtime-error tracking. Keys are not rotated automatically because quotas are project-level, not key-level.
 - A task-based model registry and policy-driven provider selection.
 - Independent privacy/security audit and encryption at rest. Private Local cannot verify the behavior of local software you install.
-- Windows build/installer/audio validation and native overlay runtime testing.
+- Windows hosted build/installer/launch result, followed by validation on a physical Windows device with actual microphone and meeting system audio. A hosted runner cannot verify device-specific capture, GPU-driver detection, or permissions.
+- A human-participant or real conference meeting test; current meeting audio tests use synthesized speech.
 - Real synthetic/safely licensed speech benchmark and latency measurements.
 - Legal classification and notice collection/release check for the dependency inventory, signing, notarization, and Lucid update channel.
 

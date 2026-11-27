@@ -592,6 +592,13 @@ export interface LocalSTTEngineInfo {
   models: LocalSTTModelInfo[];
 }
 
+export interface LocalSTTCapabilities {
+  platform: string;
+  has_gpu: boolean;
+  local_models_available: boolean;
+  reason: string;
+}
+
 export interface WhisperDualPassConfig {
   shortChunkSecs: number;
   longChunkSecs: number;

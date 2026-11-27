@@ -6,6 +6,7 @@ import type { MeetingAudioConfig } from "../lib/types";
 import type * as IPC from "../lib/ipc";
 
 const savedApiKeys = vi.hoisted(() => new Set<string>());
+const localEngineInventory = vi.hoisted(() => ({ current: [] as unknown[] }));
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => null) }));
@@ -20,7 +21,7 @@ vi.mock("../lib/ipc", async (importOriginal) => ({
   }),
   getAudioSessions: async () => [],
   hasApiKey: async (provider: string) => savedApiKeys.has(provider),
-  listLocalSTTEngines: async () => [],
+  listLocalSTTEngines: async () => localEngineInventory.current as never,
   startDeviceMonitor: async () => {},
   stopDeviceMonitor: async () => {},
   stopAudioTest: async () => false,
@@ -42,6 +43,7 @@ const initialConfig: MeetingAudioConfig = {
 const initialDeepgramConfig = useConfigStore.getState().deepgramConfig;
 beforeEach(() => {
   savedApiKeys.clear();
+  localEngineInventory.current = [];
   useConfigStore.setState({ meetingAudioConfig: initialConfig });
 });
 afterEach(() => {
@@ -62,6 +64,33 @@ it("offers Azure MAI Streaming in each side's cloud provider picker when its key
     await user.click(maiChoice);
     expect(useConfigStore.getState().meetingAudioConfig?.[side.toLowerCase() as "you" | "them"].stt_provider)
       .toBe("azure_mai_streaming");
+  }
+});
+
+it("offers the downloaded Whisper Turbo model as a live provider for either meeting side", async () => {
+  localEngineInventory.current = [{
+    engine: "whisper_cpp",
+    name: "Whisper.cpp",
+    description: "Local Whisper transcription",
+    models: [{
+      id: "large-v3-turbo",
+      engine: "whisper_cpp",
+      name: "Whisper Large v3 Turbo",
+      size_bytes: 1_620_000_000,
+      accuracy_rating: 5,
+      speed_rating: 5,
+      is_streaming: true,
+      is_downloaded: true,
+    }],
+  }];
+  const user = userEvent.setup();
+  render(<MeetingAudioSettings />);
+
+  for (const side of ["You", "Them"] as const) {
+    await user.click(screen.getByRole("button", { name: `${side} speech-to-text provider` }));
+    await user.click(await screen.findByRole("button", { name: "Whisper Large v3 Turbo" }));
+    expect(useConfigStore.getState().meetingAudioConfig?.[side.toLowerCase() as "you" | "them"])
+      .toMatchObject({ stt_provider: "whisper_cpp", local_model_id: "large-v3-turbo" });
   }
 });
 

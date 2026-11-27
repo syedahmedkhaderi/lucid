@@ -1,4 +1,5 @@
 pub mod downloader;
+pub mod capabilities;
 pub mod model_discovery;
 pub mod model_registry;
 

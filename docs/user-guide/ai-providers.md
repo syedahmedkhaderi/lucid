@@ -186,25 +186,9 @@ Ollama is the easiest way to run a local LLM. Lucid auto-detects it on startup.
 
 ## Setting Up Local Whisper (Local STT)
 
-Local Whisper provides high-accuracy transcription without sending audio to the cloud.
+Lucid offers two in-app local downloads when a Mac or GPU is detected: **Whisper Large v3 Turbo** (about 1.6 GB) and **NVIDIA Parakeet TDT 0.6B v3** (about 465 MB). Choose a model for each meeting side, download it in the setup step, and Lucid verifies the download before making it available to activate. The model runs locally and does not need an API key.
 
-1. Open Settings > Speech-to-Text
-2. Select a local engine: **whisper.cpp**, **Sherpa-ONNX**, **ORT Streaming**, or **Parakeet TDT**
-3. Click **Download Model** and choose a model size:
-
-| Model | Size | Accuracy | Speed | RAM Required |
-|-------|------|----------|-------|-------------|
-| tiny | ~75 MB | Fair | Very Fast | ~1 GB |
-| base | ~150 MB | Good | Fast | ~1 GB |
-| small | ~500 MB | Good | Medium | ~2 GB |
-| medium | ~1.5 GB | Very Good | Slow | ~4 GB |
-| large-v3 | ~3 GB | Excellent | Very Slow | ~8 GB |
-
-4. Wait for the download to complete
-5. Select the model in the STT provider dropdown
-6. Test with the audio level meters to verify transcription
-
-**Tip**: Start with the `small` model for a good balance of accuracy and speed. Move to `large-v3` if accuracy is critical and your hardware can handle it.
+Without a Mac or detected GPU, setup offers **Groq Whisper** as the cloud transcriber. Add its key on that same setup screen. Cloud transcription requires Cloud Allowed mode; Private Local blocks audio uploads. Groq's [rate-limit table](https://console.groq.com/docs/rate-limits) lists 28,800 audio seconds per day (8 hours) for Whisper Large v3 Turbo on the documented Developer-plan limits; actual account limits depend on plan and account, so check the Groq Console instead of assuming this is a free-tier allowance.
 
 ## Setting Up Cloud Providers (API Keys)
 

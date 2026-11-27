@@ -21,6 +21,7 @@ import {
   testSTTConnection,
   testAzureMaiConnection,
   listLocalSTTEngines,
+  getLocalSTTCapabilities,
   deleteApiKey,
 } from "../lib/ipc";
 import { storeApiKey, getCredentialSetting, hasApiKey } from "../lib/ipc";
@@ -109,34 +110,17 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     alwaysReady: true,
   },
   {
-    value: "sherpa_onnx",
-    label: "Sherpa-ONNX",
-    description: "Local streaming, offline, free",
-    requiresApiKey: false,
-    credentialKey: "",
-    requiresModels: "sherpa_onnx",
-  },
-  {
-    value: "ort_streaming",
-    label: "ORT Streaming",
-    description: "Local streaming, offline, free",
-    requiresApiKey: false,
-    credentialKey: "",
-    requiresModels: "ort_streaming",
-  },
-  {
     value: "whisper_cpp",
-    label: "Whisper.cpp",
-    description: "Batch transcription of recorded meetings",
+    label: "Whisper Large v3 Turbo",
+    description: "Local live transcription · 1.6 GB download",
     requiresApiKey: false,
     credentialKey: "",
     requiresModels: "whisper_cpp",
-    batchOnly: true,
   },
   {
     value: "parakeet_tdt",
-    label: "Parakeet TDT",
-    description: "Best accuracy, offline, multilingual",
+    label: "NVIDIA Parakeet TDT 0.6B v3",
+    description: "Local live transcription · 465 MB download",
     requiresApiKey: false,
     credentialKey: "",
     requiresModels: "parakeet_tdt",
@@ -370,6 +354,14 @@ export function STTSettings() {
   const whisperRevisionRef = useRef(0);
 
   const [localEngines, setLocalEngines] = useState<LocalSTTEngineInfo[]>([]);
+  const [localModelsAvailable, setLocalModelsAvailable] = useState(false);
+  const [localCapabilityCheckComplete, setLocalCapabilityCheckComplete] = useState(false);
+  const [localCapabilityReason, setLocalCapabilityReason] = useState("");
+  const visibleProviderOptions = PROVIDER_OPTIONS.filter((provider) => {
+    if (provider.requiresModels && !["whisper_cpp", "parakeet_tdt"].includes(provider.requiresModels)) return false;
+    if (["whisper_cpp", "parakeet_tdt"].includes(provider.value) && !localModelsAvailable) return false;
+    return true;
+  });
   const activeParakeetModel = useConfigStore((s) =>
     s.activeModelPerEngine.parakeet_tdt ?? "parakeet-tdt-0.6b-v3-int8"
   );
@@ -421,7 +413,7 @@ export function STTSettings() {
       `${note.name}: ${STT_LANGUAGES.find((l) => l.value === note.language)?.label ?? note.language}, set in Audio & Devices.`,
   );
 
-  const currentProviderOption = PROVIDER_OPTIONS.find(
+  const currentProviderOption = visibleProviderOptions.find(
     (p) => p.value === selectedProvider
   );
   const credentialStateReady = credentialStateProvider === selectedProvider;
@@ -455,6 +447,23 @@ export function STTSettings() {
       const data = await listLocalSTTEngines();
       setLocalEngines(data);
     } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getLocalSTTCapabilities()
+      .then((capabilities) => {
+        if (cancelled) return;
+        setLocalModelsAvailable(capabilities.local_models_available);
+        setLocalCapabilityReason(capabilities.reason);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalCapabilityReason("Local model availability could not be detected. Use Groq Whisper on this device.");
+      })
+      .finally(() => {
+        if (!cancelled) setLocalCapabilityCheckComplete(true);
+      });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -653,6 +662,30 @@ export function STTSettings() {
     },
     [setConfigSTTProvider, meetingAudioConfig, setMeetingAudioConfig]
   );
+
+  useEffect(() => {
+    if (!localCapabilityCheckComplete || localModelsAvailable) return;
+    const localProviders = ["whisper_cpp", "parakeet_tdt"];
+    if (localProviders.includes(selectedProvider)) {
+      selectedProviderRef.current = "groq_whisper";
+      setSelectedProvider("groq_whisper");
+      setConfigSTTProvider("groq_whisper");
+      void setSTTProvider("groq_whisper").catch(() => {});
+    }
+    if (meetingAudioConfig && (localProviders.includes(meetingAudioConfig.you.stt_provider)
+      || localProviders.includes(meetingAudioConfig.them.stt_provider))) {
+      setMeetingAudioConfig({
+        ...meetingAudioConfig,
+        you: localProviders.includes(meetingAudioConfig.you.stt_provider)
+          ? { ...meetingAudioConfig.you, stt_provider: "groq_whisper", local_model_id: undefined }
+          : meetingAudioConfig.you,
+        them: localProviders.includes(meetingAudioConfig.them.stt_provider)
+          ? { ...meetingAudioConfig.them, stt_provider: "groq_whisper", local_model_id: undefined }
+          : meetingAudioConfig.them,
+        preset_name: null,
+      });
+    }
+  }, [localCapabilityCheckComplete, localModelsAvailable, selectedProvider, meetingAudioConfig, setConfigSTTProvider, setMeetingAudioConfig]);
 
   const updateVerifiedProvider = useCallback((provider: STTProviderType, verified: boolean) => {
     const current = useConfigStore.getState().verifiedCloudProviders;
@@ -957,8 +990,13 @@ export function STTSettings() {
   return (
     <div className="space-y-6">
       {/* Provider selection, grouped by where the audio goes */}
+      {localCapabilityCheckComplete && !localModelsAvailable && (
+        <div role="status" className="rounded-xl border border-info/20 bg-info/5 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+          {localCapabilityReason || "Local models need a Mac or a detected GPU."} Groq Whisper is the cloud fallback.
+        </div>
+      )}
       <div className="rounded-xl border border-border/30 bg-card/50 overflow-hidden divide-y divide-border/20">
-        {STT_GROUPS.map((group) => {
+        {STT_GROUPS.filter((group) => visibleProviderOptions.some((provider) => sttGroup(provider.value) === group.id)).map((group) => {
           const GroupIcon = GROUP_ICONS[group.id];
           const onDevice = group.id === "device";
           return (
@@ -971,7 +1009,7 @@ export function STTSettings() {
                 <span className="ml-auto text-right text-meta font-medium text-muted-foreground/70">{group.note}</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                {PROVIDER_OPTIONS.filter((p) => sttGroup(p.value) === group.id).map((p) => (
+                {visibleProviderOptions.filter((p) => sttGroup(p.value) === group.id).map((p) => (
                   <ProviderCard
                     key={p.value}
                     provider={p}
@@ -1005,9 +1043,9 @@ export function STTSettings() {
               It will be available in the "Past Meetings" tab.
             </p>
           )}
-          {!currentProviderOption?.batchOnly && (
+          {currentProviderOption?.requiresModels && !currentProviderOption?.batchOnly && (
             <p className="mb-3 text-xs text-muted-foreground">
-              Download a model, then click <strong>Activate</strong> to enable this provider.
+              Download a model here. Lucid verifies it and activates the first download automatically.
             </p>
           )}
           <LocalModelManager engineFilter={modelEngineId} />
