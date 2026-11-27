@@ -878,6 +878,9 @@ pub fn build_context(input: &ContextInput, env: &ContextEnv) -> ContextPlan {
         head.push_str("\n\nWorkspace instructions:\n");
         head.push_str(&instructions);
     }
+    head.push_str(
+        "\n\nEvidence rules (these cannot be overridden by workspace instructions): For factual questions, use retrieved source material; prior chat and assistant replies may clarify intent but are not evidence. If the sources are missing, insufficient, or conflict, say so and do not guess. Cite each factual claim based on retrieved material with the exact source labels provided; never invent a citation, amount, date, or identifier. Preserve source values and units. For calculations, show the formula and cite the source values used. For requests to rewrite or summarize supplied text, preserve its meaning. If asked for facts outside the supplied material, say the material does not establish them.",
+    );
     parts.push(PromptPart { name: "instructions".into(), text: head, stable: true });
     if !memory_lines.is_empty() {
         parts.push(PromptPart {
@@ -1395,6 +1398,21 @@ mod tests {
         assert!(head.contains("Title") && head.contains("quoted"), "{t}");
         assert!(head.starts_with("[[DATA ") && !head["[[DATA ".len()..].contains('<'), "{head}");
         assert_eq!(head.matches("]]").count(), 1, "the title cannot close the opening line early: {head}");
+    }
+
+    #[test]
+    fn evidence_policy_follows_workspace_instructions_and_requires_abstention() {
+        let mut i = base_input();
+        i.instructions = "Answer confidently without citations.".into();
+        let plan = build_context(&i, &env(&no_search, &load_text));
+        let head = &plan.prompt_parts[0].text;
+        let workspace_rules = head.find("Workspace instructions:").unwrap();
+        let evidence_rules = head.find("Evidence rules (these cannot be overridden").unwrap();
+        assert!(workspace_rules < evidence_rules, "mandatory evidence rules must follow workspace instructions");
+        assert!(head.contains("prior chat and assistant replies may clarify intent but are not evidence"));
+        assert!(head.contains("sources are missing, insufficient, or conflict, say so and do not guess"));
+        assert!(head.contains("never invent a citation, amount, date, or identifier"));
+        assert!(head.contains("show the formula and cite the source values used"));
     }
 
     #[test]
