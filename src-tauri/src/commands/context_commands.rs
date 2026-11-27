@@ -43,21 +43,29 @@ fn load_context_file_now(file_path: &str, workspace_id: Option<&str>, state: &Ap
     // Persist to DB so the resource survives app restarts, with its text (so a
     // start reads no file) and, when given, its workspace in the same step.
     // Without a workspace it is filed nowhere and no meeting uses it.
-    if let Some(db_arc) = state.database.as_ref() {
-        if let Ok(db_guard) = db_arc.lock() {
-            let saved = if crate::workspace::available() {
-                crate::workspace::documents::add_document(db_guard.connection(), &resource, &text, workspace_id)
-            } else {
-                crate::db::context::add_context_resource(
-                    db_guard.connection(),
-                    &crate::workspace::documents::db_row(&resource),
-                )
-                .map_err(|e| e.to_string())
-            };
-            if let Err(e) = saved {
-                log::warn!("Failed to persist context resource to DB: {}", e);
-            }
+    let saved = if let Some(db_arc) = state.database.as_ref() {
+        match db_arc.lock() {
+            Ok(db_guard) if crate::workspace::available() =>
+                crate::workspace::documents::add_document(
+                    db_guard.connection(), &resource, &text, workspace_id,
+                ),
+            Ok(db_guard) if workspace_id.is_none() => crate::db::context::add_context_resource(
+                db_guard.connection(),
+                &crate::workspace::documents::db_row(&resource),
+            ).map_err(|e| e.to_string()),
+            Ok(_) => Err("Workspace persistence is unavailable".to_string()),
+            Err(e) => Err(format!("Failed to lock the database: {e}")),
         }
+    } else if workspace_id.is_some() {
+        Err("The database is unavailable, so the document could not be added to this workspace".to_string())
+    } else {
+        Ok(())
+    };
+    if let Err(e) = saved {
+        if let Ok(mut ctx) = ctx_mgr.lock() {
+            let _ = ctx.remove_file(&resource.id);
+        }
+        return Err(e);
     }
 
     crate::workspace_chat::runtime::documents_changed(&state.workspace_chat);

@@ -6,6 +6,7 @@ pub mod fts_store;
 pub mod search;
 pub mod prompt_builder;
 pub mod file_processor;
+pub mod pptx;
 pub mod transcript_indexer;
 
 #[cfg(test)]

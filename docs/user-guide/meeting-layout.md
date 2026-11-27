@@ -1,6 +1,6 @@
 # Meeting Window Layout
 
-The meeting window is made of panels: the transcript, the assistant, live notes, talking points and so on. You can choose which panels to show and where each one sits. NexQ remembers your arrangement for the next meeting.
+The meeting window is made of panels: the transcript, the assistant, live notes, talking points and so on. You can choose which panels to show and where each one sits. Lucid remembers your arrangement for the next meeting.
 
 By default the window looks like it always did, with the transcript on the left and the assistant on the right. This layout is called **Classic**.
 
@@ -69,7 +69,7 @@ Release to drop it. `Escape` cancels the drag. Drag a tab sideways along its own
 | `Alt+Shift+Left` and `Alt+Shift+Right` | Move this tab one place in its row |
 | `Menu` key, `Shift+F10` or `Alt+Down` | Open the **Move** menu |
 
-The **Move** menu is also under the **...** at the end of each tab row, and on right-click. It lists every place the panel can go, for example **Left of Assistant**, **Below Transcript**, **Tab with Assistant**, **Split out to the right**, **Left edge**, plus **Collapse to a strip** and **Hide Transcript**. NexQ announces each move to screen readers.
+The **Move** menu is also under the **...** at the end of each tab row, and on right-click. It lists every place the panel can go, for example **Left of Assistant**, **Below Transcript**, **Tab with Assistant**, **Split out to the right**, **Left edge**, plus **Collapse to a strip** and **Hide Transcript**. Lucid announces each move to screen readers.
 
 ## Resize
 
@@ -101,18 +101,18 @@ In a narrow window the header keeps two rows instead of three. Below about 1040 
 
 The model and speech chips in the footer of the meeting window are buttons. `Tab` to one, press `Enter` or `Space` to open its list, and focus moves into the list: `Up`, `Down`, `Home` and `End` move, `Escape` closes it and focus returns to the chip. The lists open above the footer, inside the window, so a narrow window never cuts them off. The mute chips are buttons too (**Mute You**, **Unmute Them**).
 
-When the window is too small for the arrangement, NexQ doesn't squeeze panels until they are unreadable. It first lets a side-by-side pair stack on top of each other, and if that doesn't fit either, it merges the panels into one set of tabs. Your saved layout isn't changed, so making the window bigger brings it back. Classic is designed to look the same as before at 400, 500 and 900 pixels wide. While the panels are merged, dragging and moving are off.
+When the window is too small for the arrangement, Lucid doesn't squeeze panels until they are unreadable. It first lets a side-by-side pair stack on top of each other, and if that doesn't fit either, it merges the panels into one set of tabs. Your saved layout isn't changed, so making the window bigger brings it back. Classic is designed to look the same as before at 400, 500 and 900 pixels wide. While the panels are merged, dragging and moving are off.
 
 The meeting window opens at 500 by 700 pixels (smallest 400 by 480).
 
 ### Where the windows come back
 
-NexQ remembers the size and place of the dashboard and the meeting window, and whether the dashboard was maximised (the size it had before is kept behind it, and a dashboard that is still hidden is maximised again once it is shown). Starting a meeting, ending one, minimising, hiding to the tray, switching with `Ctrl+B` and restarting for an update all put them back where you left them.
+Lucid remembers the size and place of the dashboard and the meeting window, and whether the dashboard was maximised (the size it had before is kept behind it, and a dashboard that is still hidden is maximised again once it is shown). Starting a meeting, ending one, minimising, hiding to the tray, switching with `Ctrl+B` and restarting for an update all put them back where you left them.
 
 - **Each set of monitors has its own place** (told apart by the monitors and their scale, not by the taskbar: hiding the taskbar or showing a captions bar changes nothing). Docked at your desk and undocked on the laptop are remembered separately (the last six setups). Unplugging a monitor never overwrites the place saved for the setup with it. Plug it back in and the windows go there again.
-- **A setup NexQ has not seen** leaves a window where it is, and only brings it back inside a screen if it could no longer be reached. At app start it gets the same relative place on your main screen, the same size.
+- **A setup Lucid has not seen** leaves a window where it is, and only brings it back inside a screen if it could no longer be reached. At app start it gets the same relative place on your main screen, the same size.
 - **Mixed screen scales** (for example 125% and 150%) are handled: a window comes back on the right monitor at the right size.
-- **While you drag a window**, NexQ never moves it. If the monitors change while you are working, the windows move to that setup's place a moment after you let go.
+- **While you drag a window**, Lucid never moves it. If the monitors change while you are working, the windows move to that setup's place a moment after you let go.
 - The place is saved a moment after you move or resize, and again when you close the window, quit, install an update or end a meeting.
 
 If a window ends up out of reach, use **Settings > General > Reset window positions** (your main screen), or the tray menu item **Bring windows to this screen** (the screen the mouse is on, otherwise the main one). Both put the dashboard and the meeting window back on that screen, not maximised, and forget the saved places.
@@ -121,7 +121,7 @@ The layout of the panels (splits, sizes, tabs, collapsed strips, hidden panels, 
 
 ## Readability
 
-The meeting window is see-through, and what is behind it is unknown (a white page, a black one, a busy photo). At every transparency step NexQ keeps the window's own text and icons (the header, the footer, badges and labels) readable against the worst background they could sit on. It first makes the muted colours a step stronger, and only if that is not enough adds a backing behind the header and the footer. At full opacity nothing changes. Panels with text to read (Transcript, Assistant, Live notes, Brief, Talking points and AI Call Log) also keep a backing behind the text. Together with the window, it stays at least about 85 percent opaque. The default transcript and answer colours follow the theme, so they read in the light theme too.
+The meeting window is see-through, and what is behind it is unknown (a white page, a black one, a busy photo). At every transparency step Lucid keeps the window's own text and icons (the header, the footer, badges and labels) readable against the worst background they could sit on. It first makes the muted colours a step stronger, and only if that is not enough adds a backing behind the header and the footer. At full opacity nothing changes. Panels with text to read (Transcript, Assistant, Live notes, Brief, Talking points and AI Call Log) also keep a backing behind the text. Together with the window, it stays at least about 85 percent opaque. The default transcript and answer colours follow the theme, so they read in the light theme too.
 
 ## Tips
 

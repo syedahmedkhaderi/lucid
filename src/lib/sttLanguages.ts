@@ -75,6 +75,7 @@ export function supportsSTTAutoDetection(
     case "whisper_api":
     case "groq_whisper":
     case "cartesia":
+    case "gemini_live":
     case "azure_mai_streaming":
       return true;
     default:

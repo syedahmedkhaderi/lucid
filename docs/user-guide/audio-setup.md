@@ -1,10 +1,10 @@
 # Audio Setup Guide
 
-NexQ uses a dual-party audio model to capture and transcribe both sides of a conversation independently. This guide covers how audio capture works, how to configure your devices, and how to troubleshoot common audio issues.
+Lucid uses a dual-party audio model to capture and transcribe both sides of a conversation independently. This guide covers how audio capture works, how to configure your devices, and how to troubleshoot common audio issues.
 
 ## How Dual-Party Audio Works
 
-NexQ captures two independent audio streams:
+Lucid captures two independent audio streams:
 
 - **"You" channel** -- your microphone, capturing your voice
 - **"Them" channel** -- system output capture (WASAPI on Windows, Core Audio taps on macOS 14.2+), capturing remote participants
@@ -45,19 +45,19 @@ If the level meter barely moves when you speak:
 
 1. Open **Windows Settings > System > Sound > Input**
 2. Select your microphone and increase the **Input volume**
-3. Return to NexQ and test again
+3. Return to Lucid and test again
 4. The meter should show clear peaks when you speak at a normal volume
 
 ## System Audio Capture
 
 ### How It Works
 
-NexQ records the audio playing through your selected output device, including Zoom, Teams, Google Meet, and other applications.
+Lucid records the audio playing through your selected output device, including Zoom, Teams, Google Meet, and other applications.
 
 - **Windows 10 and 11:** native WASAPI loopback.
 - **macOS 14.2 and later:** a native Core Audio tap on the selected output. The input and output of the same audio interface remain independent.
 - **No virtual cable required** on these platforms.
-- **macOS permissions:** grant NexQ microphone and system-audio recording access in **System Settings > Privacy & Security**. Reopen NexQ if macOS requests it.
+- **macOS permissions:** grant Lucid microphone and system-audio recording access in **System Settings > Privacy & Security**. Reopen Lucid if macOS requests it.
 - **Older macOS:** native output capture is unavailable. A virtual loopback device exposed as an input can be selected instead.
 
 ### Configuration
@@ -71,10 +71,10 @@ NexQ records the audio playing through your selected output device, including Zo
 Select the device that your conferencing app (Zoom, Teams, etc.) uses for audio output:
 
 - **Speakers** -- if you use external speakers (not recommended for meetings due to echo)
-- **Headphones / headset** -- the best choice. NexQ captures the audio stream even though it goes to your headphones
+- **Headphones / headset** -- the best choice. Lucid captures the audio stream even though it goes to your headphones
 - **Default output device** -- if unsure, this is usually correct
 
-You can verify by playing audio through your meeting app and checking that the "Them" level meter in NexQ responds.
+You can verify by playing audio through your meeting app and checking that the "Them" level meter in Lucid responds.
 
 ## Transcription on macOS
 
@@ -92,13 +92,13 @@ Each card in **Settings > Audio & Devices** has a **Language** menu. It starts o
 
 ## Recording
 
-NexQ can record meeting audio alongside the live transcript.
+Lucid can record meeting audio alongside the live transcript.
 
 ### Enabling Recording
 
 1. Open Settings > Audio
 2. Toggle **Recording** on
-3. Recordings are saved as WAV files in the app data directory (`%APPDATA%\com.nexq.app\`)
+3. Recordings are saved as WAV files in the app data directory (`%APPDATA%\com.lucid.desktop\recordings\` on Windows, or `~/Library/Application Support/com.lucid.desktop/recordings/` on macOS)
 
 ### Playback
 
@@ -114,10 +114,10 @@ NexQ can record meeting audio alongside the live transcript.
 
 **Solution**:
 
-1. Verify you selected the correct **output device** in NexQ -- it must match the device your meeting app plays audio through
+1. Verify you selected the correct **output device** in Lucid -- it must match the device your meeting app plays audio through
 2. Check the output used by your meeting app in **Windows Settings > System > Sound** or **macOS System Settings > Sound > Output**
 3. On macOS, check microphone and system-audio recording permissions in **System Settings > Privacy & Security**
-4. If startup fails, read the error notification; NexQ does not silently substitute the microphone for an unavailable output
+4. If startup fails, read the error notification; Lucid does not silently substitute the microphone for an unavailable output
 
 ### Microphone Too Quiet
 
@@ -137,14 +137,14 @@ NexQ can record meeting audio alongside the live transcript.
 
 **Solution**:
 
-- **Keep Echo cancellation on** (Settings > Audio, on by default). With speakers, your microphone also hears the other side; NexQ removes what it plays through the "Them" output from the microphone before transcribing it. It works when "Them" is an output device.
+- **Keep Echo cancellation on** (Settings > Audio, on by default). With speakers, your microphone also hears the other side; Lucid removes what it plays through the "Them" output from the microphone before transcribing it. It works when "Them" is an output device.
 - **Use headphones.** This is the most effective fix. Speakers feed your voice back into the system audio loopback.
 - Select an **input** for "You" and an **output** for "Them". Both may belong to the same audio interface; choosing its input twice intentionally duplicates the microphone.
 - Enable echo cancellation in your meeting app (Zoom, Teams, etc.)
 
 ### Wrong Audio Device Selected
 
-**Problem**: NexQ is capturing audio from the wrong device.
+**Problem**: Lucid is capturing audio from the wrong device.
 
 **Solution**:
 
@@ -168,14 +168,14 @@ NexQ can record meeting audio alongside the live transcript.
 
 ![Noise Preset settings panel](../../website/public/screenshots/Setting/Setting-Noise%20Preset.png)
 
-NexQ includes noise preset configurations to optimize audio quality for transcription. Select an environment preset that matches your meeting conditions (quiet room, office, cafe) to improve STT accuracy. Noise reduction and voice activity detection settings help filter out background noise and ensure clean audio reaches the transcription engine.
+Lucid includes noise preset configurations to optimize audio quality for transcription. Select an environment preset that matches your meeting conditions (quiet room, office, cafe) to improve STT accuracy. Noise reduction and voice activity detection settings help filter out background noise and ensure clean audio reaches the transcription engine.
 
 ## Tips
 
 - **Always test before important meetings.** Use the Test buttons in Settings > Audio to verify both channels before starting.
 - **Use headphones for meetings.** This prevents echo and gives you cleaner "Them" channel transcription.
-- **Check device selection after plugging in new devices.** Windows may change the default device, which can affect NexQ's audio capture.
-- **For virtual meetings**, NexQ captures system audio from any app -- Zoom, Teams, Google Meet, Discord, or even a phone call played through speakers.
+- **Check device selection after plugging in new devices.** Windows may change the default device, which can affect Lucid's audio capture.
+- **For virtual meetings**, Lucid captures system audio from any app -- Zoom, Teams, Google Meet, Discord, or even a phone call played through speakers.
 - **Muting a channel** pauses STT transcription for that source but does not stop audio capture or recording. Use this if you want to temporarily stop transcription without ending the meeting.
 
 ## Next Steps

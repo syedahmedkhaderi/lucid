@@ -544,6 +544,7 @@ export type STTProviderType =
   | "azure_mai_streaming"
   | "groq_whisper"
   | "cartesia"
+  | "gemini_live"
   | "web_speech"
   | "sherpa_onnx"
   | "ort_streaming"
@@ -665,7 +666,7 @@ export interface ContextResource {
   status?: "ready" | "loading" | "missing";
 }
 
-export type ContextFileType = "pdf" | "txt" | "md" | "docx" | "note";
+export type ContextFileType = "pdf" | "txt" | "md" | "docx" | "pptx" | "note";
 
 /** `get_workspace_note`: a note as the edit dialog shows it (mirrors `NoteText` in Rust). */
 export interface NoteText {

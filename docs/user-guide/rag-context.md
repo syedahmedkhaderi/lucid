@@ -1,14 +1,14 @@
 # Using Context Intelligence (RAG)
 
-NexQ's Context Intelligence feature lets you load your own documents so the AI can reference them during meetings. When you load your resume, a job description, course notes, or project documentation, the AI uses that context to provide more relevant and informed responses.
+Lucid's Context Intelligence feature lets you load your own documents so the AI can reference them during meetings. When you load your resume, a job description, course notes, or project documentation, the AI uses that context to provide more relevant and informed responses.
 
 Documents belong to [workspaces](workspaces.md). A meeting only uses the documents of its own workspace, of General if that workspace uses it, and of workspaces you chose to also use for that meeting. Documents of other workspaces never reach its answers.
 
 ## Prerequisites
 
-- NexQ installed and running ([Getting Started](getting-started.md))
+- Lucid installed and running ([Getting Started](getting-started.md))
 - An LLM provider configured ([AI Providers Guide](ai-providers.md))
-- Documents you want to load (PDF, DOCX, TXT, or MD format)
+- Documents you want to load (PDF, DOCX, PPTX, TXT, or Markdown)
 
 ## What RAG Does
 
@@ -28,8 +28,11 @@ The result: the AI can reference your documents when generating responses, makin
 |--------|-----------|-------|
 | PDF | `.pdf` | Text-based PDFs. Scanned image PDFs are not supported. |
 | Word | `.docx` | Microsoft Word documents |
+| PowerPoint | `.pptx` | Slide text and basic table rows; speaker notes, charts, and text embedded in images are not extracted |
 | Plain Text | `.txt` | Any plain text file |
 | Markdown | `.md` | Markdown formatted documents |
+
+Each file must be non-empty and no larger than 50 MB. A workspace can contain up to ten document entries; this is a workspace-wide limit, not a separate limit for each meeting. Legacy `.doc` and `.ppt` files and OCR for scanned PDFs are not supported.
 
 ## Loading Documents
 
@@ -45,18 +48,18 @@ To use a document you already added in another workspace, choose **Add > Files, 
 
 ### What Happens During Indexing
 
-When you add a document, NexQ processes it through a 4-phase pipeline:
+When you add a document, Lucid processes it through a 4-phase pipeline:
 
 1. **Extract** -- reads text content from the file
 2. **Chunk** -- splits the text into overlapping segments (configurable chunk size)
 3. **Embed** -- generates vector embeddings for each chunk
 4. **Index** -- stores chunks and embeddings in the local SQLite database with full-text search support
 
-Indexing is fully asynchronous -- progress events (`rag_index_progress`) update the UI in real-time. You can continue using NexQ while indexing runs, but AI responses will only reference indexed content.
+Indexing is fully asynchronous -- progress events (`rag_index_progress`) update the UI in real-time. You can continue using Lucid while indexing runs, but AI responses will only reference indexed content.
 
 ## How Search Works
 
-When the AI needs context during a meeting, NexQ searches your indexed documents using hybrid search:
+When the AI needs context during a meeting, Lucid searches your indexed documents using hybrid search:
 
 - **Vector similarity search** -- finds chunks with meaning similar to the current conversation
 - **Full-text search (FTS)** -- finds chunks containing specific keywords or phrases
@@ -125,7 +128,7 @@ To remove documents from the RAG index:
 3. Choose **Remove from this workspace** to stop using it here. Other workspaces keep it
 4. Choose **Remove from library** to remove it everywhere. It leaves every workspace that uses it, and its chunks and embeddings are removed from the index
 
-Removing a document does not delete the original file. It only removes it from NexQ.
+Removing a document does not delete the original file. It only removes it from Lucid.
 
 ## Tips
 

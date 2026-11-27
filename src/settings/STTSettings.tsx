@@ -189,6 +189,13 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
     requiresApiKey: true,
     credentialKey: "cartesia",
   },
+  {
+    value: "gemini_live",
+    label: "Gemini Live Transcribe",
+    description: "Low-latency multilingual streaming; cloud audio processing",
+    requiresApiKey: true,
+    credentialKey: "gemini_transcribe_live",
+  },
 ];
 
 
@@ -1087,6 +1094,11 @@ export function STTSettings() {
       {/* API Key — cloud providers only. Save & Test flow: test first, persist only on success. */}
       {currentProviderOption?.requiresApiKey && (
         <div className="rounded-xl border border-border/30 bg-card/50 p-5">
+          {selectedProvider === "gemini_live" && (
+            <p className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs leading-relaxed text-warning">
+              Gemini receives live meeting audio. Google says free-tier content may be used to improve its products. Use it only when cloud processing is allowed. Offline speech alone does not make the whole app private; other AI features may still use cloud services.
+            </p>
+          )}
           <label htmlFor="stt-provider-api-key" className="mb-3 block text-sm font-semibold text-primary/80">
             {whisperEndpointSet ? "API key for this server (optional)" : "API Key"}
           </label>
@@ -1472,6 +1484,7 @@ function ProviderIcon({ value, isSelected }: { value: STTProviderType; isSelecte
     case "azure_speech":
     case "azure_mai_streaming":
     case "cartesia":
+    case "gemini_live":
       return <Cloud className={cls} />;
     case "groq_whisper":
       return <Zap className={cls} />;

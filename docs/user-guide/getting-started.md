@@ -1,115 +1,44 @@
-# Getting Started with NexQ
+# Getting started with Lucid
 
-NexQ is an AI Meeting Assistant and Real-Time Interview Copilot for Windows. It runs as a desktop application with real-time transcription, AI-powered assistance, and an always-on-top overlay you can use during meetings.
+Lucid is a desktop meeting assistant built on Tauri, Rust, and React. This checkout is an Apple Silicon macOS development build. Windows is the intended production platform, but a Windows build and audio test have not been run.
 
-## System Requirements
+## Open this build
 
-- Windows 10 or Windows 11
-- 8 GB RAM minimum (16 GB recommended for local STT/LLM)
-- Microphone for voice capture
-- Internet connection (for cloud STT/LLM providers) or local models installed
+The project produces an app bundle at `src-tauri/target/release/bundle/macos/Lucid.app` and a disk image at `Lucid_0.1.0_macOS_arm64.dmg` in the project root. The bundle is ad hoc signed and the disk image is not notarized; Gatekeeper behavior has not been verified.
 
-## Installation
+## First launch
 
-### 1. Download the Installer
+1. Open Lucid and complete the setup wizard.
+2. Choose your microphone for **You** and your system output for **Them**. Grant macOS microphone and screen/audio capture permissions if prompted.
+3. Choose a speech provider in **Settings → STT Providers**. For Gemini Live, select **Gemini Live Transcribe**, enter a key in the password field, then choose **Save & Test**. The key is stored through the operating system credential store.
+4. Add files to the workspace you will use. Current uploads support PDF, DOCX, PPTX, TXT, and Markdown; files must be under 50 MB each, with up to ten document entries per workspace. This limit is currently workspace-wide rather than meeting-specific.
+5. Wait for indexing to finish, then choose **Start Meeting**.
 
-Download the latest `.exe` installer from the [GitHub Releases](https://github.com/naxhq/NexQ/releases) page. The file is named `NexQ_x.x.x_x64-setup.exe`.
+## Speech providers
 
-### 2. Run the Installer
+Gemini Live streams 16 kHz audio to Google's cloud service and supports interim and final transcripts plus automatic language detection. Google documents a 10-minute session limit; Lucid refreshes the session before that limit. The provider has not been tested against a real Gemini account or real meeting audio in this checkout.
 
-Double-click the downloaded `.exe` file. You may see a Windows SmartScreen warning since the app is not yet code-signed.
+Google's pricing page says content submitted on the free tier may be used to improve its products. Do not send confidential meeting audio to the free tier. Gemini quotas are applied per project, not per key, so Lucid does not rotate keys to get around quota errors. See [Google's Live Transcription guide](https://ai.google.dev/gemini-api/docs/live-api/live-transcribe), [pricing](https://ai.google.dev/gemini-api/docs/pricing), and [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
 
-**If Windows SmartScreen appears:**
+Local speech options are available under **Settings → STT Providers**. Download a model before selecting it in **Settings → Audio & Devices**. A local speech provider alone does not make the entire application private: the LLM and other features can still use cloud services. Lucid does not yet enforce an end-to-end private-local mode, so do not use confidential data until that boundary is implemented and verified.
 
-1. Click **"More info"** (the text link, not the button)
-2. Click **"Run anyway"**
+## Use documents
 
-The installer uses NSIS and installs per-user (no admin rights required). The default location is `%LOCALAPPDATA%\NexQ`.
+Open a workspace, choose **Add** in the Library, and select files or a folder. Lucid extracts and indexes supported file text locally. PPTX import preserves slide numbers, slide text, and basic table rows; it does not extract speaker notes, charts, or text embedded in images. Legacy DOC/PPT and scanned-PDF OCR are not supported yet. See [Using Context Intelligence](rag-context.md) for scope and extraction details.
 
-### 3. First Launch
+## Start and end a meeting
 
-After installation, NexQ starts automatically. You will see:
+Open the workspace you want, confirm its audio devices and speech providers, then select **Start Meeting**. The overlay shows the live transcript and meeting assistance. Use its controls to pause or end the meeting. Meeting history and transcripts are stored locally in the app's data directory.
 
-- **Launcher window** -- your workspaces: meetings, a chat across them, the files the AI can use, and settings. It opens at 1180x740 (smaller on a small screen) and remembers its size and place. See [Workspaces](workspaces.md)
-- **System tray icon** -- NexQ lives in your taskbar tray; closing the window hides it to tray rather than quitting. Click the icon to bring NexQ back
+## Before using real meeting material
 
-## Quick Setup
+This development build has not been benchmarked for accented English or Mandarin accuracy, and it does not enforce the required private-local boundary. Use synthetic or otherwise approved non-confidential material while evaluating it. The free Gemini tier may use submitted content to improve Google's products; confirm the provider terms and your organization's policy before enabling cloud transcription.
 
-![General Settings panel](../../website/public/screenshots/Setting/Setting-General.png)
+## More guides
 
-Open Settings (click the gear icon or press `Ctrl+,`) to access all configuration options. The General settings panel is shown above.
-
-### Configure a Speech-to-Text Provider
-
-NexQ needs an STT provider to transcribe audio. The fastest way to get started:
-
-**Option A: Web Speech for you, a free local model for them**
-
-1. Open Settings (click the gear icon or press `Ctrl+,`)
-2. Go to **STT Providers**, select **Parakeet TDT**, download the model (one-time, 465 MB) and click **Activate**
-3. Go to **Audio & Devices > Presets** and choose **Free**
-4. Web Speech transcribes "You" (mic) with no key. It can't hear system audio, so "Them" uses the Parakeet TDT local model, which works offline once downloaded
-
-The Free preset only saves the settings; it doesn't download the model for you.
-
-Web Speech can only be used by one party, and only with a microphone. For "Them" (system audio) pick a local model or a cloud provider such as Deepgram.
-
-**Option B: Deepgram or Groq (cloud, high accuracy)**
-
-1. Open Settings > STT Providers
-2. Select **Deepgram** or **Groq**
-3. Enter your API key (get one from [deepgram.com](https://deepgram.com) or [groq.com](https://groq.com))
-4. Click **Test Connection** to verify
-
-### Configure an LLM Provider
-
-NexQ uses an LLM to generate AI assistance during meetings. The easiest local option:
-
-**Option A: Ollama (local, free, private)**
-
-1. Install [Ollama](https://ollama.ai) on your machine
-2. Pull a model: `ollama pull llama3.2` (or any model you prefer)
-3. NexQ auto-detects Ollama on startup -- no configuration needed
-4. Open Settings > LLM to verify the connection and select your model
-
-**Option B: OpenAI, Anthropic, or Groq (cloud)**
-
-1. Open Settings > LLM
-2. Select your provider
-3. Enter your API key
-4. Select a model from the dropdown
-5. Click **Test Connection** to verify
-
-## Start Your First Meeting
-
-1. **Select audio devices** -- In the launcher, choose your microphone (for "You") and system audio output (for "Them" / remote participants)
-2. **Press Start meeting**, or use the keyboard shortcut `Ctrl+M`. The button opens a small dialog where you confirm the audio mode, the workspace and the scenario. `Ctrl+M` starts at once in your default workspace
-3. The **overlay window** appears (always-on-top, 500x700) showing:
-   - Live transcript with speaker labels (You / Them)
-   - AI assist panel with contextual suggestions
-4. **Press Space** during the meeting to trigger AI Assist on the current conversation
-5. **Press Ctrl+M** again to end the meeting
-
-The meeting is saved automatically with full transcript, AI interactions, and summary. Open it from the list to read it. The **AI** menu in the meeting details has **Generate summary** (**Regenerate summary** when there is one), **Extract action items** and **Suggest bookmarks**. They are dimmed until the meeting has a transcript.
-
-In meeting details, **Words** counts each Chinese character and Japanese kana individually, since those languages don't put spaces between words. Other text, including Korean, is counted by whitespace-separated words. Punctuation alone is not counted. **Pace** and the header's speaker percentages use the same counts.
-
-## Add Your Own Files
-
-To give the AI your resume, notes or course material, open the workspace you will use (you start with **General**) and click **Add** in the **Library** on the right. Add files, a folder or a tool, or paste text. After a few meetings you can ask questions across them in the workspace chat. See [Workspaces](workspaces.md) and [Workspace chat](workspace-chat.md).
-
-## Next Steps
-
-- [Interview Copilot Guide](interview-copilot.md) -- Use NexQ as your real-time interview assistant
-- [Lecture Assistant Guide](lecture-assistant.md) -- Transcribe and study from lectures
-- [Audio Setup Guide](audio-setup.md) -- Detailed audio device configuration and troubleshooting
-- [AI Providers Guide](ai-providers.md) -- Compare all STT and LLM providers to find the best fit
-- [Workspaces](workspaces.md) -- Keep the meetings, chats and files of each job, client or course apart
-- [Workspace Chat](workspace-chat.md) -- Ask questions across a workspace's meetings and files
-- [Meeting Window Layout](meeting-layout.md) -- Choose and arrange the panels
-- [Talking Points](talking-points.md) -- Notes you read during a call, with voice-following
-- [Live Notes and the Brief](live-notes-and-brief.md) -- Notes written for you while you talk
-- [Using Context Intelligence (RAG)](rag-context.md) -- Load documents for AI-enhanced responses
-- [Configuration Guide](configuration.md) -- Full provider setup and configuration options
-- [Keyboard Shortcuts](keyboard-shortcuts.md) -- Full shortcuts reference
-- [Troubleshooting](troubleshooting.md) -- Common issues and solutions
+- [AI providers](ai-providers.md)
+- [Audio setup](audio-setup.md)
+- [Workspaces](workspaces.md)
+- [Using Context Intelligence](rag-context.md)
+- [Troubleshooting](troubleshooting.md)
+- [Keyboard shortcuts](keyboard-shortcuts.md)

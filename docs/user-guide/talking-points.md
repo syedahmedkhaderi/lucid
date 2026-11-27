@@ -1,10 +1,10 @@
 # Talking Points
 
-Talking points are your own notes, kept in a workspace, that you read from during a call. They are formatted the way you wrote them. NexQ can scroll them as you speak and tick off what you have already said. The AI can also use them as background for its answers, if you let it.
+Talking points are your own notes, kept in a workspace, that you read from during a call. They are formatted the way you wrote them. Lucid can scroll them as you speak and tick off what you have already said. The AI can also use them as background for its answers, if you let it.
 
 ## Prerequisites
 
-- NexQ installed and running ([Getting Started](getting-started.md))
+- Lucid installed and running ([Getting Started](getting-started.md))
 - A [workspace](workspaces.md). You already have **General**
 
 ## Write your notes
@@ -23,7 +23,7 @@ For each note:
 - The **...** menu in the list has **Duplicate**, **Copy to another workspace**, **Move up**, **Move down** and **Delete**. Drag the grip beside a note, or focus it and press an arrow key, to reorder.
 - **More for this note** has **Export as Markdown** and **Copy Markdown**.
 
-If the same note is changed in two windows, nothing is overwritten. NexQ says **Changed in another window** and asks which to keep: **Keep mine** or **Use theirs**. **See both** shows the other version's text. A change always says which version it started from, so an older save can't replace a newer one. If saving fails, it says **Not saved** and keeps trying, and **Try now** tries at once.
+If the same note is changed in two windows, nothing is overwritten. Lucid says **Changed in another window** and asks which to keep: **Keep mine** or **Use theirs**. **See both** shows the other version's text. A change always says which version it started from, so an older save can't replace a newer one. If saving fails, it says **Not saved** and keeps trying, and **Try now** tries at once.
 
 Your notes belong to a workspace. A meeting can read the notes of its own workspace, of General when the workspace uses it, and of any workspace you chose to also use for that meeting. Notes from another workspace show the workspace's name in the list.
 
@@ -49,7 +49,7 @@ The note is set as a clean page. The line you are saying sits on a thin marker i
 | **Tick what I have said** | on or off | On |
 | **Suggest where I am** | on or off | On |
 
-With the note focused, `+` and `-` change the text size. NexQ remembers your settings and the last note you used in each workspace.
+With the note focused, `+` and `-` change the text size. Lucid remembers your settings and the last note you used in each workspace.
 
 ### How the note moves
 
@@ -75,7 +75,7 @@ If the note was changed in another window since you started the edit, saving say
 
 ## Follow my voice
 
-In **My voice** mode, NexQ matches what you say to the note and scrolls to keep your place. It all happens on your PC. NexQ only listens to the "You" side of the call, never to the other people, and makes no AI request to do it.
+In **My voice** mode, Lucid matches what you say to the note and scrolls to keep your place. It all happens on your PC. Lucid only listens to the "You" side of the call, never to the other people, and makes no AI request to do it.
 
 **When it works.** It needs your own voice as a separate side. It isn't available, and the panel says why, when:
 
@@ -96,16 +96,16 @@ In **My voice** mode, NexQ matches what you say to the note and scrolls to keep 
 
 Following works on the words your speech engine writes down, so it is only as good as that transcript. It compares words, not meaning: if you say something in quite different words than the note, it may not notice. Numbers, names and jargon that the speech engine mishears can also cause a miss.
 
-How well it handles your language is not equal. NexQ tells you when to be careful:
+How well it handles your language is not equal. Lucid tells you when to be careful:
 
-| Language | What NexQ says |
+| Language | What Lucid says |
 |----------|----------------|
 | English, French | Nothing. These are matched best |
 | Spanish, Portuguese, German, Arabic | **Ticks may be missed in** the language |
 | Japanese, Chinese, Korean | **Ticks often miss rephrased lines in** the language |
 | Others | Nothing is said, and matching is basic |
 
-The language is the one set for your side in **Settings > Audio & Devices**. If that is on automatic, NexQ guesses it from the note. The note and your speech need to be in the same language. Number words ("four point two million" and "4.2M") are understood in English, Spanish, German, French and Portuguese. Chinese, Japanese and Korean are matched in overlapping pairs of characters.
+The language is the one set for your side in **Settings > Audio & Devices**. If that is on automatic, Lucid guesses it from the note. The note and your speech need to be in the same language. Number words ("four point two million" and "4.2M") are understood in English, Spanish, German, French and Portuguese. Chinese, Japanese and Korean are matched in overlapping pairs of characters.
 
 Treat it as a help, not a guarantee. Keep **Manual** one click away, and scroll when it is wrong.
 
@@ -127,7 +127,7 @@ A workspace can also keep **Memory**: short facts that you approved, such as a p
 
 **Add a fact** with **+**. Choose a kind (**Person**, **Decision**, **Open item**, **Fact** or **Preference**), give it a short title and write what to remember. Saved items are grouped by kind. **Edit** changes one and **Forget** deletes it (it asks first). With more than four items, a search box appears. An item that came from a meeting has a **From (meeting)** link that opens the meeting at that moment.
 
-**Let NexQ suggest.** In a past meeting, click **Suggest from this meeting**. A meeting that is not filed in a workspace has nowhere to keep memory, so it says so and asks you to file it first. NexQ sends the transcript in chunks of about 10,000 tokens, one AI call each, at most 4 calls (a longer meeting keeps its start and end and drops the middle), and proposes up to 8 items in all, each with the time in the meeting it came from. Nothing is kept until you approve it: each suggestion has **Dismiss**, **Edit** and **Save**, a **Reviewed** tick, and **Save all reviewed**. A suggestion that isn't backed by the transcript says **Not found in the transcript**. To have suggestions made after every meeting, turn on **Suggest after meetings** in the Memory section. It is off by default. **Model for memory suggestions** (in the Memory section, and behind the **Model** button next to **Suggest from this meeting**) picks the model. **Automatic**, the default, names the model it will use ([how Automatic chooses](live-notes-and-brief.md#model-detail-and-language)). If NexQ can't read or save the choice, it says so.
+**Let Lucid suggest.** In a past meeting, click **Suggest from this meeting**. A meeting that is not filed in a workspace has nowhere to keep memory, so it says so and asks you to file it first. Lucid sends the transcript in chunks of about 10,000 tokens, one AI call each, at most 4 calls (a longer meeting keeps its start and end and drops the middle), and proposes up to 8 items in all, each with the time in the meeting it came from. Nothing is kept until you approve it: each suggestion has **Dismiss**, **Edit** and **Save**, a **Reviewed** tick, and **Save all reviewed**. A suggestion that isn't backed by the transcript says **Not found in the transcript**. To have suggestions made after every meeting, turn on **Suggest after meetings** in the Memory section. It is off by default. **Model for memory suggestions** (in the Memory section, and behind the **Model** button next to **Suggest from this meeting**) picks the model. **Automatic**, the default, names the model it will use ([how Automatic chooses](live-notes-and-brief.md#model-detail-and-language)). If Lucid can't read or save the choice, it says so.
 
 Memory is used as background facts, never as instructions. It is used in the workspace's chat and in live answers, and it reaches another workspace only if that workspace is borrowed or General is included. Meeting suggestions are made by the model you pick, so the transcript goes to that provider.
 

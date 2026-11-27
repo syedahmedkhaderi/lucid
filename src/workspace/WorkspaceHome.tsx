@@ -206,7 +206,7 @@ export function WorkspaceHome({
         >
           <FilePlus2 className="h-6 w-6 text-primary" aria-hidden="true" />
           <p className="ui-section text-foreground">Drop to add to {open.name}</p>
-          <p className="ui-meta text-muted-foreground">PDF, text, Markdown or Word files</p>
+          <p className="ui-meta text-muted-foreground">Up to 10 documents (50 MB each): PDF, text, Markdown, Word or PowerPoint</p>
         </div>
       )}
     </div>

@@ -45,11 +45,11 @@ Click a time to jump to that moment in the transcript.
 
 You can edit any line. Click it and press `Enter` (or `F2`) to edit, `P` to pin it, `Delete` to remove it. A line's **...** menu has **Edit**, **Pin**, **Add a line below**, **Copy as Markdown**, **Jump to ... in the transcript** and **Delete**. You can change a line between **Note**, **Decision**, **Task** and **Question**. **Undo** at the bottom takes back your last change.
 
-NexQ never changes or removes a line you edited or pinned. It only touches the last two topics, adds at most 12 changes in one update, and caps the length of a line.
+Lucid never changes or removes a line you edited or pinned. It only touches the last two topics, adds at most 12 changes in one update, and caps the length of a line.
 
 ### When they update
 
-With **Updates** on **Automatic** (the default), NexQ updates the notes:
+With **Updates** on **Automatic** (the default), Lucid updates the notes:
 
 - After about 100 new words and a short pause of 2 seconds, and at least 20 seconds after the last update
 - After 90 seconds without an update, if at least 15 new words are waiting
@@ -72,13 +72,13 @@ Nothing runs on silence, and only one update runs at a time. If a live answer is
 | **Not updated automatically** | The notes were on manual, so they were not updated by themselves. |
 | **Stopped early** | The last update ran out of time. |
 | **Stopped** | You stopped the notes, or turned them off, before the meeting ended. |
-| **Interrupted** | NexQ was closed before the notes were finished. |
+| **Interrupted** | Lucid was closed before the notes were finished. |
 | **Nothing to note** | The notes read the whole call and found nothing to write down. (The notes page then says **Nothing to note** instead of being empty.) |
 | **Stopped for another meeting** | The notes stopped because another meeting started (while they were being updated). |
 
-**Not covered.** NexQ works out which part of the call never reached the notes from what was saved, so it is known whatever ended them (even if NexQ was closed in the middle). The panel and the tab say so, for example **Not covered: 2:00 to 40:00**.
+**Not covered.** Lucid works out which part of the call never reached the notes from what was saved, so it is known whatever ended them (even if Lucid was closed in the middle). The panel and the tab say so, for example **Not covered: 2:00 to 40:00**.
 
-**Update notes** covers it. One press makes as many updates over the saved transcript as it takes, until everything is covered, the limit is reached or an update fails (at most about 10 minutes in all). If the notes ended at the limit, **Keep going** raises the limit by the amount in your settings and then covers the rest in the same press. These two buttons also show up after the meeting, in the **Notes** tab. While the update works, between its passes too, the state stays **Taking notes** and no button is offered. It says why it can't run when that is so: another meeting is live (it never competes with a live meeting: it is refused while another meeting is live, and an update that is running stops at once when a new meeting starts, saying **Stopped for another meeting**), there are no notes, nothing new to add, the limit was reached, or the saved transcript has nothing in that part (the **Not updated** notice). Deleting the meeting, or stopping the notes, stops an update that is running. At the end of a live meeting, after three failures NexQ makes one last bounded try, unless the cause can't change by trying (no key) or it is a plan limit.
+**Update notes** covers it. One press makes as many updates over the saved transcript as it takes, until everything is covered, the limit is reached or an update fails (at most about 10 minutes in all). If the notes ended at the limit, **Keep going** raises the limit by the amount in your settings and then covers the rest in the same press. These two buttons also show up after the meeting, in the **Notes** tab. While the update works, between its passes too, the state stays **Taking notes** and no button is offered. It says why it can't run when that is so: another meeting is live (it never competes with a live meeting: it is refused while another meeting is live, and an update that is running stops at once when a new meeting starts, saying **Stopped for another meeting**), there are no notes, nothing new to add, the limit was reached, or the saved transcript has nothing in that part (the **Not updated** notice). Deleting the meeting, or stopping the notes, stops an update that is running. At the end of a live meeting, after three failures Lucid makes one last bounded try, unless the cause can't change by trying (no key) or it is a plan limit.
 
 The panel tells you what it is doing, in words:
 
@@ -110,11 +110,11 @@ In **Settings > Live Notes and Brief**, or **Model, detail and limit** in the pa
 
 If your Automatic model moves from Ollama or LM Studio (a model on your PC) to an online provider, for example because you switched provider in Settings, a line says **Notes now use (provider) (online).** with **Dismiss**, so you know the transcript now leaves your PC. The brief says the same. It shows once per move, until you dismiss it.
 
-If the model can't answer (no key, plan limit, server not running), NexQ doesn't switch to another one. A plan limit shows **Notes paused** with the reason and **Try again**. Three failures in a row show **Notes stopped** with the reason. Both offer **Change model**, and **Try again** or **Start notes again**. NexQ can also read notes from a small local model that answers in plain lines instead of structured output, and it drops anything it can't read.
+If the model can't answer (no key, plan limit, server not running), Lucid doesn't switch to another one. A plan limit shows **Notes paused** with the reason and **Try again**. Three failures in a row show **Notes stopped** with the reason. Both offer **Change model**, and **Try again** or **Start notes again**. Lucid can also read notes from a small local model that answers in plain lines instead of structured output, and it drops anything it can't read.
 
 ### Cost and the limit
 
-Notes use your provider's tokens, so they cost what your provider charges for them. NexQ keeps each request small: it sends the new lines of the transcript and a short outline of the notes so far, not the whole meeting again. It counts the tokens the provider reports as new input plus the output (or an estimate when the provider doesn't say). The footer shows it, for example **12k of 120k tokens**.
+Notes use your provider's tokens, so they cost what your provider charges for them. Lucid keeps each request small: it sends the new lines of the transcript and a short outline of the notes so far, not the whole meeting again. It counts the tokens the provider reports as new input plus the output (or an estimate when the provider doesn't say). The footer shows it, for example **12k of 120k tokens**.
 
 The default limit is **120k tokens** per meeting. When the notes reach it, they pause and the panel asks:
 
@@ -155,7 +155,7 @@ A fact only appears if it cites a passage that was really sent to the model, and
 
 ### How it works
 
-1. About every 30 seconds of speech, NexQ searches the workspace **on your PC**. This is a keyword search over the workspace's past meetings, documents, folders in its Library ([Folders](workspaces.md#folder-text-search)), talking points marked as AI context and saved memory. It makes no model call.
+1. About every 30 seconds of speech, Lucid searches the workspace **on your PC**. This is a keyword search over the workspace's past meetings, documents, folders in its Library ([Folders](workspaces.md#folder-text-search)), talking points marked as AI context and saved memory. It makes no model call.
 2. It asks the model for a new sheet only when half of the top passages changed, the topic changed, or you click **Refresh**, and never more often than every 45 seconds. It sends about 2,500 tokens of passages, the recent transcript and your saved memory.
 3. The model writes the sheet in at most 350 tokens.
 

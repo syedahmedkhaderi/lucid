@@ -172,6 +172,8 @@ pub enum STTProviderType {
     ParakeetTdt,
     /// Cartesia ink-2 over WebSocket, with Cartesia's own turn detection.
     Cartesia,
+    /// Gemini 3.5 Transcribe Live over the Gemini Live API.
+    GeminiLive,
 }
 
 impl STTProviderType {
@@ -189,6 +191,7 @@ impl STTProviderType {
             STTProviderType::OrtStreaming => "ort_streaming",
             STTProviderType::ParakeetTdt => "parakeet_tdt",
             STTProviderType::Cartesia => "cartesia",
+            STTProviderType::GeminiLive => "gemini_live",
         }
     }
 
@@ -206,6 +209,7 @@ impl STTProviderType {
             "ort_streaming" => Some(STTProviderType::OrtStreaming),
             "parakeet_tdt" => Some(STTProviderType::ParakeetTdt),
             "cartesia" => Some(STTProviderType::Cartesia),
+            "gemini_live" => Some(STTProviderType::GeminiLive),
             _ => None,
         }
     }
@@ -447,6 +451,16 @@ pub fn list_available_providers() -> Vec<STTProviderInfo> {
             supported_languages: crate::stt::cartesia::SUPPORTED_LANGUAGES
                 .iter()
                 .map(|l| l.to_string())
+                .collect(),
+        },
+        STTProviderInfo {
+            provider_type: "gemini_live".to_string(),
+            name: "Gemini Live Transcribe".to_string(),
+            requires_api_key: true,
+            is_local: false,
+            supported_languages: "auto af am ar hy as az be bn bs bg my yue ca ceb km cs hr da nl en et fa fil fi fr gl ka de el gu ha he hi hu is id it ja jv kn kk ko ky lv ln lt mk ms ml mt mr mn ne nb or pa pl pt ro ru sr sk sl es sw sv tg ta te th tr uk ur uz vi zh"
+                .split_whitespace()
+                .map(str::to_string)
                 .collect(),
         },
         STTProviderInfo {

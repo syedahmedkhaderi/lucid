@@ -12,6 +12,9 @@ use super::types::*;
 
 pub use crate::db::workspace_migrations::now_ms;
 
+/// Maximum number of uploaded documents in one workspace's meeting scope.
+pub const MAX_WORKSPACE_DOCUMENTS: i64 = 10;
+
 const COLUMNS: &str = "id, name, icon, color, description, instructions, include_general, keep_separate, \
                        default_scenario, recaps_with_ai, suggest_memory, brief_default, is_default, pinned, \
                        archived, sort, created_at, updated_at";
@@ -499,12 +502,29 @@ pub fn add_item(conn: &Connection, workspace_id: &str, kind: ItemKind, ref_id: &
             return Err("This document is no longer in the library".to_string());
         }
     }
-    conn.execute(
+    let inserted = conn.execute(
         "INSERT OR IGNORE INTO workspace_items (workspace_id, kind, ref_id, label, pinned, added_at)
-         VALUES (?1, ?2, ?3, ?4, 0, ?5)",
-        params![workspace_id, kind.as_str(), ref_id, clean_opt(label.map(str::to_string)), now_ms()],
+         SELECT ?1, ?2, ?3, ?4, 0, ?5
+         WHERE ?2 != 'document' OR (SELECT COUNT(*) FROM workspace_items
+             WHERE workspace_id = ?1 AND kind = 'document') < ?6",
+        params![workspace_id, kind.as_str(), ref_id, clean_opt(label.map(str::to_string)), now_ms(), MAX_WORKSPACE_DOCUMENTS],
     )
     .map_err(|e| db_err("Couldn't add the item", e))?;
+    if inserted == 0 && kind == ItemKind::Document {
+        let already_in_workspace: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM workspace_items
+                 WHERE workspace_id = ?1 AND kind = ?2 AND ref_id = ?3)",
+                params![workspace_id, kind.as_str(), ref_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| db_err("Couldn't add the item", e))?;
+        if !already_in_workspace {
+            return Err(format!(
+                "This workspace already has {MAX_WORKSPACE_DOCUMENTS} documents. Remove one before adding another."
+            ));
+        }
+    }
     touch(conn, workspace_id);
     Ok(())
 }
@@ -820,5 +840,35 @@ mod tests {
         add_item(&conn, "general", ItemKind::Document, "d", None).unwrap();
         remove_memberships(&conn, ItemKind::Document, "d").unwrap();
         assert!(memberships(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn one_workspace_cannot_exceed_ten_uploaded_documents() {
+        let conn = memory_db();
+        let ws = new_ws(&conn, "Meeting prep", false, false);
+        for i in 0..=MAX_WORKSPACE_DOCUMENTS {
+            let id = format!("doc-{i}");
+            conn.execute(
+                "INSERT INTO context_resources (id, name, file_type, file_path, loaded_at)
+                 VALUES (?1, ?2, 'pdf', 'x', 'now')",
+                params![id, format!("{id}.pdf")],
+            )
+            .unwrap();
+            let result = add_item(&conn, &ws, ItemKind::Document, &id, None);
+            if i < MAX_WORKSPACE_DOCUMENTS {
+                result.unwrap();
+            } else {
+                assert!(result.unwrap_err().contains("already has 10 documents"));
+            }
+        }
+        add_item(&conn, &ws, ItemKind::Document, "doc-0", None).unwrap();
+        assert_eq!(
+            list_items(&conn, &ws)
+                .unwrap()
+                .iter()
+                .filter(|item| item.kind == ItemKind::Document)
+                .count(),
+            10
+        );
     }
 }

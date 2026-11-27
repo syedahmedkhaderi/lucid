@@ -27,6 +27,7 @@
     { "provider": "whisper_api", "model": "", "supported": true },
     { "provider": "groq_whisper", "model": "", "supported": true },
     { "provider": "cartesia", "model": "", "supported": true },
+    { "provider": "gemini_live", "model": "", "supported": true },
     { "provider": "web_speech", "model": "", "supported": false, "name": "Web Speech" },
     { "provider": "windows_native", "model": "", "supported": false, "name": "Windows Speech" },
     { "provider": "azure_speech", "model": "", "supported": false, "name": "Azure Speech" },

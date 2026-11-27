@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common issues and solutions for NexQ. For detailed setup instructions, see the [Audio Setup Guide](audio-setup.md) and [AI Providers Guide](ai-providers.md).
+Common issues and solutions for Lucid. For detailed setup instructions, see the [Audio Setup Guide](audio-setup.md) and [AI Providers Guide](ai-providers.md).
 
 Reporting a bug? Start with [Collecting logs for a bug report](#collecting-logs-for-a-bug-report).
 
@@ -37,7 +37,7 @@ This only appears the first time you install. Subsequent launches will not trigg
 
 1. **Check device selection**: Open Settings > Audio and verify the correct devices are selected for "You" (mic) and "Them" (system audio)
 2. **Test devices**: Click the **Test** button next to each device to verify audio levels
-3. **Check Windows permissions**: Go to Windows Settings > Privacy > Microphone and ensure NexQ has microphone access
+3. **Check Windows permissions**: Go to Windows Settings > Privacy > Microphone and ensure Lucid has microphone access
 4. **Check mute state**: Ensure neither "You" nor "Them" sources are muted in the overlay controls
 5. **Restart audio**: End the current meeting and start a new one to reinitialize audio capture
 
@@ -58,13 +58,13 @@ This only appears the first time you install. Subsequent launches will not trigg
 
 **Problem**: A headset is switched off, a USB microphone is unplugged, or Windows changes the default device while a meeting is running.
 
-**What NexQ does**:
+**What Lucid does**:
 
 - Reconnects that side by itself within about a second. The meeting, the recording and the other side keep going, and no window opens
-- If the device you chose is gone, the default microphone or output stands in for it. NexQ goes back to your device by itself when it returns
+- If the device you chose is gone, the default microphone or output stands in for it. Lucid goes back to your device by itself when it returns
 - If nothing comes back after a minute, it tells you once and keeps trying every few seconds, so a device plugged back in later is picked up. You can also pick another device in Audio & Devices
 - A quick reconnect to the same device is silent. Past a few seconds a "Reconnecting…" note stays until the side is back, and a message shows when the device changes or a side doesn't come back
-- A virtual audio cable or an input shared by both sides has no stand-in, because the default microphone would pick up your own voice for the other side. NexQ waits for that device itself to come back
+- A virtual audio cable or an input shared by both sides has no stand-in, because the default microphone would pick up your own voice for the other side. Lucid waits for that device itself to come back
 - Counts reconnects and audio glitches for each side in the audio stats line in the log, which is how to check how often it happened
 
 If a side stays silent after you reconnected the device, pick the device again in Audio & Devices, or end the meeting and start a new one.
@@ -88,7 +88,7 @@ If a side stays silent after you reconnected the device, pick the device again i
 
 **Solution**:
 
-1. **Update NexQ**: versions before v2.26.1 couldn't decode the Parakeet TDT 0.6B v3 model, so it heard audio but returned no text. Update from Settings > About.
+1. **Update Lucid**: versions before v2.26.1 couldn't decode the Parakeet TDT 0.6B v3 model, so it heard audio but returned no text. Update from Settings > About.
 2. **Don't use Windows Speech for "Them"**: Windows Speech only listens to your default microphone. It can't transcribe audio playing on your computer (Zoom, Teams, YouTube). Use Parakeet TDT, Deepgram or Groq for the other side.
 3. **Check provider config**: Open Settings > STT and verify your provider is correctly configured
 4. **Test connection**: Click **Test Connection** to verify the STT provider is reachable
@@ -107,7 +107,7 @@ If a side stays silent after you reconnected the device, pick the device again i
 - **Authentication failure / 401 / 403**: Re-enter a key from the Speech resource's **Keys and Endpoint** page. Make sure the configured region identifier exactly matches that resource; keys and regions must match.
 - **Model unavailable**: Create the Speech resource in a supported Azure MAI Streaming region: `swedencentral`, `centralus`, `eastus2`, or `southeastasia`. Other Azure Speech regions do not imply this preview model is available there.
 - **No transcript, but audio meters move**: In **Settings > Audio & Devices**, confirm Azure MAI Streaming is selected on the side you're testing. Check that the side's language is **Auto-detect** or a locale supported by the model. Test "You" and "Them" separately to isolate the capture path.
-- **Network / connection failure**: NexQ retries temporary failures automatically while the channel is active. Speech during an outage is not replayed to Azure after reconnecting. Check internet access and whether a VPN, proxy, TLS inspection, or firewall blocks the Speech SDK's secure connection (including WebSockets over outbound port 443). On a managed network, ask IT to allow the Azure Speech service endpoints; Microsoft's [Speech SDK troubleshooting guide](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/troubleshooting) has current diagnostics.
+- **Network / connection failure**: Lucid retries temporary failures automatically while the channel is active. Speech during an outage is not replayed to Azure after reconnecting. Check internet access and whether a VPN, proxy, TLS inspection, or firewall blocks the Speech SDK's secure connection (including WebSockets over outbound port 443). On a managed network, ask IT to allow the Azure Speech service endpoints; Microsoft's [Speech SDK troubleshooting guide](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/troubleshooting) has current diagnostics.
 - **Interim text appears, but a final result does not**: Interims are provisional updates, not confirmed transcript segments. Check the Dev Log for SDK/service errors and verify that the test speech is in a supported language. The feature is in public preview, so availability and behavior can change.
 
 For a practical check, start a test meeting, speak on each configured side, verify that interim words update while speaking, then check that Azure final results settle into the transcript. This provider does not diarize speakers; multiple people on one side will not receive Azure speaker labels. See [Azure MAI Streaming setup](ai-providers.md#azure-mai-streaming-public-preview).
@@ -129,9 +129,9 @@ For a practical check, start a test meeting, speak on each configured side, veri
 **Solution**:
 
 - **Language**: Cartesia transcribes only English, French, Hindi, Japanese and Spanish. For other languages, choose a different provider. Settings > STT shows a warning when the selected language isn't supported
-- **Reconnecting**: if the connection drops, NexQ reconnects on its own (after 1, 2, 4 and 8 seconds, then every 15 seconds) and keeps the sentence in progress. Speech while offline isn't transcribed
-- **"Cartesia refused the API key or account"**: NexQ stops retrying. Check the key in Settings > STT and your credit balance at [play.cartesia.ai](https://play.cartesia.ai/usage)
-- **Credits**: Cartesia bills every second of audio it receives while a channel is unmuted, including silence. One unmuted channel uses about 10,800 credits per hour; Cartesia on both "You" and "Them" uses about 21,600. Muting a channel closes its Cartesia stream, so muted time costs nothing; unmuting reconnects in a fraction of a second and keeps your first words. In in-person meetings the room mic is transcribed as "Them", so NexQ doesn't start a "You" provider at all, and "You" uses no credits
+- **Reconnecting**: if the connection drops, Lucid reconnects on its own (after 1, 2, 4 and 8 seconds, then every 15 seconds) and keeps the sentence in progress. Speech while offline isn't transcribed
+- **"Cartesia refused the API key or account"**: Lucid stops retrying. Check the key in Settings > STT and your credit balance at [play.cartesia.ai](https://play.cartesia.ai/usage)
+- **Credits**: Cartesia bills every second of audio it receives while a channel is unmuted, including silence. One unmuted channel uses about 10,800 credits per hour; Cartesia on both "You" and "Them" uses about 21,600. Muting a channel closes its Cartesia stream, so muted time costs nothing; unmuting reconnects in a fraction of a second and keeps your first words. In in-person meetings the room mic is transcribed as "Them", so Lucid doesn't start a "You" provider at all, and "You" uses no credits
 
 ### Custom Whisper Endpoint
 
@@ -144,7 +144,7 @@ For a practical check, start a test meeting, speak on each configured side, veri
 - **"The server answered 400" or "model not found"**: the **Model** name doesn't match a model the server has. Use the exact name it lists
 - **"This server needs an API key"**: enter the key your server expects in "API key for this server". Your OpenAI key is never sent to a custom server
 - **Ollama and LM Studio** don't do speech-to-text, so they can't be used here. Use a server built for transcription, such as faster-whisper-server (Speaches)
-- **Fails mid-meeting**: NexQ shows the error once and clears it when the next segment succeeds. Whisper API sends audio in batches of about 5 seconds, so a slow server delays text; a request that takes more than 30 seconds is dropped
+- **Fails mid-meeting**: Lucid shows the error once and clears it when the next segment succeeds. Whisper API sends audio in batches of about 5 seconds, so a slow server delays text; a request that takes more than 30 seconds is dropped
 
 ### Local Whisper Model Slow or Inaccurate
 
@@ -170,18 +170,18 @@ For a practical check, start a test meeting, speak on each configured side, veri
 3. **Check API key**: For cloud providers, ensure your API key is valid
 4. **Ollama**: Verify Ollama is running (`ollama list` in terminal) and has at least one model pulled
 5. **Check model selection**: Ensure a model is selected in the LLM settings dropdown
-6. **Custom endpoint**: the error names each path NexQ tried (`/chat/completions`, then `/api/chat`) and what the endpoint answered. `401 Unauthorized` means the token or key is wrong: paste it again under Settings > LLM > Custom, and it applies at once. `404` with "model not found" means the model name is wrong. For Ollama Cloud, use the base URL `https://ollama.com/v1`, **Bearer Token** and a model name such as `gemma4:31b`
+6. **Custom endpoint**: the error names each path Lucid tried (`/chat/completions`, then `/api/chat`) and what the endpoint answered. `401 Unauthorized` means the token or key is wrong: paste it again under Settings > LLM > Custom, and it applies at once. `404` with "model not found" means the model name is wrong. For Ollama Cloud, use the base URL `https://ollama.com/v1`, **Bearer Token** and a model name such as `gemma4:31b`
 
 ### Ollama Not Detected
 
-**Problem**: NexQ shows "Ollama not reachable" or no models appear.
+**Problem**: Lucid shows "Ollama not reachable" or no models appear.
 
 **Solution**:
 
 1. Verify Ollama is installed and running: open a terminal and run `ollama list`
 2. If no models appear, pull one: `ollama pull llama3.2`
 3. Ensure Ollama is serving on the default port: `http://localhost:11434`
-4. Restart NexQ after starting Ollama -- auto-detection runs on startup
+4. Restart Lucid after starting Ollama -- auto-detection runs on startup
 
 ### AI Responses Slow
 
@@ -194,7 +194,7 @@ For a practical check, start a test meeting, speak on each configured side, veri
 3. **Check your internet connection.** Cloud providers require a stable connection. Slow or intermittent connections cause delayed responses.
 4. **Reduce the context window.** In Settings, reduce the amount of transcript data sent to the LLM. Less input means faster responses.
 5. **Close other resource-intensive applications.** Local LLMs compete with other apps for CPU/RAM.
-6. **Automatic answers start 1.5 seconds after the question?** That's the quiet wait for engines that can end a line mid-sentence. Transcribe the other party with Cartesia or Deepgram Flux (Settings > STT Providers): both say when the speaker has finished, so Auto-Answer starts at once. With Flux, quiet time counts toward Deepgram usage, since NexQ streams silence to it; muted time doesn't.
+6. **Automatic answers start 1.5 seconds after the question?** That's the quiet wait for engines that can end a line mid-sentence. Transcribe the other party with Cartesia or Deepgram Flux (Settings > STT Providers): both say when the speaker has finished, so Auto-Answer starts at once. With Flux, quiet time counts toward Deepgram usage, since Lucid streams silence to it; muted time doesn't.
 
 ## Workspaces, Chat and Live Helpers
 
@@ -202,25 +202,25 @@ For a practical check, start a test meeting, speak on each configured side, veri
 
 **Problem**: A note in the Library and at the top of the workspace says workspaces aren't available, and everything is in General.
 
-**What happened**: The upgrade that adds workspaces didn't finish. It is all or nothing, so nothing was changed and NexQ works as it did before.
+**What happened**: The upgrade that adds workspaces didn't finish. It is all or nothing, so nothing was changed and Lucid works as it did before.
 
 **Solution**:
 
-1. Restart NexQ. It tries the upgrade again.
-2. If the note stays, copy your log (**Settings > About > Diagnostics > Copy recent log**) and [report it](https://github.com/naxhq/NexQ/issues/new?template=bug_report.yml).
+1. Restart Lucid. It tries the upgrade again.
+2. If the notice stays, copy your log (**Settings > About > Diagnostics > Copy recent log**) and share it with the person who provided this Lucid build.
 3. Don't delete `nexq-before-workspaces.db` in the app data folder. It is a copy of your data from before the upgrade, kept for 14 days.
 
 ### "Your meetings could not be opened"
 
-NexQ shows a screen in place of your workspaces when it can't use `nexq.db`: it couldn't be read, it was saved by a newer NexQ, its upgrade didn't finish, or another program is using it. Nothing was deleted, and the screen shows the file's path. Follow the screen: **Restore** a copy, **Install the newer NexQ**, **Try again**, or **Open data folder**. Details and what each choice does are in [Workspaces](workspaces.md#if-nexq-cant-open-your-meetings). A restore or **Start with an empty database** keeps the old files aside as `nexq.db.damaged-` and a number.
+Lucid shows a screen in place of your workspaces when it can't use `lucid.db`: it couldn't be read, it was saved by a newer Lucid, its upgrade didn't finish, or another program is using it. Nothing was deleted, and the screen shows the file's path. Follow the screen: **Restore** a copy, **Install the newer Lucid**, **Try again**, or **Open data folder**. Details and what each choice does are in [Workspaces](workspaces.md#if-lucid-cant-open-your-meetings). A restore or **Start with an empty database** keeps the old files aside as `lucid.db.damaged-` and a number.
 
 ### "Your meetings file has some damage"
 
-The daily check found damage in the open file. NexQ keeps working with it and has changed nothing. The notice names the app data folder and says how many copies of your meetings exist there. Make sure you have a copy you trust, and [report it](https://github.com/naxhq/NexQ/issues/new?template=bug_report.yml) with your log if it repeats.
+The daily check found damage in the open file. Lucid keeps working with it and has changed nothing. The notice names the app data folder and says how many copies of your meetings exist there. Make sure you have a copy you trust, and share the diagnostic log with the person who provided this Lucid build if it repeats.
 
 ### A Meeting Says It Is Not Filed in a Workspace
 
-The workspace you started it in was archived, deleted or couldn't be read, so NexQ did not use another one. The meeting uses none of any workspace's material. Pick a workspace from the workspace button in the meeting window to file it, or later from **Not filed** in the list of workspaces, one by one or all at once ([details](workspaces.md#meetings-in-no-workspace)).
+The workspace you started it in was archived, deleted or couldn't be read, so Lucid did not use another one. The meeting uses none of any workspace's material. Pick a workspace from the workspace button in the meeting window to file it, or later from **Not filed** in the list of workspaces, one by one or all at once ([details](workspaces.md#meetings-in-no-workspace)).
 
 ### A Document or Folder Shows "Missing"
 
@@ -228,7 +228,7 @@ The file or folder moved or was deleted. Click **Remove** on its row, or put it 
 
 ### A Folder Doesn't Seem Up to Date
 
-NexQ watches the folders in the Library and reads a changed file a couple of seconds after it stops changing. On a network drive that may not work: the folder is still checked every 30 minutes. Open the folder row's **...** menu and choose **Re-index now** to check at once. See [Workspaces](workspaces.md#folder-text-search).
+Lucid watches the folders in the Library and reads a changed file a couple of seconds after it stops changing. On a network drive that may not work: the folder is still checked every 30 minutes. Open the folder row's **...** menu and choose **Re-index now** to check at once. See [Workspaces](workspaces.md#folder-text-search).
 
 ### Workspace Chat Doesn't Find Something
 
@@ -279,8 +279,8 @@ The panel says why when it is unavailable: an in-person meeting, a muted microph
 1. **Verify a meeting is active.** The overlay only appears during an active meeting. Press `Ctrl+M` to start a meeting first.
 2. Press `Ctrl+B` to toggle the overlay window
 3. The overlay may be out of reach, for example after you unplugged a monitor. Use **Settings > General > Reset window positions**, or the tray menu item **Bring windows to this screen**. Both put the dashboard and the meeting window back on one screen ([details](meeting-layout.md#where-the-windows-come-back))
-4. Check Windows taskbar for a second NexQ window entry -- the overlay might be minimized
-5. Restart NexQ. The overlay comes back where it was saved for the monitors you have now, inside a screen. If it doesn't, use the reset in step 3
+4. Check Windows taskbar for a second Lucid window entry -- the overlay might be minimized
+5. Restart Lucid. The overlay comes back where it was saved for the monitors you have now, inside a screen. If it doesn't, use the reset in step 3
 
 ### Overlay Not Staying on Top
 
@@ -296,7 +296,7 @@ The panel says why when it is unavailable: an in-person meeting, a muted microph
 
 ### High CPU Usage
 
-**Problem**: NexQ is using excessive CPU, causing system slowdown.
+**Problem**: Lucid is using excessive CPU, causing system slowdown.
 
 **Solution**:
 
@@ -307,7 +307,7 @@ The panel says why when it is unavailable: an in-person meeting, a muted microph
 
 ### High Memory Usage
 
-**Problem**: NexQ memory usage grows over time during long meetings.
+**Problem**: Lucid memory usage grows over time during long meetings.
 
 **Solution**:
 
@@ -320,30 +320,30 @@ The panel says why when it is unavailable: an in-person meeting, a muted microph
 
 ### Where Is My Data Stored?
 
-NexQ stores all data in the app data directory:
+Lucid stores all data in the app data directory:
 
 ```
-%APPDATA%\com.nexq.app\
+%APPDATA%\com.lucid.desktop\
 ```
 
-On macOS: `~/Library/Application Support/com.nexq.app/`
+On macOS: `~/Library/Application Support/com.lucid.desktop/`
 
 This includes:
-- SQLite database `nexq.db` (workspaces, meetings, transcripts, chats, notes, AI interactions)
+- SQLite database `lucid.db` (workspaces, meetings, transcripts, chats, notes, AI interactions)
 - `nexq-before-workspaces.db`, a safety copy made once when you first upgraded to workspaces. It is deleted after 14 days ([details](workspaces.md#what-happens-when-you-upgrade))
-- Settings files: `config.json`, `nexq-settings.json` and `translation-config.json`, each with a `.bak` copy
+- Settings files: `config.json`, `lucid-settings.json` and `translation-config.json`, each with a `.bak` copy
 - Downloaded STT models (`models/` subdirectory)
 - Audio recordings (if recording is enabled)
 - RAG index and embeddings
 
 ### Settings Restored or Reset
 
-**Problem**: After starting NexQ, a notice says **Settings restored** or **Some settings were reset**.
+**Problem**: After starting Lucid, a notice says **Settings restored** or **Some settings were reset**.
 
-**What happened**: NexQ checks its settings files each time it starts. If a file can't be read (for example the PC lost power while it was being written), NexQ never silently replaces it with defaults.
+**What happened**: Lucid checks its settings files each time it starts. If a file can't be read (for example the PC lost power while it was being written), Lucid never silently replaces it with defaults.
 
 - It moves the damaged file aside as `config.json.corrupt-` followed by a number (the same for the other two files). The newest three are kept.
-- If it has a good copy (`config.json.bak`, refreshed from a valid file at start and about every 10 minutes), it puts that back. The notice says **Settings restored** and "NexQ put back the last good copy". You may lose changes from the last few minutes.
+- If it has a good copy (`config.json.bak`, refreshed from a valid file at start and about every 10 minutes), it puts that back. The notice says **Settings restored** and "Lucid put back the last good copy". You may lose changes from the last few minutes.
 - If there is no good copy, that file starts from the defaults. The notice says **Some settings were reset**, and tells you which settings: your settings (`config.json`), your update preferences or your translation settings. You may see the first-run setup again.
 
 The notice names the damaged file and stays until you close it.
@@ -351,39 +351,39 @@ The notice names the damaged file and stays until you close it.
 **Solution**:
 
 - If settings were restored, check that the provider, speech engine and hotkeys are what you expect.
-- If they were reset, set up your provider and speech engine again. API keys are kept in the Windows Credential Manager, not in these files, so they are not lost.
+- If they were reset, set up your provider and speech engine again. API keys are kept in the operating system credential store, not in these files, so they are not lost.
 - Your notes folders and tools may show as **Missing** in a workspace's Library until you add them again. Their place in your workspaces is kept.
-- Keep the `.corrupt-` file until you are sure nothing is missing. If a problem repeats, [report it](https://github.com/naxhq/NexQ/issues/new?template=bug_report.yml) with your log.
+- Keep the `.corrupt-` file until you are sure nothing is missing. If a problem repeats, share the log with the person who provided this Lucid build.
 
 ### API Keys
 
-API keys are stored in **Windows Credential Manager**, not in files. You can view or remove them through Windows Settings > Credential Manager, or through NexQ's Settings panel.
+API keys are stored in the operating system credential store, not in the app's plain-text configuration files. Remove them through the provider's Settings panel.
 
 ## Collecting Logs for a Bug Report
 
-NexQ (v2.27 and later) writes a log file on your computer. It records what the app did: audio devices opened, STT connections, errors, and how many transcript lines each side produced. It never contains your transcript text, and API keys are removed automatically.
+Lucid (v2.27 and later) writes a log file on your computer. It records what the app did: audio devices opened, STT connections, errors, and how many transcript lines each side produced. It never contains your transcript text, and API keys are removed automatically.
 
 ### Quick way: copy the recent log
 
 1. Open **Settings → About → Diagnostics**.
 2. Click **Copy recent log**.
-3. Paste it into the **Logs** field of the [bug report](https://github.com/naxhq/NexQ/issues/new?template=bug_report.yml).
+3. Share the copied log with the person who provided this Lucid build. Review it before sharing; the log is designed to redact credentials and transcript text, but diagnostics can still contain device and system details.
 
 ### Attach the whole file
 
-Click **Open log folder** in the same section, then drag `nexq.log` into the bug report. The folder is:
+Click **Open log folder** in the same section, then attach `lucid.log` if you need to share the full log. The folder is:
 
 | Windows | macOS |
 |---|---|
-| `%LOCALAPPDATA%\com.nexq.app\logs\` | `~/Library/Logs/com.nexq.app/` |
+| `%LOCALAPPDATA%\com.lucid.desktop\logs\` | `~/Library/Logs/com.lucid.desktop/` |
 
-Older logs are kept as `nexq.1.log` to `nexq.4.log`; the folder never grows past about 20 MB.
+Older logs are kept as `lucid.1.log` to `lucid.4.log`; the folder never grows past about 20 MB.
 
 ### For hard-to-reproduce problems
 
 1. Turn on **Verbose logging** in Settings → About → Diagnostics.
 2. Reproduce the problem (for example, start a meeting and talk for 30 seconds).
-3. Copy the recent log or attach `nexq.log`, then turn verbose logging off again.
+3. Copy the recent log or attach `lucid.log`, then turn verbose logging off again.
 
 ### During a meeting
 

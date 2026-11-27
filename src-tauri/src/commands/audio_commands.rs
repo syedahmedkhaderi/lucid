@@ -332,6 +332,17 @@ pub async fn start_capture(
                         p.set_app_handle(app.clone());
                         Box::new(p)
                     }
+                    STTProviderType::GeminiLive => {
+                        let key = get_credential_key(&state, "gemini_transcribe_live");
+                        let mut p = match key.as_deref() {
+                            Some(k) => crate::stt::gemini_live::GeminiLiveSTT::with_api_key(k),
+                            None => crate::stt::gemini_live::GeminiLiveSTT::new(),
+                        };
+                        p.set_language(&lang);
+                        p.set_app_handle(app.clone());
+                        p.set_party("Them");
+                        Box::new(p)
+                    }
                     _ => return Ok(()), // shouldn't reach
                 };
                 Some(p)
@@ -2124,6 +2135,18 @@ async fn create_stt_provider_for_party(
             p.set_party(party_role);
             Ok(Some(Box::new(p)))
         }
+        STTProviderType::GeminiLive => {
+            let key = get_credential_key(state, "gemini_transcribe_live");
+            log::info!("Gemini Live key for '{}': {}", party_role, if key.is_some() { "present" } else { "MISSING" });
+            let mut p = match key.as_deref() {
+                Some(k) => crate::stt::gemini_live::GeminiLiveSTT::with_api_key(k),
+                None => crate::stt::gemini_live::GeminiLiveSTT::new(),
+            };
+            p.set_language(&stt_language);
+            p.set_app_handle(app.clone());
+            p.set_party(party_role);
+            Ok(Some(Box::new(p)))
+        }
         STTProviderType::SherpaOnnx => {
             // Guard: ignore model_id from a different engine (e.g., parakeet model)
             let raw_model_id = config.local_model_id.as_deref();
@@ -2384,6 +2407,7 @@ fn supports_auto_language(provider: &crate::stt::provider::STTProviderType, mode
         STTProviderType::GroqWhisper
         | STTProviderType::WhisperApi
         | STTProviderType::Cartesia
+        | STTProviderType::GeminiLive
         | STTProviderType::AzureMaiStreaming => true,
         STTProviderType::ParakeetTdt => model.starts_with("parakeet-tdt-0.6b-v3"),
         _ => false,
