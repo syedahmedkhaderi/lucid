@@ -11,6 +11,7 @@ This checkout is an active development build, not a professional-pilot release. 
 - Tauri desktop shell with a launcher and always-on-top meeting window, including a compact top-center triangle.
 - Microphone and system audio capture paths, live transcripts, question detection, and streamed AI answers.
 - Local SQLite meeting history and workspace-scoped document retrieval.
+- A scope-bound live brief that caches up to six source-linked facts and rejects facts whose cited passage lacks the stated numbers or names.
 - Local speech/model options and configurable cloud providers.
 - Gemini Live multilingual speech transcription with interim/final text, automatic language detection, and pre-limit session refresh.
 - Local PPTX slide text and basic table-row extraction with slide markers.
