@@ -9,10 +9,11 @@ The project produces an app bundle at `src-tauri/target/release/bundle/macos/Luc
 ## First launch
 
 1. Open Lucid and complete the setup wizard.
-2. Choose your microphone for **You** and your system output for **Them**. Grant macOS microphone and screen/audio capture permissions if prompted.
-3. Choose a speech provider in **Settings → STT Providers**. For Gemini Live, select **Gemini Live Transcribe**, enter a key in the password field, then choose **Save & Test**. The key is stored through the operating system credential store.
-4. Add files to the workspace you will use. Current uploads support PDF, DOCX, PPTX, TXT, and Markdown; files must be under 50 MB each, with up to ten document entries per workspace. This limit is currently workspace-wide rather than meeting-specific.
-5. Wait for indexing to finish, then choose **Start Meeting**.
+2. Lucid starts in **Settings → Privacy → Private Local**. Choose offline speech models for **You** and **Them** in **Settings → Audio & Devices** and **Settings → STT Providers**. Download the selected models first. Web Speech, Windows Speech dictation, cloud providers, subscription CLIs, and remote model endpoints are blocked in this mode. Windows dictation is blocked because its dictation constraint can use Microsoft's online speech service ([Microsoft Learn](https://learn.microsoft.com/en-us/windows/apps/develop/input/specify-the-speech-recognizer-language)).
+3. Choose your microphone for **You** and your system output for **Them**. Grant macOS microphone and screen/audio capture permissions if prompted.
+4. To use a cloud provider, switch to **Cloud processing allowed** in **Settings → Privacy** after the meeting and current AI requests finish. Cloud processing can send meeting content to the selected provider and may incur charges. For Gemini Live, select **Gemini Live Transcribe**, enter a key in the password field, then choose **Save & Test**. The key is stored through the operating system credential store.
+5. Add files to the workspace you will use. Current uploads support PDF, DOCX, PPTX, TXT, and Markdown; files must be under 50 MB each, with up to ten document entries and 500 MiB total source-file size per workspace. These limits are currently workspace-wide rather than meeting-specific.
+6. Wait for indexing to finish, then choose **Start Meeting**.
 
 ## Speech providers
 
@@ -20,7 +21,7 @@ Gemini Live streams 16 kHz audio to Google's cloud service and supports interim 
 
 Google's pricing page says content submitted on the free tier may be used to improve its products. Do not send confidential meeting audio to the free tier. Gemini quotas are applied per project, not per key, so Lucid does not rotate keys to get around quota errors. See [Google's Live Transcription guide](https://ai.google.dev/gemini-api/docs/live-api/live-transcribe), [pricing](https://ai.google.dev/gemini-api/docs/pricing), and [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
 
-Local speech options are available under **Settings → STT Providers**. Download a model before selecting it in **Settings → Audio & Devices**. A local speech provider alone does not make the entire application private: the LLM and other features can still use cloud services. Lucid does not yet enforce an end-to-end private-local mode, so do not use confidential data until that boundary is implemented and verified.
+Private Local also restricts LLM, translation, and document embedding requests to local providers. The app blocks a privacy-mode change while a meeting, audio capture, or content-bearing AI request is active. A local provider alone does not guarantee privacy if the software you install on this device sends data elsewhere.
 
 ## Use documents
 
@@ -32,7 +33,7 @@ Open the workspace you want, confirm its audio devices and speech providers, the
 
 ## Before using real meeting material
 
-This development build has not been benchmarked for accented English or Mandarin accuracy, and it does not enforce the required private-local boundary. Use synthetic or otherwise approved non-confidential material while evaluating it. The free Gemini tier may use submitted content to improve Google's products; confirm the provider terms and your organization's policy before enabling cloud transcription.
+This development build has not been benchmarked for accented English or Mandarin accuracy, and the private mode has not received an independent security audit. The free Gemini tier may use submitted content to improve Google's products; confirm provider terms and your organization's policy before enabling cloud transcription.
 
 ## More guides
 

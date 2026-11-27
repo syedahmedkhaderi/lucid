@@ -14,6 +14,8 @@ pub use crate::db::workspace_migrations::now_ms;
 
 /// Maximum number of uploaded documents in one workspace's meeting scope.
 pub const MAX_WORKSPACE_DOCUMENTS: i64 = 10;
+/// Maximum combined source-file size in one workspace's meeting scope.
+pub const MAX_WORKSPACE_DOCUMENT_BYTES: i64 = 500 * 1024 * 1024;
 
 const COLUMNS: &str = "id, name, icon, color, description, instructions, include_general, keep_separate, \
                        default_scenario, recaps_with_ai, suggest_memory, brief_default, is_default, pinned, \
@@ -502,12 +504,45 @@ pub fn add_item(conn: &Connection, workspace_id: &str, kind: ItemKind, ref_id: &
             return Err("This document is no longer in the library".to_string());
         }
     }
+    let document_bytes_exceeded = if kind == ItemKind::Document {
+        let (current_bytes, incoming_bytes): (i64, i64) = conn
+            .query_row(
+                "SELECT
+                    COALESCE((SELECT SUM(c.size_bytes)
+                        FROM workspace_items wi
+                        JOIN context_resources c ON c.id = wi.ref_id
+                        WHERE wi.workspace_id = ?1 AND wi.kind = 'document'), 0),
+                    COALESCE((SELECT size_bytes FROM context_resources WHERE id = ?2), 0)",
+                params![workspace_id, ref_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|e| db_err("Couldn't check the workspace document size", e))?;
+        let already_in_workspace: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM workspace_items
+                 WHERE workspace_id = ?1 AND kind = 'document' AND ref_id = ?2)",
+                params![workspace_id, ref_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| db_err("Couldn't check the workspace document size", e))?;
+        !already_in_workspace
+            && current_bytes.saturating_add(incoming_bytes) > MAX_WORKSPACE_DOCUMENT_BYTES
+    } else {
+        false
+    };
     let inserted = conn.execute(
         "INSERT OR IGNORE INTO workspace_items (workspace_id, kind, ref_id, label, pinned, added_at)
          SELECT ?1, ?2, ?3, ?4, 0, ?5
          WHERE ?2 != 'document' OR (SELECT COUNT(*) FROM workspace_items
-             WHERE workspace_id = ?1 AND kind = 'document') < ?6",
-        params![workspace_id, kind.as_str(), ref_id, clean_opt(label.map(str::to_string)), now_ms(), MAX_WORKSPACE_DOCUMENTS],
+             WHERE workspace_id = ?1 AND kind = 'document') < ?6
+             AND (?2 != 'document' OR EXISTS(SELECT 1 FROM workspace_items
+                 WHERE workspace_id = ?1 AND kind = 'document' AND ref_id = ?3)
+                 OR COALESCE((SELECT SUM(c.size_bytes)
+                     FROM workspace_items wi
+                     JOIN context_resources c ON c.id = wi.ref_id
+                     WHERE wi.workspace_id = ?1 AND wi.kind = 'document'), 0)
+                    + COALESCE((SELECT size_bytes FROM context_resources WHERE id = ?3), 0) <= ?7)",
+        params![workspace_id, kind.as_str(), ref_id, clean_opt(label.map(str::to_string)), now_ms(), MAX_WORKSPACE_DOCUMENTS, MAX_WORKSPACE_DOCUMENT_BYTES],
     )
     .map_err(|e| db_err("Couldn't add the item", e))?;
     if inserted == 0 && kind == ItemKind::Document {
@@ -520,6 +555,11 @@ pub fn add_item(conn: &Connection, workspace_id: &str, kind: ItemKind, ref_id: &
             )
             .map_err(|e| db_err("Couldn't add the item", e))?;
         if !already_in_workspace {
+            if document_bytes_exceeded {
+                return Err(format!(
+                    "This workspace would exceed the 500 MB total document limit. Remove a document before adding another."
+                ));
+            }
             return Err(format!(
                 "This workspace already has {MAX_WORKSPACE_DOCUMENTS} documents. Remove one before adding another."
             ));
@@ -869,6 +909,41 @@ mod tests {
                 .filter(|item| item.kind == ItemKind::Document)
                 .count(),
             10
+        );
+    }
+
+    #[test]
+    fn one_workspace_cannot_exceed_500_mib_of_documents() {
+        let conn = memory_db();
+        let ws = new_ws(&conn, "Meeting prep", false, false);
+        let half = 250 * 1024 * 1024;
+        for id in ["doc-a", "doc-b"] {
+            conn.execute(
+                "INSERT INTO context_resources (id, name, file_type, file_path, size_bytes, loaded_at)
+                 VALUES (?1, ?1, 'pdf', 'x', ?2, 'now')",
+                params![id, half],
+            )
+            .unwrap();
+            add_item(&conn, &ws, ItemKind::Document, id, None).unwrap();
+        }
+
+        // Re-adding an existing source does not count its bytes twice.
+        add_item(&conn, &ws, ItemKind::Document, "doc-a", None).unwrap();
+        conn.execute(
+            "INSERT INTO context_resources (id, name, file_type, file_path, size_bytes, loaded_at)
+             VALUES ('doc-c', 'doc-c', 'pdf', 'x', 1, 'now')",
+            [],
+        )
+        .unwrap();
+        let error = add_item(&conn, &ws, ItemKind::Document, "doc-c", None).unwrap_err();
+        assert!(error.contains("500 MB total document limit"), "{error}");
+        assert_eq!(
+            list_items(&conn, &ws)
+                .unwrap()
+                .iter()
+                .filter(|item| item.kind == ItemKind::Document)
+                .count(),
+            2
         );
     }
 }

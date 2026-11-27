@@ -31,6 +31,7 @@ describe("who may change the global AI provider or model", () => {
       "lib/ipc.ts",
       "settings/CliAgentSettings.tsx",
       "settings/LLMSettings.tsx",
+      "settings/PrivacySettings.tsx",
       "stores/configStore.ts",
     ]);
   });

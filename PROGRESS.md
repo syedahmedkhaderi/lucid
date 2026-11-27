@@ -11,7 +11,9 @@ Updated: 2026-11-27
 - Added tests for compact placement across scaled, offset, and missing-work-area monitors.
 - Added bounded PPTX slide-text and table-row extraction, numeric slide ordering, slide markers, and local retrieval indexing. Tests cover entities, table rows, unreadable archives, expansion limits, and folder search.
 - Added a hard ten-document cap per workspace scope, a 50 MB upload limit per file, early rejection of empty files, and cleanup when persistence fails. Existing workspaces are not migrated if they already exceed ten.
+- Added a 500 MiB aggregate source-file limit per workspace, enforced transactionally alongside the ten-document cap.
 - Added Gemini 3.5 Transcribe Live through Google's bidirectional WebSocket API, including 16 kHz audio streaming, interim/final transcript handling, language auto-detection, bounded queueing, safe error messages, and session refresh before the documented maximum. Unit and local mock-WebSocket tests pass; no real Gemini credentials or meeting audio were used.
+- Added backend-enforced Private Local and Cloud processing modes. Private Local is the runtime default and blocks cloud speech, cloud LLMs, subscription CLIs, remote translation and embeddings; only offline STT and loopback local AI endpoints are allowed. Mode changes are refused during meetings or in-flight content requests. The active mode is visible in the dashboard and meeting footer.
 - Excluded ignored `work/` packaging output from Vitest discovery so generated app resources do not appear as tests.
 - Added project guidance, architecture, decisions, known limitations, security, build, progress, benchmark, and third-party notice documents.
 - Did not copy, test, or store the Gemini API keys pasted in the request.
@@ -19,11 +21,11 @@ Updated: 2026-11-27
 ## Verified on this Apple Silicon Mac
 
 - `npm ci`: passed; 396 packages audited, 0 vulnerabilities. Node 24.1.0 emits a declared engine warning from jsdom (requires 24.15.0+ or 22.22.2+).
-- `npm test`: 254 files passed; 3,926 tests passed; 2 skipped.
+- `npm test`: 255 files passed; 3,931 tests passed; 2 skipped.
 - `npm run build`: passed. Existing Tailwind and ineffective dynamic-import warnings remain.
-- `cargo test` with `LIBCLANG_PATH=/opt/homebrew/Cellar/llvm/23.1.6/lib`: 2,001 passed; 24 ignored; 0 failed across unit and integration targets.
-- `./build-mac.sh --no-install --bundles app`: passed for the final source. The ARM64 bundle is 85.88 MiB; its `com.lucid.desktop` identifier and `0.1.0` version were checked, and `codesign --verify --deep --strict` passed.
-- Rebuilt `Lucid_0.1.0_macOS_arm64.dmg` as a 30 MB compressed HFS+ disk image. `hdiutil verify` passed; mounting confirmed `Lucid.app` and the `Applications` shortcut.
+- `cargo test` with the Xcode `LIBCLANG_PATH` and Unix Makefiles CMake generator: 2,006 passed; 24 ignored; 0 failed across unit and integration targets.
+- `./build-mac.sh --no-install --bundles app`: passed for the final source. The ARM64 bundle is 85.94 MiB; its `com.lucid.desktop` identifier and `0.1.0` version were checked, and `codesign --verify --deep --strict` passed.
+- Rebuilt `src-tauri/target/release/bundle/dmg/Lucid_0.1.0_macOS_arm64.dmg` as a 30 MB compressed HFS+ disk image. `hdiutil verify` passed; mounting confirmed `Lucid.app` and the `Applications` shortcut. SHA-256: `2a940bf60cdebc485be77852d52fb1a72b1a197be594d845d78d7153525fbe4b`.
 - Gemini Live provider tests use a local mock WebSocket server; the provider has not been authenticated against Google's live endpoint.
 - A secret scan of non-generated repository files found none of the pasted Gemini key pattern.
 - The test harness paths were updated for Cargo 1.100's build output layout.
@@ -35,7 +37,7 @@ Updated: 2026-11-27
 - Technical vocabulary, verified-fact cache, and strict evidence checks.
 - Gemini Live real-account and real-audio verification, performance testing, clearer disconnect recovery, and credential lifecycle tooling. Keys are not rotated because quotas are project-level, not key-level.
 - A task-based model registry and policy-driven provider selection.
-- End-to-end private-local boundary, which is required before confidential meetings.
+- Independent privacy/security audit and encryption at rest. Private Local cannot verify the behavior of local software you install.
 - Windows build/installer/audio validation and native overlay runtime testing.
 - Real synthetic/safely licensed speech benchmark and latency measurements.
 - Release-grade dependency license inventory, signing, notarization, and Lucid update channel.

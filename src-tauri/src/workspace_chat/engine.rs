@@ -643,6 +643,13 @@ pub fn chat_capabilities(deps: &ChatDeps, chat_id: &str) -> Result<crate::worksp
     let row = store::require_chat(&conn, chat_id)?;
     let selection = selection_of(deps, &row)?;
     let scope = scope_adapter::chat_scope(&conn, &row)?;
+    if crate::privacy::is_private_local() {
+        let mut caps = crate::workspace_chat::hub::ChatCapabilities::default();
+        if is_cli(&selection) && !scope.eff.server_ids.is_empty() {
+            caps.notes.push("Tools are unavailable while Private Local mode is enabled.".into());
+        }
+        return Ok(caps);
+    }
     if !is_cli(&selection) {
         let mut caps = crate::workspace_chat::hub::ChatCapabilities::default();
         if !scope.eff.server_ids.is_empty() {
@@ -869,20 +876,21 @@ fn scope_changed(e: &AiRunError) -> bool {
 async fn answer(deps: &Arc<ChatDeps>, permit: &Permit, chat_id: &str, question: &str, request_id: &str, deeper: bool) -> Outcome {
     let fail = |m: String| Outcome::Failed(m, "other");
     // model and window
-    let (selection, window) = {
+    let selection = {
         let r = (|| {
             let conn = deps.conn()?;
             let row = store::require_chat(&conn, chat_id)?;
             selection_of(deps, &row)
         })();
         match r {
-            Ok(s) => {
-                let w = deps.ai.model_window(&s).await.map(|w| w as usize);
-                (s, w)
-            }
+            Ok(s) => s,
             Err(e) => return fail(e),
         }
     };
+    if let Err(message) = deps.ai.ensure_selection_allowed(&selection) {
+        return fail(message);
+    }
+    let window = deps.ai.model_window(&selection).await.map(|w| w as usize);
     // condense older turns first (never mid-answer: this is before the answer starts)
     let mut notices: Vec<String> = Vec::new();
     match maybe_condense(deps, chat_id, &selection, window, &permit.cancel).await {

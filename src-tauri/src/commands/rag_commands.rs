@@ -363,6 +363,17 @@ pub async fn test_rag_answer(
         }
     }
 
+    let _content_request = if temp_provider.is_some() {
+        let requested = llm_provider.as_deref()
+            .ok_or_else(|| "Temporary provider selection is missing".to_string())?
+            .to_lowercase();
+        let provider = crate::llm::ProviderType::from_str(&requested)
+            .map_err(|error| error.to_string())?;
+        crate::privacy::begin_llm_request(&provider, None)?
+    } else {
+        llm_arc.lock().map_err(|e| e.to_string())?.begin_content_request()?
+    };
+
     let (provider_arc, model_name, provider_name) = {
         let router = llm_arc.lock().map_err(|e| e.to_string())?;
         let model_name = llm_model.clone()

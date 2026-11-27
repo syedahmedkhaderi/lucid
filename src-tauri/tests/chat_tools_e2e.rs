@@ -108,6 +108,10 @@ struct Rig {
 
 impl Rig {
     fn new(name: &str, approval_timeout: Duration, chats: &[&str]) -> Rig {
+        // This integration rig deliberately exercises a cloud subscription CLI.
+        // Production starts Private Local, so the fixture opts in explicitly.
+        lucid_lib::privacy::set_mode(lucid_lib::privacy::PrivacyMode::CloudAllowed)
+            .expect("no content request is active before the rig is created");
         // Built here, before any clock runs: the first test pays for the build.
         fake_bin();
         let dir = std::env::temp_dir().join(format!("nexq-chat-e2e-{name}-{}", std::process::id()));

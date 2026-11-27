@@ -43,6 +43,7 @@ pub async fn set_translation_provider(
         "llm" => TranslationProviderType::Llm,
         other => return Err(format!("Unknown translation provider: {}", other)),
     };
+    crate::privacy::ensure_translation_allowed(&provider)?;
 
     let trans_arc = state.translation.as_ref()
         .ok_or("Translation router not initialized")?;
@@ -80,6 +81,15 @@ pub async fn translate_text(
     target_lang: String,
     source_lang: Option<String>,
 ) -> Result<TranslationResult, String> {
+    let _privacy_request = app.state::<AppState>().translation.as_ref()
+        .ok_or("Translation router not initialized")?
+        .lock().map_err(|_| "Lock poisoned")?
+        .begin_content_request()?;
+    let active_translation = app.state::<AppState>().translation.as_ref()
+        .and_then(|router| router.lock().ok()?.active_type().cloned());
+    if let Some(provider) = active_translation {
+        crate::privacy::ensure_translation_allowed(&provider.to_string())?;
+    }
     let state = app.state::<AppState>();
     let trans_arc = state.translation.as_ref()
         .ok_or("Translation router not initialized")?;
@@ -186,6 +196,10 @@ pub async fn translate_segments(
     source_lang: Option<String>,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
+    let _privacy_request = state.translation.as_ref()
+        .ok_or("Translation router not initialized")?
+        .lock().map_err(|_| "Lock poisoned")?
+        .begin_content_request()?;
     let target = target_lang.ok_or("target_lang is required")?;
     let source = source_lang.as_deref();
 
@@ -247,6 +261,10 @@ pub async fn translate_batch(
     target_lang: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
+    let _privacy_request = state.translation.as_ref()
+        .ok_or("Translation router not initialized")?
+        .lock().map_err(|_| "Lock poisoned")?
+        .begin_content_request()?;
     let target = target_lang.ok_or("target_lang is required")?;
 
     // Count total segments and load only untranslated ones (skip already-translated to save API calls)
@@ -378,6 +396,10 @@ pub async fn detect_language(
     text: String,
 ) -> Result<DetectedLanguage, String> {
     let state = app.state::<AppState>();
+    let _privacy_request = state.translation.as_ref()
+        .ok_or("Translation router not initialized")?
+        .lock().map_err(|_| "Lock poisoned")?
+        .begin_content_request()?;
     let trans_arc = state.translation.as_ref()
         .ok_or("Translation router not initialized")?;
     let provider_arc = {
@@ -398,6 +420,9 @@ pub async fn test_translation_connection(
         .ok_or("Translation router not initialized")?;
     let provider_arc = {
         let router = trans_arc.lock().map_err(|_| "Lock poisoned")?;
+        if let Some(provider) = router.active_type() {
+            crate::privacy::ensure_translation_allowed(&provider.to_string())?;
+        }
         router.get_provider().map_err(|e| e.to_string())?
         // lock dropped here
     };
@@ -480,6 +505,8 @@ async fn translate_via_llm(
 ) -> Result<String, String> {
     let state = app.state::<AppState>();
     let llm_arc = state.llm.as_ref().ok_or("LLM router not initialized")?;
+    let _content_request = llm_arc.lock().map_err(|_| "LLM lock poisoned")?
+        .begin_content_request()?;
 
     let src_label = source.unwrap_or("the detected language");
     let prompt = format!(

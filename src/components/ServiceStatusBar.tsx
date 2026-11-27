@@ -5,7 +5,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import {
   Brain, Mic, MicOff, Volume2, VolumeX, Zap, Cpu,
-  ChevronUp, CheckCircle, Globe, Monitor, HardDrive, Cloud, ArrowUpCircle,
+  ChevronUp, CheckCircle, Globe, Monitor, HardDrive, Cloud, Laptop, ArrowUpCircle,
 } from "lucide-react";
 import { useConfigStore } from "../stores/configStore";
 import { useStreamStore } from "../stores/streamStore";
@@ -167,6 +167,7 @@ export function ServiceStatusBar({ compact = false }: { compact?: boolean }) {
   // Config (reactive)
   const llmProvider = useConfigStore((s) => s.llmProvider);
   const llmModel = useConfigStore((s) => s.llmModel);
+  const privacyMode = useConfigStore((s) => s.privacyMode);
   const meetingAudioConfig = useConfigStore((s) => s.meetingAudioConfig);
   const activeWhisperModel = useConfigStore((s) => s.activeWhisperModel);
   const activeModelPerEngine = useConfigStore((s) => s.activeModelPerEngine);
@@ -323,6 +324,22 @@ export function ServiceStatusBar({ compact = false }: { compact?: boolean }) {
           />
         )}
       </div>
+
+      {/* The active privacy policy stays visible in both the dashboard and meeting overlay. */}
+      <Tooltip content={privacyMode === "private_local" ? "Privacy mode: Private Local" : "Privacy mode: Cloud processing allowed"}>
+        <span
+          role="status"
+          aria-label={privacyMode === "private_local" ? "Privacy mode: Private Local" : "Privacy mode: Cloud processing allowed"}
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium leading-none ${
+            privacyMode === "private_local"
+              ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400"
+              : "border-sky-500/25 bg-sky-500/10 text-sky-400"
+          }`}
+        >
+          {privacyMode === "private_local" ? <Laptop className="h-3 w-3" aria-hidden="true" /> : <Cloud className="h-3 w-3" aria-hidden="true" />}
+          <span>{compact ? (privacyMode === "private_local" ? "Private" : "Cloud") : (privacyMode === "private_local" ? "Private Local" : "Cloud Allowed")}</span>
+        </span>
+      </Tooltip>
 
       {!narrow && <Divider />}
 

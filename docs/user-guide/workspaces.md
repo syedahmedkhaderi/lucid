@@ -2,7 +2,7 @@
 
 A workspace is a named place for the meetings, chats and files of one job, client or course. Each one keeps its own meetings and chats. What the AI can read in a meeting or a chat depends on the workspace it belongs to, so a client's documents don't show up in another client's answers.
 
-The Library accepts up to ten document entries per workspace. Each file must be non-empty and no larger than 50 MB. This limit is shared across meetings in the workspace; there is not a separate per-meeting document picker yet. See [Using Context Intelligence](rag-context.md#supported-file-formats) for supported formats and extraction limits.
+The Library accepts up to ten document entries and 500 MiB total source-file size per workspace. Each file must be non-empty and no larger than 50 MB. These limits are shared across meetings in the workspace; there is not a separate per-meeting document picker yet. See [Using Context Intelligence](rag-context.md#supported-file-formats) for supported formats and extraction limits.
 
 ## Prerequisites
 

@@ -1186,6 +1186,29 @@ pub async fn generate_assist(
     let with_sources = plan.with_sources();
     let (no_library, no_tools) = plan.key_flags();
     let mut route = request_route_locked(&state, &mode, &scope, with_sources, no_library, no_tools);
+    match &route {
+        Route::ClaudeSession(_) => {
+            let provider = state.cli_settings.active().provider_type();
+            crate::privacy::ensure_llm_allowed(&provider, None)?;
+        }
+        Route::Fallback(config) => crate::privacy::ensure_llm_config_allowed(config)?,
+        Route::Stateless => {}
+    }
+    let _content_request = match &route {
+        Route::ClaudeSession(_) => {
+            let provider = state.cli_settings.active().provider_type();
+            crate::privacy::begin_llm_request(&provider, None)?
+        }
+        Route::Fallback(config) => {
+            let provider = crate::llm::ProviderType::from_str(&config.provider_type)
+                .map_err(|error| error.to_string())?;
+            crate::privacy::begin_llm_request(&provider, config.base_url.as_deref())?
+        }
+        Route::Stateless => state.llm.as_ref()
+            .ok_or_else(|| "LLM router not initialized".to_string())?
+            .lock().map_err(|error| format!("Failed to lock LLM router: {error}"))?
+            .begin_content_request()?,
+    };
     // Only a Claude session carries images: the other CLI agents' requests with
     // images take the stateless path, which says so.
     if !images.is_empty() && matches!(route, Route::ClaudeSession(_)) && !state.cli_settings.active().supports_images() {

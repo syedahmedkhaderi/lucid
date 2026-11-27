@@ -122,6 +122,7 @@ impl RagManager {
         config: &RagConfig,
         embedder_url: &str,
     ) -> Result<usize, String> {
+        crate::privacy::ensure_embedder_allowed(embedder_url)?;
         let embedder = OllamaEmbedder::new(embedder_url);
 
         // Phase 1: Chunk the text (no DB needed)

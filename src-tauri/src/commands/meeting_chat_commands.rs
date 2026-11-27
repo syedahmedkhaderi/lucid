@@ -211,6 +211,21 @@ pub async fn ask_meeting(
     let with_sources = plan.with_sources();
     let (no_library, no_tools) = plan.key_flags();
     let mut route = request_route_locked(&state, MEETING_ASK_MODE, &scope, with_sources, no_library, no_tools);
+    let _content_request = match &route {
+        Route::ClaudeSession(_) => {
+            let provider = state.cli_settings.active().provider_type();
+            crate::privacy::begin_llm_request(&provider, None)?
+        }
+        Route::Fallback(config) => {
+            let provider = crate::llm::ProviderType::from_str(&config.provider_type)
+                .map_err(|error| error.to_string())?;
+            crate::privacy::begin_llm_request(&provider, config.base_url.as_deref())?
+        }
+        Route::Stateless => state.llm.as_ref()
+            .ok_or_else(|| "LLM router not initialized".to_string())?
+            .lock().map_err(|error| format!("Failed to lock LLM router: {error}"))?
+            .begin_content_request()?,
+    };
 
     if let Route::ClaudeSession(key) = &route {
         let make_req = |key: SessionKey| SessionAssist {
