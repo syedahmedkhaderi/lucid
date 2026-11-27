@@ -24,7 +24,7 @@ describe("PrivacySettings", () => {
     render(<PrivacySettings />);
     expect(screen.getByRole("radio", { name: /Private Local/ })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("radio", { name: /Cloud processing allowed/ })).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText(/Whisper\.cpp, Sherpa ONNX, ORT, Parakeet/)).toBeInTheDocument();
+    expect(screen.getByText(/Whisper Large v3 Turbo, NVIDIA Parakeet TDT 0\.6B v3/)).toBeInTheDocument();
   });
 
   it("changes mode through the backend-backed store action", async () => {

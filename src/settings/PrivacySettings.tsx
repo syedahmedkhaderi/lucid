@@ -92,7 +92,7 @@ export function PrivacySettings() {
         {mode === "private_local" ? (
           <>
             <p className="font-medium text-foreground">Allowed in Private Local</p>
-            <p className="mt-1">Whisper.cpp, Sherpa ONNX, ORT, Parakeet, and Ollama or LM Studio on this device. Browser speech, Windows Speech dictation, subscription CLIs, and remote endpoints are blocked. Windows dictation can use Microsoft's online service.</p>
+            <p className="mt-1">Whisper Large v3 Turbo, NVIDIA Parakeet TDT 0.6B v3, and Ollama or LM Studio on this device. Browser speech, Windows Speech dictation, subscription CLIs, and remote endpoints are blocked. Windows dictation can use Microsoft's online service.</p>
           </>
         ) : (
           <>
