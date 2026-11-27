@@ -146,15 +146,15 @@ describe("F19 names, never ids", () => {
 });
 
 describe("F25 the Start dialog names its workspace and lets you change it", () => {
-  it("says where the meeting goes, and Change opens the choice from the compact view", async () => {
+  it("shows the selected workspace while keeping setup choices visible", async () => {
     useConfigStore.setState({ rememberedMeetingSetup: { audioMode: "online", scenario: "team_meeting" } } as never);
     const onStart = vi.fn();
     render(<MeetingSetupModal open workspaceId="acme" onStart={onStart} onCancel={() => {}} />);
-    expect(screen.getByText("Goes to Acme")).toBeInTheDocument();
-    const badge = screen.getByRole("button", { name: "Workspace: Acme. Change" });
-    await userEvent.click(badge);
+    expect(screen.getByText("Ready for Acme")).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Workspace" })).toBeInTheDocument();
+    expect(screen.getByText("Documents")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio", { name: "Biology" }));
-    expect(screen.getByText("Goes to Biology")).toBeInTheDocument();
+    expect(screen.getByText("Ready for Biology")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Start Meeting" }));
     expect(onStart).toHaveBeenCalledWith("online", "team_meeting", { workspaceId: "bio", borrowed: [], documentIds: [], meetingContext: "" });
   });
@@ -162,7 +162,7 @@ describe("F25 the Start dialog names its workspace and lets you change it", () =
   it("names General too when it is the only workspace", () => {
     seedWorkspaces([GEN], "general");
     render(<MeetingSetupModal open onStart={() => {}} onCancel={() => {}} />);
-    expect(screen.getByText("Goes to General")).toBeInTheDocument();
+    expect(screen.getByText("Ready for General")).toBeInTheDocument();
   });
 });
 
@@ -218,19 +218,24 @@ describe("F28 a workspace that cannot be used starts the meeting unfiled, and sa
   });
 });
 describe("the Start dialog keeps its buttons in view", () => {
-  it("only the body scrolls: Start and Remember sit in a fixed footer, Workspace and Scenario come first", () => {
+  it("only the body scrolls: Start and Remember sit in a fixed footer, Documents stay visible", async () => {
     render(<MeetingSetupModal open workspaceId="acme" onStart={() => {}} onCancel={() => {}} />);
     const start = screen.getByRole("button", { name: "Start Meeting" });
     expect(start.closest(".overflow-y-auto")).toBeNull();
-    const remember = screen.getByRole("checkbox", { name: /Remember these settings/ });
+    const remember = screen.getByRole("checkbox", { name: /Remember audio and meeting choices/ });
     expect(remember.closest(".overflow-y-auto")).toBeNull();
     const workspace = screen.getByRole("radiogroup", { name: "Workspace" });
-    const scenario = screen.getByText("Scenario");
+    const documents = screen.getByText("Documents");
     const audio = screen.getByText("Audio mode");
     expect(workspace.closest(".overflow-y-auto")).not.toBeNull();
-    // Workspace, then Scenario, then Audio mode.
-    expect(workspace.compareDocumentPosition(scenario) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(scenario.compareDocumentPosition(audio) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Workspace, then documents, then Audio mode; less-used scenario settings are collapsed.
+    expect(workspace.compareDocumentPosition(documents) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(documents.compareDocumentPosition(audio) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const moreOptions = screen.getByText("More options").closest("details");
+    expect(moreOptions).not.toHaveAttribute("open");
+    await userEvent.click(screen.getByText("More options"));
+    expect(moreOptions).toHaveAttribute("open");
+    expect(screen.getByText("Scenario")).toBeInTheDocument();
   });
 
   it("with many workspaces the picker is one searchable field, and Also use scrolls in its own box", async () => {
@@ -244,7 +249,7 @@ describe("the Start dialog keeps its buttons in view", () => {
     await userEvent.click(field);
     await userEvent.keyboard("Workspace 17");
     await userEvent.click(await screen.findByRole("option", { name: /Workspace 17/ }));
-    expect(screen.getByText("Goes to Workspace 17")).toBeInTheDocument();
+    expect(screen.getByText("Ready for Workspace 17")).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Also use" }).querySelector(".max-h-28")).not.toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Start Meeting" }));
     expect(onStart).toHaveBeenCalledWith("online", expect.any(String), { workspaceId: "w17", borrowed: [], documentIds: [], meetingContext: "" });

@@ -21,6 +21,8 @@ interface TranscriptLineProps {
   segment: TranscriptSegment;
   /** Optional search query to highlight matches */
   searchQuery?: string;
+  /** A size that follows the live panel width; meeting history keeps its saved size. */
+  fontSize?: number;
 }
 
 /**
@@ -31,7 +33,7 @@ interface TranscriptLineProps {
  * - Confidence underline when confidenceHighlightEnabled and below threshold
  * - Hover state showing full timestamp with milliseconds
  */
-export function TranscriptLine({ segment, searchQuery }: TranscriptLineProps) {
+export function TranscriptLine({ segment, searchQuery, fontSize }: TranscriptLineProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState("");
@@ -39,7 +41,8 @@ export function TranscriptLine({ segment, searchQuery }: TranscriptLineProps) {
   const meetingStartTime = useMeetingStore((s) => s.meetingStartTime);
   const confidenceThreshold = useConfigStore((s) => s.confidenceThreshold);
   const confidenceHighlightEnabled = useConfigStore((s) => s.confidenceHighlightEnabled);
-  const transcriptFontSize = useConfigStore((s) => s.transcriptFontSize ?? 13);
+  const savedTranscriptFontSize = useConfigStore((s) => s.transcriptFontSize ?? 13);
+  const transcriptFontSize = fontSize ?? savedTranscriptFontSize;
   const transcriptTextColor = useConfigStore((s) => s.transcriptTextColor ?? "#e4e4e7");
 
   // SP2 Task 7: Bookmark state + context menu position

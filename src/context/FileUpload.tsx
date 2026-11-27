@@ -57,9 +57,10 @@ export function useTauriFileDrop(
 /** Says what a drop or a pick did, in one line (null when nothing needs saying). */
 export function describeAdd(added: number, failed: number, skipped: number): string | null {
   const parts: string[] = [];
+  if (added > 0) parts.push(`${added} ${added === 1 ? "document was" : "documents were"} added`);
   if (failed > 0) parts.push(`${failed} couldn't be read`);
   if (skipped > 0) parts.push(`${skipped} ${skipped === 1 ? "isn't" : "aren't"} a PDF, text, Markdown, Word, PowerPoint or CSV file`);
-  return parts.length ? parts.join(", ") + "." : added > 0 ? null : "Nothing was added.";
+  return parts.length ? parts.join(" · ") + "." : "Nothing was added.";
 }
 
 /**
@@ -67,7 +68,7 @@ export function describeAdd(added: number, failed: number, skipped: number): str
  * (library and workspace together). Dropping files on the window does the same
  * (see `useTauriFileDrop`, wired where the window's content lives).
  */
-export function FileUpload({ workspaceId: given, className, compact = false }: { workspaceId?: string; className?: string; compact?: boolean }) {
+export function FileUpload({ workspaceId: given, className, compact = false, actionLabel = "Add documents" }: { workspaceId?: string; className?: string; compact?: boolean; actionLabel?: string }) {
   const openId = useWorkspaceStore((s) => s.openId);
   const workspaceId = given ?? openId;
   const [busy, setBusy] = useState(false);
@@ -85,7 +86,8 @@ export function FileUpload({ workspaceId: given, className, compact = false }: {
       const { ok, skipped } = supportedPaths(paths);
       setBusy(true);
       const result = await addFilesToWorkspace(ok, workspaceId);
-      setMessage(result.failed[0]?.error ?? describeAdd(result.added, result.failed.length, skipped.length));
+      const summary = describeAdd(result.added, result.failed.length, skipped.length);
+      setMessage(result.failed[0]?.error ? `${result.failed[0].error}${summary ? ` · ${summary}` : ""}` : summary);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
@@ -115,7 +117,7 @@ export function FileUpload({ workspaceId: given, className, compact = false }: {
         >
           {busy ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" /> : <FilePlus2 className="h-4 w-4 shrink-0" aria-hidden="true" />}
           <span className="min-w-0">
-            <span className="block font-medium text-foreground">{busy ? "Adding files" : "Choose files"}</span>
+            <span className="block font-medium text-foreground">{busy ? "Adding documents…" : actionLabel}</span>
             {!compact && <span className="ui-meta block">{hint}</span>}
           </span>
         </button>

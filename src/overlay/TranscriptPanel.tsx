@@ -11,7 +11,13 @@ import { SpeakerNamingBanner } from "./SpeakerNamingBanner";
 import { NoTranscriptBanner } from "./NoTranscriptBanner";
 import { mergeConsecutiveSegments } from "../lib/mergeSegments";
 import { Mic, MicOff, Volume2, VolumeX, Search, X, Radio } from "lucide-react";
-import { ColorPickerButton } from "../components/ColorPickerButton";
+import { useElementSize } from "./useElementSize";
+
+/** Live transcript text follows its panel width, without taking space for display controls. */
+export function responsiveTranscriptFontSize(width: number): number {
+  if (!Number.isFinite(width) || width <= 0) return 13;
+  return Math.max(12, Math.min(16, Math.round(12 + (width - 320) / 120)));
+}
 
 export function TranscriptPanel({ onOpenDevLog, short = false }: { onOpenDevLog?: () => void; short?: boolean } = {}) {
   const segments = useTranscriptStore((s) => s.segments);
@@ -26,10 +32,8 @@ export function TranscriptPanel({ onOpenDevLog, short = false }: { onOpenDevLog?
   const mutedThem = useConfigStore((s) => s.mutedThem);
   const toggleMuteYou = useConfigStore((s) => s.toggleMuteYou);
   const toggleMuteThem = useConfigStore((s) => s.toggleMuteThem);
-  const transcriptFontSize = useConfigStore((s) => s.transcriptFontSize ?? 13);
-  const setTranscriptFontSize = useConfigStore((s) => s.setTranscriptFontSize);
-  const transcriptTextColor = useConfigStore((s) => s.transcriptTextColor ?? "#e4e4e7");
-  const setTranscriptTextColor = useConfigStore((s) => s.setTranscriptTextColor);
+  const [panelRef, panelSize] = useElementSize<HTMLDivElement>();
+  const transcriptFontSize = responsiveTranscriptFontSize(panelSize.w);
   const isInPerson = audioMode === "in_person";
   // In in-person mode, room audio comes via the "them" config (system audio / AudienceMix),
   // so use systemLevel for the Room bar. micLevel is for the user's mic (online mode).
@@ -136,7 +140,7 @@ export function TranscriptPanel({ onOpenDevLog, short = false }: { onOpenDevLog?
   // Empty state
   if (segments.length === 0) {
     return (
-      <div className="flex flex-1 min-h-0 flex-col">
+      <div ref={panelRef} className="flex flex-1 min-h-0 flex-col">
         <NoTranscriptBanner onOpenDevLog={onOpenDevLog} />
         <div className="flex flex-1 flex-col items-center justify-center gap-2">
           {isRecording ? (
@@ -205,7 +209,7 @@ export function TranscriptPanel({ onOpenDevLog, short = false }: { onOpenDevLog?
   }
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col">
+    <div ref={panelRef} className="flex flex-1 min-h-0 flex-col">
       <NoTranscriptBanner onOpenDevLog={onOpenDevLog} />
       {/* Search bar (shown when there's a search query or toggled) */}
       <div className={`flex shrink-0 items-center gap-2 rounded-lg border border-input bg-muted/20 mx-1 mt-1 mb-1.5 px-2.5 py-1.5 ${short && !searchQuery ? "hidden" : ""}`}>
@@ -250,21 +254,11 @@ export function TranscriptPanel({ onOpenDevLog, short = false }: { onOpenDevLog?
             key={seg.id}
             segment={seg}
             searchQuery={searchQuery}
+            fontSize={transcriptFontSize}
           />
         ))}
         <div ref={bottomRef} />
       </div>
-      </div>
-
-      {/* Typeset controls */}
-      <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 mx-1 mb-1 px-2.5 py-1 border-t border-border/10 ${short ? "hidden" : ""}`}>
-        <span className="text-[0.6rem] uppercase tracking-widest text-muted-foreground/40 font-medium">Text</span>
-        <div className="flex items-center gap-0.5">
-          <button aria-label="Smaller transcript text" onClick={() => setTranscriptFontSize(Math.max(10, transcriptFontSize - 1))} className="h-5 w-5 flex items-center justify-center rounded text-[0.6rem] text-muted-foreground/50 hover:bg-accent/40 transition-colors">A</button>
-          <span className="text-[0.6rem] tabular-nums text-muted-foreground/50 w-5 text-center">{transcriptFontSize}</span>
-          <button aria-label="Larger transcript text" onClick={() => setTranscriptFontSize(Math.min(20, transcriptFontSize + 1))} className="h-5 w-5 flex items-center justify-center rounded text-[0.75rem] font-medium text-muted-foreground/50 hover:bg-accent/40 transition-colors">A</button>
-        </div>
-        <ColorPickerButton value={transcriptTextColor} onChange={setTranscriptTextColor} label="Text color" />
       </div>
 
       {/* Live audio activity indicators — mode-aware */}

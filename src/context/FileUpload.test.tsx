@@ -65,6 +65,7 @@ describe("adding files to a workspace", () => {
         if (String(a.filePath).includes("bad")) throw "Couldn't read bad.pdf";
         return resource("ok");
       },
+      get_token_budget: JSON.stringify({}),
       list_workspaces: [ws(), ws({ id: "acme", name: "Acme" })],
     });
     const result = await addFilesToWorkspace(["/good.pdf", "/bad.pdf"], "acme");
@@ -77,10 +78,10 @@ describe("adding files to a workspace", () => {
   });
 
   it("Choose files adds what was picked to the open workspace", async () => {
-    const b = mockBackend({ load_context_file: resource("p1"), list_workspaces: [ws(), ws({ id: "acme", name: "Acme" })] });
+    const b = mockBackend({ load_context_file: resource("p1"), get_token_budget: JSON.stringify({}), list_workspaces: [ws(), ws({ id: "acme", name: "Acme" })] });
     picked.paths = ["/p1.pdf", "/records.csv", "/skip.exe"];
     render(<FileUpload />);
-    await userEvent.click(screen.getByRole("button", { name: /Choose files/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Add documents/ }));
     await waitFor(() => expect(b.called("load_context_file")).toHaveLength(2));
     expect(b.called("load_context_file")[0].args).toMatchObject({ workspaceId: useWorkspaceStore.getState().openId });
     expect(b.called("load_context_file").map((call) => call.args.filePath)).toEqual(["/p1.pdf", "/records.csv"]);

@@ -21,7 +21,6 @@ import {
   X,
   Play,
   ChevronDown,
-  RotateCcw,
   CheckSquare,
   Square,
   FileText,
@@ -85,8 +84,6 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
   const scenarioName = scenarios.find((s) => s.id === scenario)?.name ?? scenario;
   const [remember, setRemember] = useState(rememberedSetup !== null);
   const [showScenarioPicker, setShowScenarioPicker] = useState(false);
-  // When remembered setup exists, start in compact view; user can expand
-  const [isExpanded, setIsExpanded] = useState(rememberedSetup === null);
 
   const backdropRef = useRef<HTMLDivElement>(null);
   const initialRef = useRef<HTMLElement | null>(null);
@@ -99,7 +96,7 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
       backdropRef.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"], button[aria-pressed="true"]') ??
       backdropRef.current?.querySelector<HTMLElement>('button:not([aria-label="Cancel"])') ??
       null;
-  }, [open, isExpanded]);
+  }, [open]);
   useFocusTrap(backdropRef, open, initialRef);
 
   // Reset state whenever the modal opens or remembered setup changes
@@ -120,7 +117,6 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
     setScenarioPicked(false);
     setScenario(pickScenario({ workspaceDefault: start.default_scenario, remembered: rememberedSetup?.scenario }));
     setRemember(hasRemembered);
-    setIsExpanded(!hasRemembered);
     setShowScenarioPicker(false);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -213,12 +209,6 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
     [scenarioPicked, rememberedSetup]
   );
 
-  const handleForget = useCallback(() => {
-    setRememberedMeetingSetup(null);
-    setRemember(false);
-    setIsExpanded(true);
-  }, [setRememberedMeetingSetup]);
-
   const themeMode = useIsLight() ? "light" : "dark";
 
   if (!open) return null;
@@ -236,7 +226,7 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
       aria-modal="true"
       aria-label="Meeting setup"
     >
-      <div className="flex max-h-[calc(100vh-2rem)] w-[420px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-border/40 bg-popover shadow-2xl">
+      <div className="flex max-h-[calc(100dvh-24px)] w-[min(480px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-border/40 bg-popover shadow-2xl">
 
         {/* ── HEADER ── */}
         <div className="flex shrink-0 items-center justify-between border-b border-border/20 px-5 py-4">
@@ -253,7 +243,7 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
             <div>
               <h2 className="text-sm font-semibold text-foreground">Start Meeting</h2>
               <p className="text-[11px] text-muted-foreground/60 leading-tight">
-                {home ? `Goes to ${home.name}` : "Configure audio mode and scenario"}
+                {home ? `Ready for ${home.name}` : "Prepare your meeting"}
               </p>
             </div>
           </div>
@@ -266,91 +256,7 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
           </button>
         </div>
 
-        {/* ── COMPACT VIEW (remembered, not expanded) ── */}
-        {!isExpanded && rememberedSetup !== null ? (
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            {/* Saved preferences summary */}
-            <div className="rounded-xl border border-border/30 bg-secondary/20 px-4 py-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-muted-foreground/70">
-                  Saved preferences
-                </span>
-                <button
-                  onClick={handleForget}
-                  className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] text-muted-foreground/50 transition-colors hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-                  title="Clear saved preferences"
-                >
-                  <RotateCcw className="h-2.5 w-2.5" />
-                  Forget
-                </button>
-              </div>
-              <div className="flex items-center gap-3">
-                {/* Audio mode badge */}
-                <span
-                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
-                  style={{ background: activeMode.bg, color: activeMode.text }}
-                >
-                  {audioMode === "online"
-                    ? <Monitor className="h-3 w-3" />
-                    : <Mic className="h-3 w-3" />
-                  }
-                  {audioMode === "online" ? "Online" : "In-Person"}
-                </span>
-                {/* Workspace */}
-                {home &&
-                  (selectable.length > 1 ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsExpanded(true)}
-                      aria-label={`Workspace: ${home.name}. Change`}
-                      className="flex cursor-pointer items-center gap-1.5 rounded-full border border-border/40 px-2.5 py-1 text-xs font-medium text-foreground/80 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/60"
-                    >
-                      <VoiceprintMark id={home.id} hue={home.color} size={11} />
-                      {home.name}
-                      <span className="text-muted-foreground">Change</span>
-                    </button>
-                  ) : (
-                    <span className="flex items-center gap-1.5 rounded-full border border-border/30 px-2.5 py-1 text-xs font-medium text-foreground/80">
-                      <VoiceprintMark id={home.id} hue={home.color} size={11} />
-                      {home.name}
-                    </span>
-                  ))}
-                {/* Scenario badge */}
-                <span className="rounded-full border border-border/30 bg-accent/20 px-2.5 py-1 text-xs font-medium text-foreground/80">
-                  {scenarioName}
-                </span>
-                {/* REC badge */}
-                {recordingEnabled && (
-                  <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive ring-1 ring-destructive/20">
-                    <span className="h-1 w-1 rounded-full bg-destructive animate-pulse" />
-                    REC
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Big start button */}
-            <button
-              onClick={handleStart}
-              disabled={documentsLoading}
-              className="group w-full flex items-center justify-center gap-2.5 rounded-xl bg-primary py-3.5 font-semibold text-white shadow-md shadow-primary/20 transition-all duration-150 hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-px active:translate-y-px active:scale-[0.98] cursor-pointer disabled:cursor-wait disabled:opacity-60"
-            >
-              <Play className="h-4 w-4 ml-0.5" fill="white" />
-              <span className="text-sm">Start Meeting</span>
-            </button>
-
-            {/* Change settings link */}
-            <button
-              onClick={() => setIsExpanded(true)}
-              className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors cursor-pointer"
-            >
-              Change settings
-            </button>
-          </div>
-        ) : (
-          /* ── FULL SELECTION VIEW ── */
-          <>
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
             {/* ── Workspace and what it also uses ── */}
             {selectable.length > 1 && (
               <div>
@@ -431,13 +337,13 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
                 <span className="font-normal text-muted-foreground">{selectedDocumentIds.length}/{MAX_MEETING_DOCUMENTS} selected</span>
               </legend>
               <p className="mb-2 text-[10px] leading-relaxed text-muted-foreground/70">
-                Add a file or choose what Lucid should use in this meeting.
+                Add the files Lucid should have ready during this meeting.
               </p>
-              <FileUpload workspaceId={homeId} compact className="mb-2" />
+              <FileUpload workspaceId={homeId} className="mb-2" />
               {documentsLoading ? (
                 <p className="rounded-lg border border-border/30 px-3 py-2 text-xs text-muted-foreground" role="status">Loading workspace documents…</p>
               ) : documents.length === 0 ? (
-                <p className="rounded-lg border border-border/30 px-3 py-2 text-xs text-muted-foreground">No documents are available in this meeting scope.</p>
+                <p className="rounded-lg border border-border/30 px-3 py-2 text-xs text-muted-foreground">No documents yet. Add a CSV, PDF, Word, PowerPoint, text, or Markdown file above.</p>
               ) : (
                 <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-border/30 p-2">
                   {documents.map((document) => {
@@ -478,49 +384,6 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
                 className="mt-2 w-full resize-y rounded-md border border-border/40 bg-background px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
               />
             </details>
-
-            {/* ── Scenario Picker ── */}
-            <div>
-              <p className="mb-2.5 text-xs font-semibold text-foreground/80">
-                Scenario
-              </p>
-              <div className="relative">
-                <button
-                  onClick={() => setShowScenarioPicker((v) => !v)}
-                  className="flex w-full items-center justify-between rounded-xl border border-border/30 bg-secondary/10 px-3.5 py-2.5 text-sm font-medium text-foreground transition-all duration-150 hover:bg-secondary/20 hover:border-border/50 cursor-pointer"
-                >
-                  <span>{scenarioName}</span>
-                  <ChevronDown
-                    className={`h-4 w-4 text-muted-foreground/60 transition-transform duration-150 ${showScenarioPicker ? "rotate-180" : ""}`}
-                  />
-                </button>
-
-                {showScenarioPicker && (
-                  <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-[224px] overflow-y-auto rounded-xl border border-border/40 bg-card shadow-xl">
-                    {scenarios.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => {
-                          setScenario(s.id as AIScenario);
-                          setScenarioPicked(true);
-                          setShowScenarioPicker(false);
-                        }}
-                        className={`flex w-full flex-col items-start px-4 py-2.5 text-left transition-colors duration-100 cursor-pointer ${
-                          scenario === s.id
-                            ? "bg-primary/10 text-primary"
-                            : "hover:bg-accent/50 text-foreground"
-                        }`}
-                      >
-                        <span className="text-xs font-semibold">{s.name}</span>
-                        <span className="text-[10px] text-muted-foreground/70 leading-tight mt-0.5">
-                          {s.description}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
 
             {/* ── Audio Mode Cards ── */}
             <div>
@@ -609,6 +472,52 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
               </div>
             </div>
 
+            <details className="rounded-lg border border-border/30 px-3 py-2">
+              <summary className="cursor-pointer text-xs font-medium text-foreground/80">More options</summary>
+              <div className="mt-3 space-y-5">
+            {/* ── Scenario Picker ── */}
+            <div>
+              <p className="mb-2.5 text-xs font-semibold text-foreground/80">
+                Scenario
+              </p>
+              <div className="relative">
+                <button
+                  onClick={() => setShowScenarioPicker((v) => !v)}
+                  className="flex w-full items-center justify-between rounded-xl border border-border/30 bg-secondary/10 px-3.5 py-2.5 text-sm font-medium text-foreground transition-all duration-150 hover:bg-secondary/20 hover:border-border/50 cursor-pointer"
+                >
+                  <span>{scenarioName}</span>
+                  <ChevronDown
+                    className={`h-4 w-4 text-muted-foreground/60 transition-transform duration-150 ${showScenarioPicker ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {showScenarioPicker && (
+                  <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-[224px] overflow-y-auto rounded-xl border border-border/40 bg-card shadow-xl">
+                    {scenarios.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          setScenario(s.id as AIScenario);
+                          setScenarioPicked(true);
+                          setShowScenarioPicker(false);
+                        }}
+                        className={`flex w-full flex-col items-start px-4 py-2.5 text-left transition-colors duration-100 cursor-pointer ${
+                          scenario === s.id
+                            ? "bg-primary/10 text-primary"
+                            : "hover:bg-accent/50 text-foreground"
+                        }`}
+                      >
+                        <span className="text-xs font-semibold">{s.name}</span>
+                        <span className="text-[10px] text-muted-foreground/70 leading-tight mt-0.5">
+                          {s.description}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* ── Recording Toggle ── */}
             <div className={`flex items-center justify-between rounded-xl border p-3 transition-all duration-150 ${
               recordingEnabled
@@ -649,9 +558,10 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
                 }`} />
               </label>
             </div>
-
-            </div>
-            <div className="shrink-0 space-y-2.5 border-t border-border/20 px-5 py-3">
+              </div>
+            </details>
+        </div>
+        <div className="shrink-0 space-y-2.5 border-t border-border/20 px-5 py-3">
             {/* ── Remember checkbox ── */}
             <button
               onClick={() => setRemember((v) => !v)}
@@ -664,7 +574,7 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
                 : <Square className="h-4 w-4 text-muted-foreground/50 shrink-0 group-hover:text-foreground transition-colors" />
               }
               <span className="text-xs text-muted-foreground/70 group-hover:text-foreground transition-colors">
-                Remember these settings for next time
+                Remember audio and meeting choices
               </span>
             </button>
 
@@ -678,11 +588,9 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
                 <Play className="h-4 w-4 ml-0.5" fill="white" />
                 <span className="text-sm">Start Meeting</span>
               </button>
-            </div>
-            </div>
-          </>
-        )}
+        </div>
       </div>
+    </div>
     </div>
   );
 }

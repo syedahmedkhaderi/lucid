@@ -135,9 +135,9 @@ describe("adding files", () => {
     expect(supportedPaths(["a.pdf", "b.png", "c.docx", "d.pptx", "e.csv", "e"])).toEqual({ ok: ["a.pdf", "c.docx", "d.pptx", "e.csv"], skipped: ["b.png", "e"] });
   });
   it("describes what happened in one line", () => {
-    expect(describeAdd(2, 0, 0)).toBeNull();
+    expect(describeAdd(2, 0, 0)).toMatch(/2 documents were added/);
     expect(describeAdd(0, 0, 0)).toBe("Nothing was added.");
-    expect(describeAdd(1, 1, 2)).toMatch(/1 couldn't be read, 2 aren't/);
+    expect(describeAdd(1, 1, 2)).toMatch(/1 document was added · 1 couldn't be read · 2 aren't/);
   });
 });
 

@@ -1,11 +1,16 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { MeetingSetupModal } from "./MeetingSetupModal";
 import { useConfigStore } from "../stores/configStore";
 import { useScenarioStore } from "../stores/scenarioStore";
 import { FALLBACK_GENERAL, useWorkspaceStore } from "../stores/workspaceStore";
 import type { AIScenario, ScenarioTemplate } from "../lib/types";
+import { detailOf, item, mockBackend } from "../workspace/testUtils";
+
+const pickedFiles = vi.hoisted(() => ({ paths: [] as string[] }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: async () => pickedFiles.paths }));
 
 const boardReview = {
   id: "custom_1",
@@ -30,6 +35,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   useScenarioStore.setState({ customScenarios: [boardReview] });
+  pickedFiles.paths = [];
 });
 
 afterEach(() => {
@@ -37,12 +43,14 @@ afterEach(() => {
   mockIPC(() => []);
   useConfigStore.setState({ rememberedMeetingSetup: null });
   useScenarioStore.setState({ customScenarios: [] });
+  pickedFiles.paths = [];
 });
 
 describe("MeetingSetupModal scenarios", () => {
   it("offers custom scenarios and starts the chosen one", async () => {
     const onStart = vi.fn();
     render(<MeetingSetupModal open onStart={onStart} onCancel={() => {}} />);
+    fireEvent.click(screen.getByText("More options"));
     fireEvent.click(screen.getByRole("button", { name: "Team Meeting" }));
     fireEvent.click(screen.getByRole("button", { name: /Board review/ }));
     await start();
@@ -69,6 +77,7 @@ describe("MeetingSetupModal scenarios", () => {
     remember("custom_1");
     const onStart = vi.fn();
     render(<MeetingSetupModal open onStart={onStart} onCancel={() => {}} />);
+    fireEvent.click(screen.getByText("More options"));
     expect(screen.getByText("Board review")).toBeInTheDocument();
     await start();
     expect(onStart).toHaveBeenCalledWith("online", "custom_1", { workspaceId: "general", borrowed: [], documentIds: [], meetingContext: "" });
@@ -78,6 +87,7 @@ describe("MeetingSetupModal scenarios", () => {
     remember("custom_deleted");
     const onStart = vi.fn();
     render(<MeetingSetupModal open onStart={onStart} onCancel={() => {}} />);
+    fireEvent.click(screen.getByText("More options"));
     expect(screen.getByText("Team Meeting")).toBeInTheDocument();
     expect(screen.queryByText("custom_deleted")).toBeNull();
     await start();
@@ -154,6 +164,7 @@ describe("MeetingSetupModal workspaces", () => {
   it("the workspace's scenario applies until one is picked here", async () => {
     const onStart = vi.fn();
     render(<MeetingSetupModal open workspaceId="b" onStart={onStart} onCancel={() => {}} />);
+    fireEvent.click(screen.getByText("More options"));
     expect(screen.getByRole("button", { name: "Interview" })).toBeInTheDocument();
     // An explicit pick wins, and survives a change of workspace.
     fireEvent.click(screen.getByRole("button", { name: "Interview" }));
@@ -176,5 +187,47 @@ describe("MeetingSetupModal workspaces", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Biology" }));
     await start2();
     expect(onStart).toHaveBeenLastCalledWith("online", expect.any(String), { workspaceId: "b", borrowed: [], documentIds: [], meetingContext: "" });
+  });
+
+  it("keeps documents visible with remembered preferences and lets the user add one in setup", async () => {
+    let added = false;
+    const doc = item({ ref_id: "accounts-doc", name: "accounts.csv", detail: "csv", tokens: 40 });
+    const backend = mockBackend({
+      list_workspaces: [FALLBACK_GENERAL],
+      get_workspace: () => detailOf(FALLBACK_GENERAL, added ? [doc] : []),
+      load_context_file: () => {
+        added = true;
+        return JSON.stringify({
+          id: "accounts-doc",
+          name: "accounts.csv",
+          file_type: "csv",
+          file_path: "/tmp/accounts.csv",
+          size_bytes: 100,
+          token_count: 40,
+          preview: "",
+          loaded_at: "",
+        });
+      },
+      get_token_budget: () => JSON.stringify({}),
+    });
+    pickedFiles.paths = ["/tmp/accounts.csv"];
+    remember("team_meeting");
+    const onStart = vi.fn();
+    render(<MeetingSetupModal open onStart={onStart} onCancel={() => {}} />);
+
+    const addButton = screen.getByRole("button", { name: /Add documents/ });
+    expect(addButton).toBeInTheDocument();
+    await userEvent.click(addButton);
+    const document = await screen.findByRole("checkbox", { name: "accounts.csv in General" });
+    await waitFor(() => expect(document).toBeChecked());
+    expect(backend.called("load_context_file")[0]?.args).toMatchObject({ filePath: "/tmp/accounts.csv", workspaceId: "general" });
+
+    await start2();
+    expect(onStart).toHaveBeenCalledWith("online", "team_meeting", {
+      workspaceId: "general",
+      borrowed: [],
+      documentIds: ["accounts-doc"],
+      meetingContext: "",
+    });
   });
 });
