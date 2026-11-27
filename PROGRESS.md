@@ -23,14 +23,14 @@ Updated: 2026-11-27
 - Excluded ignored `work/` packaging output from Vitest discovery so generated app resources do not appear as tests.
 - Added project guidance, architecture, decisions, known limitations, security, build, progress, benchmark, and third-party notice documents.
 - Added a reproducible SPDX/dependency metadata inventory generator. It covers 165 production npm and 711 Cargo.lock packages; license texts and legal classification still require review.
-- Did not copy, test, or store the Gemini API keys pasted in the request.
+- Tested the supplied Gemini LLM profiles and stored accepted credentials in this Mac's Keychain; none of the key values were committed. Gemini profiles are selected manually, and multiple keys from a single Google project do not increase that project's quota.
 
 ## Verified on this Apple Silicon Mac
 
 - `npm ci`: passed; 396 packages audited, 0 vulnerabilities. Node 24.1.0 emits a declared engine warning from jsdom (requires 24.15.0+ or 22.22.2+).
-- `npm test -- --reporter=dot`: 260 files passed; 3,891 tests passed; 2 skipped.
+- `npm test -- --reporter=dot`: 260 files passed; 3,893 tests passed; 2 skipped.
 - `npm run build`: passed. Existing Tailwind and ineffective dynamic-import warnings remain.
-- `LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib cargo test --lib --quiet`: 1,971 passed; 15 ignored; 0 failed. Nested integration targets were not run in this command.
+- Full Rust test suite after the exact-CSV question fixes: 2,052 passed; 24 ignored; 0 failed, including library and integration targets.
 - Dependency scans: `npm audit --omit=dev` found 0 vulnerabilities. `cargo-audit` 0.23.0 found 0 vulnerable Rust packages after updating `cookie` to 0.18.3, `url` to 2.5.9, and `rustix` to 1.1.6; nine warnings remain for unmaintained/yanked crates and Linux GTK's `glib` unsoundness advisory.
 - Local retrieval evaluation: 100% hit@1 and hit@8 across 30 questions and 42 synthetic English/Japanese/Chinese meetings. Search benchmark: 500 × 10,000-word synthetic transcripts, 24,000 passages, p50 87.9 ms / p95 97.2 ms / max 99.6 ms over 120 warm searches; corpus indexing 6.2 s with SQLite optimized at level 3. Unoptimized SQLite baseline p95 was 109.9 ms. These do not measure generated answer accuracy or end-to-end latency.
 - `./build-mac.sh --no-install --bundles app`: passed after the credential-profile, write-only secret IPC, and updater-config startup fixes. The installed `/Applications/Lucid.app` was launched and reached the Lucid dashboard. The ARM64 bundle is 86.99 MiB; its `com.lucid.desktop` identifier and `0.1.0` version were checked, and `codesign --verify --deep --strict` passed. Notarization is unavailable because signing credentials are not configured.
@@ -41,6 +41,8 @@ Updated: 2026-11-27
 - `npm run license:inventory`: passed; 0 Rust packages lack declared license metadata; all 98 npm packages without declared SPDX expressions had a license-related file in the installed package tree. No legal review or license-text collection has been completed.
 - The test harness paths were updated for Cargo 1.100's build output layout.
 - Mac meeting-mode local STT smoke test: downloaded and checksum-verified Whisper Large v3 Turbo and Parakeet TDT 0.6B v3 through Lucid, selected each for live system-audio capture, and fed two synthesized English utterances through an actual private meeting session. Parakeet returned both utterances accurately; Whisper returned partial/revised text with noticeable recognition errors. This verifies local model loading, system loopback, and live transcript routing only; it is not a human-participant meeting, a broad accuracy benchmark, or a production call. No cloud STT request was used.
+- Document-grounded meeting evaluation: attached the synthetic 500-row `accounts.csv` and policy brief to actual Lucid meetings, provided optional meeting context, and asked the scripted manager questions through synthesized system audio. Gemini returned the exact ACCT-0427 financial/risk values and policy gates in 1.2–1.8 seconds, and Auto-Answer responded without clicking the answer card. See `test-data/meeting-eval/vendor-review/EVALUATION.md` for the full results and known misses.
+- Later final audio retests after restarting Lucid did not capture meeting audio: both meters stayed at zero and prompts produced no transcript. Device selectors were stuck at “Loading…” inside the active meeting, though idle settings enumerated the built-in devices after relaunch. CoreAudio logs reported server errors (`0x10004003`). Live capture is not currently reliable on this Mac; treat earlier successful sessions as a partial smoke test until this is diagnosed and retested.
 - The setup wizard and Settings expose only Whisper Large v3 Turbo, Parakeet TDT 0.6B v3, and Groq Whisper for the supported transcription path. Local model download and activation are available in the app; unsupported hardware is offered Groq instead. The exact per-party live audio selectors now include installed Whisper Turbo and Parakeet models.
 - Simplified meeting speech setup to those three options and English. Legacy saved speech providers migrate to Groq; live notes and answer prompts are English-only. Translation actions were removed from the meeting transcript, answer selection, and settings UI.
 - Added model storage usage and confirmed deletion controls. Deletion requires confirmation, is disabled during a meeting, and clears an active selection so Lucid can fall back to Groq.
@@ -56,7 +58,7 @@ Updated: 2026-11-27
 - A task-based model registry and policy-driven provider selection.
 - Independent privacy/security audit and encryption at rest. Private Local cannot verify the behavior of local software you install.
 - Windows hosted build/installer/launch result, followed by validation on a physical Windows device with actual microphone and meeting system audio. A hosted runner cannot verify device-specific capture, GPU-driver detection, or permissions.
-- A human-participant or real conference meeting test; current meeting audio tests use synthesized speech.
+- A human-participant or real conference meeting test; current meeting audio tests use synthesized speech. The document Q&A workflow has been exercised inside Lucid, but the voices are a synthetic role-play rather than a live human meeting.
 - Real synthetic/safely licensed speech benchmark and latency measurements.
 - Legal classification and notice collection/release check for the dependency inventory, signing, notarization, and Lucid update channel.
 

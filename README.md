@@ -27,7 +27,7 @@ On macOS this builds and installs Lucid.app in /Applications. On Windows it buil
 
 Lucid starts in **Private Local** mode, which blocks cloud speech and AI requests. **Cloud processing allowed** may send selected audio, transcript text, or document excerpts to the configured service and may incur charges. Check the provider's current limits and your organization's data rules before enabling it.
 
-Google applies Gemini quotas at the project level, so multiple keys from one project do not multiply its quota. Lucid does not rotate keys automatically after quota failures. Keys pasted into the original request were not copied into this repository or tested; revoke them at their provider and replace them with new credentials.
+Google applies Gemini quotas at the project level, so multiple keys from one project do not multiply its quota. Lucid does not rotate keys automatically after quota failures. The supplied Gemini profiles were tested and are stored in this Mac's Keychain; no key values are included in this repository. Manage or remove profiles in Settings → AI Answers. Revoke exposed keys in Google AI Studio if they should no longer be used.
 
 ## Project docs
 

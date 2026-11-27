@@ -212,10 +212,18 @@ fn record_identifiers(query: &str) -> Vec<(String, bool)> {
         if normalized.is_empty() {
             continue;
         }
-        let has_letter = normalized.chars().any(|c| c.is_ascii_alphabetic());
-        let has_digit = normalized.chars().any(|c| c.is_ascii_digit());
+        let first_letter = normalized.find(|c: char| c.is_ascii_alphabetic());
+        let first_digit = normalized.find(|c: char| c.is_ascii_digit());
+        let has_letter = first_letter.is_some();
+        let has_digit = first_digit.is_some();
         let numeric_only = !has_letter && has_digit && normalized.len() >= 3;
-        if !(has_letter && has_digit) && !(numeric_only && identifier_context) {
+        // Dates and durations such as `30-day` normalize to `30DAY`. They are
+        // common in meeting questions but are not record IDs. Mixed IDs in the
+        // supported datasets use an alphabetic prefix (`ACCT0427`); standalone
+        // numeric IDs remain supported when the question names an ID field.
+        let prefixed_identifier =
+            matches!((first_letter, first_digit), (Some(letter), Some(digit)) if letter < digit);
+        if !(prefixed_identifier || (numeric_only && identifier_context)) {
             continue;
         }
         if !found.iter().any(|(value, _)| value == &normalized) {
@@ -246,6 +254,21 @@ fn exact_lookup_query(question: Option<&str>, transcript_text: &str) -> String {
         question.to_string()
     } else {
         format!("{question}\n{latest_line}")
+    }
+}
+
+/// Preserve the full question when the detector surfaces only a final clause
+/// but the exact record ID appears in that same transcript line.
+fn enrich_record_question(question: Option<&str>, transcript_text: &str) -> Option<String> {
+    let question = question.filter(|text| !text.trim().is_empty())?;
+    if !record_identifiers(question).is_empty() {
+        return Some(question.to_string());
+    }
+    let expanded = exact_lookup_query(Some(question), transcript_text);
+    if record_identifiers(&expanded).is_empty() {
+        Some(question.to_string())
+    } else {
+        Some(expanded)
     }
 }
 
@@ -2029,11 +2052,18 @@ pub async fn generate_assist(
     // A cache contains the whole source set and may not contain the exact row
     // from a large CSV. Explicit record queries bypass it so the local exact
     // lookup below is included in the request sent to Gemini.
-    let question_text = custom_question
+    let mut question_text = custom_question
         .as_deref()
         .filter(|q| !q.is_empty())
         .map(str::to_string)
         .or_else(|| effective_question.as_ref().map(|q| q.text.clone()));
+    if custom_question
+        .as_deref()
+        .filter(|q| !q.is_empty())
+        .is_none()
+    {
+        question_text = enrich_record_question(question_text.as_deref(), &transcript_text);
+    }
     let exact_query = exact_lookup_query(question_text.as_deref(), &transcript_text);
     let requested_identifiers = record_identifiers(&exact_query);
     let explicit_record_query = !requested_identifiers.is_empty();
@@ -2164,7 +2194,7 @@ pub async fn generate_assist(
             }
         }
         system_prompt.push_str(
-            "\n\nFor a requested CSV record identifier, use the exact CSV row lookup block when it is present. Do not infer values from neighboring rows, row order, similar identifiers, or numeric patterns. If the selected documents contain no exact row, say you could not verify that record instead of guessing. Treat meeting context as background, not as a substitute for source values.",
+            "\n\nFor a requested CSV record identifier, use the exact CSV row lookup block when it is present. Answer every part of the user's complete question when the full utterance is included. Cite the provided filename and CSV row in prose (for example, `accounts.csv, row 428`) instead of using only a generic source number. Do not infer values from neighboring rows, row order, similar identifiers, or numeric patterns. If the selected documents contain no exact row, say you could not verify that record instead of guessing. Treat meeting context as background, not as a substitute for source values.",
         );
     }
     // Nothing retrieved (no index yet, Ollama unreachable, or no match): include
@@ -2566,6 +2596,20 @@ mod tests {
     }
 
     #[test]
+    fn partial_detected_question_keeps_all_questions_from_the_id_utterance() {
+        let transcript = "[00:05] Them: For account ACCT0427, what is the open balance? How much is overdue by more than 30 days, and what is driving the risk score?";
+        let expanded = enrich_record_question(
+            Some("How much is overdue by more than 30 days, and what is driving the risk score?"),
+            transcript,
+        )
+        .unwrap();
+
+        assert!(expanded.contains("what is the open balance?"));
+        assert!(expanded.contains("overdue by more than 30 days"));
+        assert!(expanded.contains("ACCT0427"));
+    }
+
+    #[test]
     fn numeric_record_lookup_matches_an_id_column_not_an_amount() {
         let csv = concat!(
             "Row 427 | Account ID: 427 | Amount: 427 | Status: Escalated\n",
@@ -2574,6 +2618,15 @@ mod tests {
         let rows = record_identifier_rows("What is the status for account 427?", csv);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].0, 427);
+    }
+
+    #[test]
+    fn duration_in_policy_question_is_not_treated_as_record_identifier() {
+        let question = "I achieve at the 30-day review, and who signs off?";
+        assert!(record_identifiers(question).is_empty());
+
+        let query = exact_lookup_query(Some(question), question);
+        assert_eq!(query, question);
     }
 
     #[test]
