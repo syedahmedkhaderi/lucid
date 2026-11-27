@@ -103,6 +103,7 @@ describe("the Library panel", () => {
   it("edits the instructions in a dialog and saves them", async () => {
     const b = backend({ update_workspace: detailOf(ACME, ITEMS, "Short.") });
     render(<LibraryPanel workspaceId="acme" />);
+    await userEvent.click(screen.getByRole("button", { name: "More meeting tools" }));
     expect(await screen.findByText("Be brief and name the client.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Edit instructions" }));
     const dialog = await screen.findByRole("dialog", { name: "Instructions" });
@@ -150,6 +151,7 @@ describe("the Library panel", () => {
     // One short muted line, no paragraph and no row of buttons: the section's Add menu and its "i" do the rest.
     expect(screen.getByRole("button", { name: "About the library" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add a folder" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "More meeting tools" }));
     expect(await screen.findByText(/The first question shows how much/)).toBeInTheDocument();
   });
 
@@ -257,13 +259,17 @@ describe("a note in the Library", () => {
   it("folds a section and remembers it", async () => {
     backend();
     render(<LibraryPanel workspaceId="acme" />);
-    const fold = await screen.findByRole("button", { name: /^Instructions/ });
+    await userEvent.click(screen.getByRole("button", { name: "More meeting tools" }));
+    const section = await screen.findByRole("region", { name: "Instructions" });
+    const fold = within(section).getByRole("button", { name: "Instructions" });
     expect(fold).toHaveAttribute("aria-expanded", "true");
     await userEvent.click(fold);
     expect(fold).toHaveAttribute("aria-expanded", "false");
     cleanup();
     render(<LibraryPanel workspaceId="acme" />);
-    expect(await screen.findByRole("button", { name: /^Instructions/ })).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(screen.getByRole("button", { name: "More meeting tools" }));
+    const reopened = await screen.findByRole("region", { name: "Instructions" });
+    expect(within(reopened).getByRole("button", { name: "Instructions" })).toHaveAttribute("aria-expanded", "false");
   });
 });
 

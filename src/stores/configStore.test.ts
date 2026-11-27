@@ -434,7 +434,7 @@ describe("configStore: STT migration and the preset chip", () => {
   });
 
   const inPerson = (themProvider: string, preset: string | null) => ({
-    you: { role: "You", device_id: "default", is_input_device: true, stt_provider: "web_speech" },
+    you: { role: "You", device_id: "default", is_input_device: true, stt_provider: "groq_whisper" },
     them: { role: "Them", device_id: "mic_2", is_input_device: true, stt_provider: themProvider },
     recording_enabled: false,
     preset_name: preset,
@@ -456,5 +456,43 @@ describe("configStore: STT migration and the preset chip", () => {
     await store.getState().loadConfig();
 
     expect(store.getState().meetingAudioConfig?.preset_name).toBe("In-Person");
+  });
+
+  it("normalizes saved and per-party transcription languages to English", async () => {
+    saved.set("sttLanguage", "fr-FR");
+    saved.set("meetingAudioConfig", {
+      ...inPerson("groq_whisper", "In-Person"),
+      you: { ...inPerson("groq_whisper", "In-Person").you, language: "es-ES" },
+      them: { ...inPerson("groq_whisper", "In-Person").them, language: "auto" },
+    });
+    saved.set("customPresets", [inPerson("groq_whisper", "Custom")]);
+    const store = await freshStore();
+    await store.getState().loadConfig();
+
+    expect(store.getState().sttLanguage).toBe("en-US");
+    expect(saved.get("sttLanguage")).toBe("en-US");
+    expect(store.getState().meetingAudioConfig?.you.language).toBe("en-US");
+    expect(store.getState().meetingAudioConfig?.them.language).toBe("en-US");
+    expect((saved.get("customPresets") as Array<{ you: { language: string }; them: { language: string } }>)[0])
+      .toMatchObject({ you: { language: "en-US" }, them: { language: "en-US" } });
+  });
+
+  it("migrates unsupported saved speech providers to Groq and clears stale presets", async () => {
+    saved.set("sttProvider", "deepgram");
+    saved.set("meetingAudioConfig", inPerson("deepgram", "Old preset"));
+    const store = await freshStore();
+    await store.getState().loadConfig();
+    expect(store.getState().sttProvider).toBe("groq_whisper");
+    expect(store.getState().meetingAudioConfig?.you.stt_provider).toBe("groq_whisper");
+    expect(store.getState().meetingAudioConfig?.them.stt_provider).toBe("groq_whisper");
+    expect(store.getState().meetingAudioConfig?.preset_name).toBeNull();
+    expect(saved.get("sttProvider")).toBe("groq_whisper");
+  });
+
+  it("ignores non-English choices sent by older UI windows", async () => {
+    const store = await freshStore();
+    store.getState().setSTTLanguage("fr-FR");
+    expect(store.getState().sttLanguage).toBe("en-US");
+    await vi.waitFor(() => expect(saved.get("sttLanguage")).toBe("en-US"));
   });
 });

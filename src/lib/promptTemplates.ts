@@ -66,7 +66,7 @@ const DEFAULT_PROMPTS: Record<IntelligenceMode, string> = {
     "and summary, and from the earlier questions and answers about it. Be direct and specific; " +
     "mention who said what and roughly when (mm:ss) when it helps. If the meeting does not " +
     "answer the question, say so plainly. Never mention segment ids. " +
-    "IMPORTANT: Respond in the same language as the user's question.",
+    "IMPORTANT: Respond in English.",
 };
 
 export function getSystemPromptForMode(mode: IntelligenceMode): string {
@@ -74,7 +74,7 @@ export function getSystemPromptForMode(mode: IntelligenceMode): string {
   const actions = useAIActionsStore.getState().configs.actions;
   const actionConfig = actions[mode];
   if (actionConfig?.systemPrompt) {
-    return actionConfig.systemPrompt;
+    return actionConfig.systemPrompt + "\n\nWrite all responses in English. Keep any required JSON structure unchanged.";
   }
-  return DEFAULT_PROMPTS[mode] ?? DEFAULT_PROMPTS.Assist;
+  return (DEFAULT_PROMPTS[mode] ?? DEFAULT_PROMPTS.Assist) + "\n\nWrite all responses in English. Keep any required JSON structure unchanged.";
 }

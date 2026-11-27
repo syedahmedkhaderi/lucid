@@ -24,18 +24,17 @@ import {
   Theater,
   Volume2,
   BarChart2,
-  Globe,
   ShieldCheck,
+  ChevronDown,
 } from "lucide-react";
 import { ContextStrategySettings } from "./ContextStrategySettings";
 import { AIActionsSettings } from "./AIActionsSettings";
-import { TranslationSettings } from "./TranslationSettings";
 import { Sparkles, BookOpen, NotebookText } from "lucide-react";
 import { LiveNotesSettings } from "./LiveNotesSettings";
 import { PersonalSourcesEditor } from "../sources/PersonalSourcesEditor";
 import { PrivacySettings } from "./PrivacySettings";
 
-type SettingsTab = "meeting_audio" | "llm" | "stt" | "translation" | "privacy" | "ai_actions" | "context_strategy" | "scenarios" | "noise_presets" | "confidence" | "personal_sources" | "live_notes" | "hotkeys" | "general" | "about";
+type SettingsTab = "meeting_audio" | "llm" | "stt" | "privacy" | "personal_sources" | "ai_actions" | "context_strategy" | "scenarios" | "noise_presets" | "confidence" | "live_notes" | "hotkeys" | "general" | "about";
 
 // ── Tab groups for sidebar (contextually organized, importance-ordered) ──
 interface TabItem {
@@ -44,51 +43,29 @@ interface TabItem {
   icon: React.ReactNode;
 }
 
-interface TabGroup {
-  label: string;
-  items: TabItem[];
-}
+const CORE_TABS: TabItem[] = [
+  { id: "meeting_audio", label: "Audio & Devices", icon: <Headphones className="h-4 w-4" /> },
+  { id: "stt", label: "Speech & Models", icon: <Mic className="h-4 w-4" /> },
+  { id: "llm", label: "AI Answers", icon: <Brain className="h-4 w-4" /> },
+  { id: "personal_sources", label: "Documents", icon: <BookOpen className="h-4 w-4" /> },
+  { id: "privacy", label: "Privacy", icon: <ShieldCheck className="h-4 w-4" /> },
+  { id: "about", label: "About", icon: <Info className="h-4 w-4" /> },
+];
 
-const TAB_GROUPS: TabGroup[] = [
-  {
-    label: "Meeting",
-    items: [
-      { id: "meeting_audio", label: "Audio & Devices", icon: <Headphones className="h-4 w-4" /> },
-    ],
-  },
-  {
-    label: "Providers",
-    items: [
-      { id: "llm", label: "LLM Providers", icon: <Brain className="h-4 w-4" /> },
-      { id: "stt", label: "STT Providers", icon: <Mic className="h-4 w-4" /> },
-      { id: "translation", label: "Translation", icon: <Globe className="h-4 w-4" /> },
-      { id: "privacy", label: "Privacy", icon: <ShieldCheck className="h-4 w-4" /> },
-    ],
-  },
-  {
-    label: "Intelligence",
-    items: [
-      { id: "ai_actions", label: "AI Actions", icon: <Sparkles className="h-4 w-4" /> },
-      { id: "context_strategy", label: "Context Strategy", icon: <Database className="h-4 w-4" /> },
-      { id: "personal_sources", label: "Personal Sources", icon: <BookOpen className="h-4 w-4" /> },
-      { id: "live_notes", label: "Live Notes and Brief", icon: <NotebookText className="h-4 w-4" /> },
-      { id: "scenarios", label: "AI Scenarios", icon: <Theater className="h-4 w-4" /> },
-      { id: "noise_presets", label: "Noise Presets", icon: <Volume2 className="h-4 w-4" /> },
-      { id: "confidence", label: "Confidence", icon: <BarChart2 className="h-4 w-4" /> },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      { id: "hotkeys", label: "Hotkeys", icon: <Keyboard className="h-4 w-4" /> },
-      { id: "general", label: "General", icon: <SlidersHorizontal className="h-4 w-4" /> },
-      { id: "about", label: "About", icon: <Info className="h-4 w-4" /> },
-    ],
-  },
+const ADVANCED_TABS: TabItem[] = [
+  { id: "ai_actions", label: "AI Actions", icon: <Sparkles className="h-4 w-4" /> },
+  { id: "context_strategy", label: "Context Strategy", icon: <Database className="h-4 w-4" /> },
+  { id: "live_notes", label: "Live Notes and Brief", icon: <NotebookText className="h-4 w-4" /> },
+  { id: "scenarios", label: "AI Scenarios", icon: <Theater className="h-4 w-4" /> },
+  { id: "noise_presets", label: "Noise Presets", icon: <Volume2 className="h-4 w-4" /> },
+  { id: "confidence", label: "Confidence", icon: <BarChart2 className="h-4 w-4" /> },
+  { id: "hotkeys", label: "Hotkeys", icon: <Keyboard className="h-4 w-4" /> },
+  { id: "general", label: "General", icon: <SlidersHorizontal className="h-4 w-4" /> },
 ];
 
 // Flat list for modal tabs (same order)
-const ALL_TABS: TabItem[] = TAB_GROUPS.flatMap((g) => g.items);
+const ALL_TABS: TabItem[] = [...CORE_TABS, ...ADVANCED_TABS];
+const VALID_TABS = new Set<SettingsTab>(ALL_TABS.map((tab) => tab.id));
 
 // Tab labels for header display
 const TAB_LABELS: Record<SettingsTab, string> = Object.fromEntries(
@@ -104,7 +81,12 @@ export function SettingsOverlay({ isModal = false }: SettingsOverlayProps) {
   const setCurrentView = useMeetingStore((s) => s.setCurrentView);
   const previousView = useMeetingStore((s) => s.previousView);
   const [activeTab, setActiveTab] = useState<SettingsTab>(
-    () => (useMeetingStore.getState().settingsTab as SettingsTab | null) ?? "meeting_audio",
+    () => {
+      const requestedTab = useMeetingStore.getState().settingsTab as string | null;
+      return requestedTab && requestedTab !== "translation" && VALID_TABS.has(requestedTab as SettingsTab)
+        ? requestedTab as SettingsTab
+        : "meeting_audio";
+    },
   );
   // The requested tab applies to this opening only.
   useEffect(() => {
@@ -176,8 +158,6 @@ export function SettingsOverlay({ isModal = false }: SettingsOverlayProps) {
         return <ConfidenceSettings />;
       case "stt":
         return <STTSettings />;
-      case "translation":
-        return <TranslationSettings />;
       case "privacy":
         return <PrivacySettings />;
       case "hotkeys":
@@ -204,7 +184,7 @@ export function SettingsOverlay({ isModal = false }: SettingsOverlayProps) {
   const currentTabLabel = TAB_LABELS[activeTab] ?? "Settings";
 
   // Wider content area for two-column settings pages
-  const contentMaxW = activeTab === "ai_actions" || activeTab === "translation" ? "max-w-4xl" : "max-w-2xl";
+  const contentMaxW = activeTab === "ai_actions" ? "max-w-4xl" : "max-w-2xl";
 
   // ─── Modal mode: render as overlay dialog ───
   if (isModal) {
@@ -254,7 +234,7 @@ export function SettingsOverlay({ isModal = false }: SettingsOverlayProps) {
 
           {/* Tab Navigation (horizontal, uses flat list) */}
           <div className="flex border-b border-border/30 px-2 overflow-x-auto" role="tablist" aria-label="Settings navigation">
-            {ALL_TABS.map((tab) => (
+            {CORE_TABS.map((tab) => (
               <button
                 key={tab.id}
                 role="tab"
@@ -274,6 +254,27 @@ export function SettingsOverlay({ isModal = false }: SettingsOverlayProps) {
                 {tab.label}
               </button>
             ))}
+            <details className="relative flex shrink-0 items-center">
+              <summary className="flex cursor-pointer list-none items-center gap-1 px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground">
+                Advanced <ChevronDown className="h-3.5 w-3.5" />
+              </summary>
+              <div className="absolute right-0 top-full z-10 min-w-52 rounded-lg border border-border/40 bg-card p-1 shadow-xl">
+                {ADVANCED_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    onClick={(event) => {
+                      setActiveTab(tab.id);
+                      event.currentTarget.closest("details")?.removeAttribute("open");
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  >
+                    {tab.icon}{tab.label}
+                  </button>
+                ))}
+              </div>
+            </details>
           </div>
 
           {/* Tab Content */}
@@ -305,48 +306,54 @@ export function SettingsOverlay({ isModal = false }: SettingsOverlayProps) {
 
         {/* Grouped Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 pt-3 pb-1" role="tablist" aria-label="Settings navigation">
-          {TAB_GROUPS.map((group, gi) => (
-            <div key={group.label} className={gi > 0 ? "mt-4" : ""}>
-              {/* Group label */}
-              <div className="mb-1 px-3 flex items-center gap-2">
-                <span className="text-meta font-semibold uppercase tracking-wider text-muted-foreground/70">
-                  {group.label}
-                </span>
-                <div className="flex-1 h-px bg-primary/10" />
-              </div>
+          <div className="space-y-0.5">
+            {CORE_TABS.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 cursor-pointer ${
+                    isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  }`}
+                >
+                  <div className={`absolute left-0 top-1/2 -translate-y-1/2 rounded-r-full bg-primary transition-all duration-200 ease-out ${
+                    isActive ? "h-5 w-[3px] opacity-100" : "h-0 w-[3px] opacity-0"
+                  }`} />
+                  <span className={`shrink-0 transition-colors duration-150 ${
+                    isActive ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground/70"
+                  }`}>{tab.icon}</span>
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
 
-              {/* Group items */}
-              <div className="space-y-0.5">
-                {group.items.map((tab) => {
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      role="tab"
-                      aria-selected={isActive}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 cursor-pointer ${
-                        isActive
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                      }`}
-                    >
-                      {/* Active indicator bar — CSS transition instead of mount/unmount */}
-                      <div className={`absolute left-0 top-1/2 -translate-y-1/2 rounded-r-full bg-primary transition-all duration-200 ease-out ${
-                        isActive ? "h-5 w-[3px] opacity-100" : "h-0 w-[3px] opacity-0"
-                      }`} />
-                      <span className={`shrink-0 transition-colors duration-150 ${
-                        isActive ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground/70"
-                      }`}>
-                        {tab.icon}
-                      </span>
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
+          <details className="mt-3 border-t border-border/20 pt-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground">
+              Advanced <ChevronDown className="h-3.5 w-3.5" />
+            </summary>
+            <div className="mt-1 space-y-0.5 pl-2">
+              {ADVANCED_TABS.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium ${
+                      isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                    }`}
+                  >
+                    {tab.icon}{tab.label}
+                  </button>
+                );
+              })}
             </div>
-          ))}
+          </details>
         </nav>
 
         {/* Bottom: Wizard re-run */}

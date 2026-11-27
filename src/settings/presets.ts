@@ -25,51 +25,28 @@ export type DeviceHint =
 
 export const BUILT_IN_PRESETS: MeetingPreset[] = [
   {
-    // Windows Speech can't transcribe system audio (it only listens to the
-    // default mic), so the other side uses a local model instead.
-    name: "Free",
-    description: "Web Speech for you (no key, but your mic audio goes to a cloud service), Parakeet TDT on your computer for the other side (one-time model download)",
-    badge: "Default",
-    you: { hint: "default_mic", stt: "web_speech" },
-    them: { hint: "default_output", stt: "parakeet_tdt" },
-    requiresDownload: "parakeet_tdt",
-  },
-  {
-    name: "Best Quality",
-    description: "Deepgram cloud — fastest, most accurate",
-    badge: "Recommended",
-    you: { hint: "default_mic", stt: "web_speech" },
-    them: { hint: "default_output", stt: "deepgram" },
-    requiresKey: "deepgram",
-  },
-  {
-    name: "Fully Offline",
-    description: "Whisper Large v3 Turbo for both parties — offline after its one-time download",
-    badge: "Free",
+    name: "Whisper Turbo",
+    description: "Use Whisper Large v3 Turbo for both sides of the meeting",
+    badge: "Local",
     you: { hint: "default_mic", stt: "whisper_cpp" },
     them: { hint: "default_output", stt: "whisper_cpp" },
     requiresDownload: "whisper_cpp",
   },
   {
-    name: "All Cloud",
-    description: "Deepgram for both parties",
-    you: { hint: "default_mic", stt: "deepgram" },
-    them: { hint: "default_output", stt: "deepgram" },
-    requiresKey: "deepgram",
-  },
-  {
-    name: "Local Only (Parakeet)",
-    description: "Parakeet TDT for both parties, offline and free (one-time model download)",
+    name: "Parakeet",
+    description: "Use NVIDIA Parakeet TDT 0.6B v3 for both sides of the meeting",
+    badge: "Local",
     you: { hint: "default_mic", stt: "parakeet_tdt" },
     them: { hint: "default_output", stt: "parakeet_tdt" },
     requiresDownload: "parakeet_tdt",
   },
   {
-    name: "In-Person",
-    description: "Both parties use mic input: Web Speech for you, Parakeet TDT for the second mic (one-time model download)",
-    you: { hint: "default_mic", stt: "web_speech" },
-    them: { hint: "mic_2", stt: "parakeet_tdt" },
-    requiresDownload: "parakeet_tdt",
+    name: "Groq Whisper",
+    description: "Use Groq Whisper for both sides; requires a Groq API key and cloud processing",
+    badge: "Cloud",
+    you: { hint: "default_mic", stt: "groq_whisper" },
+    them: { hint: "default_output", stt: "groq_whisper" },
+    requiresKey: "groq_whisper",
   },
 ];
 

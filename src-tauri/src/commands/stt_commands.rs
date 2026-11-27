@@ -518,11 +518,14 @@ pub async fn update_groq_config(app: AppHandle, config_json: String) -> Result<(
     Ok(())
 }
 
-/// Set the recognition language for all STT providers.
-/// Accepts BCP-47 codes (e.g., "es-ES", "en-US"). Takes effect on next connection.
+/// Keep the recognition language set to English for all STT providers.
 #[command]
 pub async fn set_stt_language(app: AppHandle, language: String) -> Result<(), String> {
     let state = app.state::<AppState>();
+    // Keep old clients and saved preferences from enabling non-English meeting
+    // transcription. The UI no longer exposes a language selector.
+    let _requested_language = language;
+    let language = "en-US".to_string();
 
     // Keep shared_groq_config in sync — Groq reads it on every API call via current_config().
     {

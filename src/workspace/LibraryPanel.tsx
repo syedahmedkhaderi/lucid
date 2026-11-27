@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Library, Plus } from "lucide-react";
+import { ChevronDown, Library, Plus } from "lucide-react";
 import { ConfirmDialog, IconButton, Menu, Tooltip, type MenuItemSpec } from "../ui";
 import { FileUpload } from "../context/FileUpload";
 import {
@@ -59,6 +59,7 @@ export function LibraryPanel({ workspaceId, inSheet = false }: { workspaceId: st
   const [confirmLibraryRemove, setConfirmLibraryRemove] = useState<WorkspaceItem | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
   const focus = useWorkspaceStore((s) => s.focus);
   const nonce = focus?.nonce;
   // A requested row stays marked for a moment, then goes back to normal.
@@ -240,17 +241,30 @@ export function LibraryPanel({ workspaceId, inSheet = false }: { workspaceId: st
           <FileUpload workspaceId={workspaceId} className="mt-2" compact />
         </PanelSection>
 
-        <InstructionsBlock workspaceId={workspaceId} instructions={detail?.instructions ?? ""} />
-
-        <Suspense fallback={null}>
-          {/* Both draw their own PanelSection, so they look and fold like the others. */}
-          <TalkingPointsSection workspaceId={workspaceId} />
-          <MemorySection workspaceId={workspaceId} />
-        </Suspense>
-
-        <div className="border-t border-border/70 px-4 py-2.5 [&>section]:space-y-1.5">
-          <ContextMeter workspaceId={workspaceId} />
+        <div className="border-t border-border/70 px-4 py-2">
+          <button
+            type="button"
+            aria-expanded={moreToolsOpen}
+            aria-controls="more-meeting-tools"
+            onClick={() => setMoreToolsOpen((open) => !open)}
+            className="ui-body ui-focus ui-r-md inline-flex min-h-8 w-full items-center gap-2 rounded-md px-1 text-left text-muted-foreground outline-none transition-colors hover:text-foreground"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${moreToolsOpen ? "rotate-180" : "-rotate-90"}`} aria-hidden="true" />
+            <span>More meeting tools</span>
+          </button>
         </div>
+        {moreToolsOpen && (
+          <div id="more-meeting-tools">
+            <InstructionsBlock workspaceId={workspaceId} instructions={detail?.instructions ?? ""} />
+            <Suspense fallback={null}>
+              <TalkingPointsSection workspaceId={workspaceId} />
+              <MemorySection workspaceId={workspaceId} />
+            </Suspense>
+            <div className="border-t border-border/70 px-4 py-2.5 [&>section]:space-y-1.5">
+              <ContextMeter workspaceId={workspaceId} />
+            </div>
+          </div>
+        )}
       </div>
 
       <LibraryFooter workspaceId={workspaceId} progress={progress} />

@@ -25,7 +25,6 @@ import { ProviderLogo } from "./icons/ProviderLogos";
 import { StreamLatency } from "./StreamLatency";
 import { CLI_AGENTS, cliAgentInfo, cliTierLabel, isCliAgent } from "../lib/cliAgents";
 import { openUpdateDialog } from "../hooks/useUpdater";
-import { SideLanguagePicker } from "../overlay/SideLanguagePicker";
 import { AnchoredBox } from "../ui/Popover";
 import { Tooltip } from "../ui/Tooltip";
 import { usePickerKeys } from "./usePickerKeys";
@@ -374,7 +373,6 @@ export function ServiceStatusBar({ compact = false }: { compact?: boolean }) {
               />
             )}
           </div>
-          {isRecording && compact && <SideLanguagePicker side="them" />}
           <span className="text-xs text-muted-foreground/60">
             {speakerOrder.length > 0
               ? `${speakerOrder.length} speaker${speakerOrder.length !== 1 ? "s" : ""} detected`
@@ -416,7 +414,6 @@ export function ServiceStatusBar({ compact = false }: { compact?: boolean }) {
             {isRecording && !narrow && (
               <MuteButton type="mic" muted={mutedYou} onToggle={toggleMuteYou} label="You" />
             )}
-            {isRecording && compact && <SideLanguagePicker side="you" />}
           </div>
 
           {!narrow && <Divider />}
@@ -454,7 +451,6 @@ export function ServiceStatusBar({ compact = false }: { compact?: boolean }) {
             {isRecording && !narrow && (
               <MuteButton type="speaker" muted={mutedThem} onToggle={toggleMuteThem} label="Them" />
             )}
-            {isRecording && compact && <SideLanguagePicker side="them" />}
           </div>
         </>
       )}

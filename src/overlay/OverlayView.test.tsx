@@ -104,6 +104,12 @@ describe("OverlayView", () => {
     expect(screen.getByText("My interview")).toBeTruthy();
   });
 
+  it("keeps translation controls out of the live meeting overlay", () => {
+    renderOverlay("online", "team_meeting");
+    expect(screen.queryByRole("button", { name: /translate/i })).toBeNull();
+    expect(screen.queryByText("Translation", { exact: true })).toBeNull();
+  });
+
   it("a captured screenshot brings the Ask box back from the transcript-only layout", async () => {
     const { SCREENSHOT_EVENT, deliverScreenshot, discardPendingScreenshots } = await import("../lib/screenCapture");
     useConfigStore.setState({ llmProvider: "claude_cli" });

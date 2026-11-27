@@ -153,6 +153,12 @@ describe("TranscriptView virtualization", () => {
     expect(rendered).toEqual(["seg-2", "seg-5"]);
     expect(screen.getAllByTestId("transcript-row").find((r) => r.dataset.active === "true")?.dataset.segmentId).toBe("seg-5");
   });
+
+  it("keeps the transcript in English with no translation controls", () => {
+    renderTranscript();
+    expect(screen.queryByText("Translation", { exact: true })).toBeNull();
+    expect(screen.queryByRole("button", { name: /translate/i })).toBeNull();
+  });
 });
 
 describe("TranscriptView remote speakers", () => {

@@ -32,7 +32,7 @@ export const DEFAULT_NOTETAKER_SETTINGS: NotetakerSettings = {
   effort: null,
   update_mode: "automatic",
   detail: "standard",
-  language: "meeting",
+  language: "en",
   /** 0 until the backend says: it owns the default. */
   cap: 0,
   colors: true,

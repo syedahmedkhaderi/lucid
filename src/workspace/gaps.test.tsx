@@ -151,6 +151,7 @@ describe("still indexing", () => {
       list_workspace_chats: [],
     });
     render(<LibraryPanel workspaceId="acme" />);
+    await userEvent.click(screen.getByRole("button", { name: "More meeting tools" }));
     await waitFor(() => expect(screen.getAllByText(/Still indexing 1 of 9/).length).toBeGreaterThanOrEqual(2));
     cleanup();
     render(<ContextMeter workspaceId="acme" />);

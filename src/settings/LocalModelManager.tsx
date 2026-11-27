@@ -17,6 +17,8 @@ import { useConfigStore } from "../stores/configStore";
 import { listLocalSTTEngines, deleteLocalSTTModel } from "../lib/ipc";
 import type { LocalSTTEngineInfo, LocalSTTModelInfo } from "../lib/types";
 import { showToast } from "../stores/toastStore";
+import { useMeetingStore } from "../stores/meetingStore";
+import { ConfirmDialog } from "../ui";
 
 interface LocalModelManagerProps {
   compact?: boolean;
@@ -27,11 +29,16 @@ interface LocalModelManagerProps {
 export function LocalModelManager({ compact, engineFilter }: LocalModelManagerProps) {
   const [engines, setEngines] = useState<LocalSTTEngineInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState<LocalSTTModelInfo | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const isRecording = useMeetingStore((s) => s.isRecording || s.meetingStarting);
   const { downloads, startDownload, cancelDownload } = useModelDownload();
   const activeWhisperModel = useConfigStore((s) => s.activeWhisperModel);
   const setActiveWhisperModel = useConfigStore((s) => s.setActiveWhisperModel);
   const activeModelPerEngine = useConfigStore((s) => s.activeModelPerEngine);
   const setActiveModelForEngine = useConfigStore((s) => s.setActiveModelForEngine);
+  const meetingAudioConfig = useConfigStore((s) => s.meetingAudioConfig);
+  const setMeetingAudioConfig = useConfigStore((s) => s.setMeetingAudioConfig);
 
   async function loadEngines() {
     setLoading(true);
@@ -90,9 +97,19 @@ export function LocalModelManager({ compact, engineFilter }: LocalModelManagerPr
   const filteredEngines = engineFilter
     ? engines.filter((e) => e.engine === engineFilter)
     : engines;
+  const storageUsed = filteredEngines
+    .flatMap((engine) => engine.models)
+    .filter((model) => model.is_downloaded)
+    .reduce((total, model) => total + (model.disk_usage_bytes ?? model.size_bytes), 0);
 
   return (
     <div className="space-y-4">
+      {filteredEngines.some((engine) => engine.models.some((model) => model.is_downloaded)) && (
+        <p className="flex items-center gap-1.5 text-meta text-muted-foreground">
+          <HardDrive className="h-3.5 w-3.5" />
+          Downloaded models use {formatSize(storageUsed)}. Delete a model to free space.
+        </p>
+      )}
       {filteredEngines.map((engine) => (
         <div key={engine.engine}>
           {!compact && !engineFilter && (
@@ -128,19 +145,9 @@ export function LocalModelManager({ compact, engineFilter }: LocalModelManagerPr
                   compact={compact}
                   onDownload={() => startDownload(model.engine, model.id)}
                   onCancel={() => cancelDownload(model.engine, model.id)}
-                  onDelete={async () => {
-                    try {
-                      await deleteLocalSTTModel(model.engine, model.id);
-                      if (isActive) {
-                        setActiveModelForEngine(model.engine, null);
-                        if (model.engine === "whisper_cpp") setActiveWhisperModel(null);
-                      }
-                      showToast(`Deleted ${model.name}`, "success");
-                      loadEngines();
-                    } catch (err) {
-                      showToast(`Failed to delete: ${err}`, "error");
-                    }
-                  }}
+                  onDelete={() => setPendingDelete(model)}
+                  deleting={deleting}
+                  deleteDisabled={isRecording}
                   onSetActive={() => {
                     setActiveModelForEngine(model.engine, model.id);
                     // Keep legacy field in sync for whisper_cpp
@@ -153,6 +160,61 @@ export function LocalModelManager({ compact, engineFilter }: LocalModelManagerPr
           </div>
         </div>
       ))}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={`Delete ${pendingDelete?.name ?? "model"}?`}
+          body={pendingDelete
+          ? `This removes about ${formatSize(pendingDelete.disk_usage_bytes ?? pendingDelete.size_bytes)} from this device. You can download it again later.`
+          : undefined}
+        confirmLabel={deleting ? "Deleting…" : "Delete model"}
+        tone="danger"
+        onCancel={() => { if (!deleting) setPendingDelete(null); }}
+        onConfirm={async () => {
+          if (!pendingDelete || deleting) return;
+          if (isRecording) {
+            showToast("End the meeting before deleting a model", "error");
+            return;
+          }
+          const model = pendingDelete;
+          setDeleting(true);
+          try {
+            await deleteLocalSTTModel(model.engine, model.id);
+            const isActive = (activeModelPerEngine[model.engine] ?? activeWhisperModel) === model.id;
+            if (isActive) {
+              setActiveModelForEngine(model.engine, null);
+              if (model.engine === "whisper_cpp") setActiveWhisperModel(null);
+            }
+            let configChanged = false;
+            if (meetingAudioConfig) {
+              const fallbackModel = engines
+                .find((engine) => engine.engine === model.engine)
+                ?.models.find((candidate) => candidate.id !== model.id && candidate.is_downloaded);
+              const nextConfig = { ...meetingAudioConfig };
+              for (const party of ["you", "them"] as const) {
+                const side = nextConfig[party];
+                if (side.stt_provider !== model.engine || side.local_model_id !== model.id) continue;
+                nextConfig[party] = fallbackModel
+                  ? { ...side, local_model_id: fallbackModel.id }
+                  : { ...side, stt_provider: "groq_whisper", local_model_id: undefined };
+                configChanged = true;
+              }
+              if (configChanged) setMeetingAudioConfig(nextConfig);
+            }
+            showToast(
+              configChanged
+                ? `Deleted ${model.name}, freed ${formatSize(model.disk_usage_bytes ?? model.size_bytes)}, and switched transcription to an available model`
+                : `Deleted ${model.name} and freed ${formatSize(model.disk_usage_bytes ?? model.size_bytes)}`,
+              "success",
+            );
+            setPendingDelete(null);
+            await loadEngines();
+          } catch (err) {
+            showToast(`Failed to delete: ${err}`, "error");
+          } finally {
+            setDeleting(false);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -228,6 +290,8 @@ function ModelRow({
   onDownload,
   onCancel,
   onDelete,
+  deleting,
+  deleteDisabled,
   onSetActive,
 }: {
   model: LocalSTTModelInfo;
@@ -243,6 +307,8 @@ function ModelRow({
   onDownload: () => void;
   onCancel: () => void;
   onDelete: () => void;
+  deleting: boolean;
+  deleteDisabled: boolean;
   onSetActive: () => void;
 }) {
   const sizeLabel = formatSize(model.size_bytes);
@@ -306,10 +372,13 @@ function ModelRow({
               )}
               <button
                 onClick={onDelete}
-                className="rounded-md p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-                title="Delete model"
+                disabled={deleteDisabled || deleting}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-meta font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                title={deleteDisabled ? "End the meeting before deleting a model" : `Delete model and free ${formatSize(model.disk_usage_bytes ?? model.size_bytes)}`}
+                aria-label={`Delete ${model.name} and free ${formatSize(model.disk_usage_bytes ?? model.size_bytes)}`}
               >
                 <Trash2 className="h-3 w-3" />
+                Delete
               </button>
             </>
           ) : (

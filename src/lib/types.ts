@@ -579,6 +579,8 @@ export interface LocalSTTModelInfo {
   engine: string;
   name: string;
   size_bytes: number;
+  /** Actual bytes currently on disk (may differ from the download archive size). */
+  disk_usage_bytes?: number;
   accuracy_rating: number;
   speed_rating: number;
   is_streaming: boolean;

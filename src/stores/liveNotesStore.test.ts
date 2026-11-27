@@ -5,7 +5,7 @@ import { ns } from "../live-notes/testing";
 
 const h = vi.hoisted(() => ({
   docs: {} as Record<string, unknown>,
-  settings: { enabled: true, scope: "meeting", provider: "openai", model: "gpt-x", effort: null, update_mode: "automatic", detail: "standard", language: "meeting", cap: 120000, colors: true } as Record<string, unknown>,
+  settings: { enabled: true, scope: "meeting", provider: "openai", model: "gpt-x", effort: null, update_mode: "automatic", detail: "standard", language: "en", cap: 120000, colors: true } as Record<string, unknown>,
   calls: [] as Array<[string, unknown[]]>,
   fail: null as string | null,
   failOnly: new Set<string>(),
@@ -91,7 +91,7 @@ beforeEach(() => {
   h.failOnly.clear();
   h.stateFor = {};
   h.live = "live1";
-  h.settings = { enabled: true, scope: "meeting", provider: "openai", model: "gpt-x", effort: null, update_mode: "automatic", detail: "standard", language: "meeting", cap: 120000, colors: true };
+  h.settings = { enabled: true, scope: "meeting", provider: "openai", model: "gpt-x", effort: null, update_mode: "automatic", detail: "standard", language: "en", cap: 120000, colors: true };
   S().reset();
   useLiveNotesStore.setState({ settings: null });
 });

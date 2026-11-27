@@ -1043,7 +1043,7 @@ meeting. Follow the \
 task instructions of the current message only; they replace those of earlier \
 messages. When asked for segment ids, use the [SEGMENT_ID] of the lines; \
 otherwise never mention them. Answer directly, without preamble, and never \
-repeat the transcript back. Respond in the language used in the meeting.";
+repeat the transcript back. Respond in English.";
 
 const PAST_SESSION_PROMPT: &str = "\
 You are Lucid's assistant for a meeting that has already ended. Its summary \

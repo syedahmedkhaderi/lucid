@@ -5,7 +5,7 @@
 
 import { Tooltip } from "../ui/Tooltip";
 import { readableOn, readingTextColor, useIsLight } from "../lib/themeText";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Bookmark as BookmarkIcon } from "lucide-react";
 import type { TranscriptSegment } from "../lib/types";
@@ -13,14 +13,9 @@ import { useMeetingStore } from "../stores/meetingStore";
 import { useSpeakerStore } from "../stores/speakerStore";
 import { useConfigStore } from "../stores/configStore";
 import { useBookmarkStore } from "../stores/bookmarkStore";
-import { useTranslationStore } from "../stores/translationStore";
 import { TranscriptContextMenu } from "./TranscriptContextMenu";
 import { showBookmarkToast } from "./BookmarkToast";
 import { defaultRemoteSpeakerName, remoteKeyOf, remoteSpeakerColor } from "../lib/speakerLabels";
-
-// Module-level singleton: ensures only one hover tooltip is visible at a time.
-// When a new line is hovered, it dismisses the previous tooltip first.
-let dismissActiveTooltip: (() => void) | null = null;
 
 interface TranscriptLineProps {
   segment: TranscriptSegment;
@@ -45,14 +40,7 @@ export function TranscriptLine({ segment, searchQuery }: TranscriptLineProps) {
   const confidenceThreshold = useConfigStore((s) => s.confidenceThreshold);
   const confidenceHighlightEnabled = useConfigStore((s) => s.confidenceHighlightEnabled);
   const transcriptFontSize = useConfigStore((s) => s.transcriptFontSize ?? 13);
-  const translationFontSize = useConfigStore((s) => s.translationFontSize ?? 12);
   const transcriptTextColor = useConfigStore((s) => s.transcriptTextColor ?? "#e4e4e7");
-  const translationTextColor = useConfigStore((s) => s.translationTextColor ?? "#fbbf24");
-
-  // Translation store subscriptions
-  const translations = useTranslationStore((s) => s.translations);
-  const translating = useTranslationStore((s) => s.translating);
-  const displayMode = useTranslationStore((s) => s.displayMode);
 
   // SP2 Task 7: Bookmark state + context menu position
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -60,9 +48,6 @@ export function TranscriptLine({ segment, searchQuery }: TranscriptLineProps) {
   const isBookmarked = !!bookmark;
   const toggleBookmark = useBookmarkStore((s) => s.toggleBookmark);
 
-  // Translation for this segment
-  const translation = translations.get(segment.id);
-  const isTranslating = translating.has(segment.id);
 
   // Resolve speaker ID — prefer explicit speaker_id, fall back to speaker field
   const baseSpeakerId = segment.speaker_id ?? (segment.speaker === "User" ? "you" : "them");
@@ -213,56 +198,15 @@ export function TranscriptLine({ segment, searchQuery }: TranscriptLineProps) {
     return <>{parts}</>;
   };
 
-  // Hover translation tooltip state
-  const [showTranslationTooltip, setShowTranslationTooltip] = useState(false);
-  const hasHoverTranslation = displayMode === "hover" && !!translation;
-  const lineRef = useRef<HTMLDivElement>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-
-  // Dismiss this tooltip (used by module-level singleton + scroll handler)
-  const dismissTooltip = () => {
-    setShowTranslationTooltip(false);
-    setIsHovered(false);
-    if (dismissActiveTooltip === dismissTooltip) dismissActiveTooltip = null;
-  };
-
-  // Sync tooltip visibility when displayMode changes while already hovering
-  useEffect(() => {
-    if (isHovered && hasHoverTranslation) {
-      setShowTranslationTooltip(true);
-      dismissActiveTooltip = dismissTooltip;
-    } else if (!hasHoverTranslation) {
-      setShowTranslationTooltip(false);
-    }
-  }, [isHovered, hasHoverTranslation]);
-
-  // Dismiss tooltip when scroll container scrolls (auto-scroll moves line from under cursor)
-  useEffect(() => {
-    if (!showTranslationTooltip || !lineRef.current) return;
-    const scrollParent = lineRef.current.closest("[data-scroll-container]") as HTMLElement | null;
-    if (!scrollParent) return;
-    const handleScroll = () => dismissTooltip();
-    scrollParent.addEventListener("scroll", handleScroll, { passive: true });
-    return () => scrollParent.removeEventListener("scroll", handleScroll);
-  }, [showTranslationTooltip]);
-
   return (
     <div
-      ref={lineRef}
       data-segment-id={segment.id}
       className={`group relative flex items-start gap-2.5 rounded-lg px-2 py-[7px] transition-colors duration-100 hover:bg-accent/25 border-l-[3px] transcript-line-enter`}
       style={{ borderLeftColor: isBookmarked ? 'hsl(var(--primary))' : isPending ? "transparent" : `${speakerHex}66` }}
       onMouseEnter={(e) => {
-        // Dismiss any other line's tooltip first (singleton)
-        dismissActiveTooltip?.();
         setIsHovered(true);
-        setMousePos({ x: e.clientX, y: e.clientY });
-        if (hasHoverTranslation) {
-          setShowTranslationTooltip(true);
-          dismissActiveTooltip = dismissTooltip;
-        }
       }}
-      onMouseLeave={dismissTooltip}
+      onMouseLeave={() => setIsHovered(false)}
       onContextMenu={handleContextMenu}
     >
       {/* Timestamp */}
@@ -299,7 +243,7 @@ export function TranscriptLine({ segment, searchQuery }: TranscriptLineProps) {
         </span>
       )}
 
-      {/* Text content + translation + bookmark note */}
+      {/* Text content and bookmark note */}
       <div className="flex-1 min-w-0 relative">
         <Tooltip content={`Confidence: ${Math.round(segment.confidence * 100)}%`} disabled={!isLowConfidence}>
         <span
@@ -322,41 +266,6 @@ export function TranscriptLine({ segment, searchQuery }: TranscriptLineProps) {
           )}
         </span>
         </Tooltip>
-
-        {/* Inline translation — visible below the original text */}
-        {displayMode === "inline" && (
-          <div className="mt-1 leading-[1.5]" style={{ fontSize: `${translationFontSize}px`, color: readableOn(translationTextColor, isLight ? "light" : "dark", 5.4) }}>
-            {isTranslating ? (
-              <span className="text-muted-foreground/40 animate-pulse">Translating...</span>
-            ) : translation ? (
-              translation.translated_text
-            ) : null}
-          </div>
-        )}
-
-        {/* Hover translation tooltip — rendered via portal to bypass transform containing block */}
-        {showTranslationTooltip && hasHoverTranslation && createPortal(
-          <div
-            className="fixed z-[9999] max-w-[420px] rounded-lg border border-white/15 px-3.5 py-2.5 shadow-2xl pointer-events-none"
-            style={{
-              backgroundColor: '#1a1a2e',
-              left: `${Math.min(mousePos.x + 16, window.innerWidth - 440)}px`,
-              top: `${Math.max(8, mousePos.y - 90)}px`,
-            }}
-          >
-            <p style={{ fontSize: `${translationFontSize + 1}px`, color: readableOn(translationTextColor, isLight ? "light" : "dark", 5.4) }} className="leading-[1.6]">
-              {translation.translated_text}
-            </p>
-            <div className="mt-1.5 flex items-center gap-1.5 text-[0.6rem] text-muted-foreground/50">
-              <span className="rounded bg-white/8 px-1.5 py-0.5 font-medium tracking-wider">
-                {translation.source_lang.toUpperCase()} → {translation.target_lang.toUpperCase()}
-              </span>
-              <span>·</span>
-              <span>{translation.provider}</span>
-            </div>
-          </div>,
-          document.body
-        )}
 
         {/* Bookmark note — quote-style, sized proportional to transcript text */}
         {isBookmarked && bookmark?.note && (

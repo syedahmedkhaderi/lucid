@@ -5,9 +5,7 @@ import { nextOpacityLevel, overlayAlphas, readThemeColours, transparencyFor, tra
 import { OpacityLevelIndicator } from "./OpacityLevelIndicator";
 import { useMeetingStore } from "../stores/meetingStore";
 import { useScenarioStore } from "../stores/scenarioStore";
-import { useTranslationStore } from "../stores/translationStore";
 import { showToast } from "../stores/toastStore";
-import { translateBatch } from "../lib/ipc";
 import { TranscriptPanel } from "./TranscriptPanel";
 import { QuestionPanel } from "./QuestionDetector";
 import { AIResponsePanel } from "./AIResponsePanel";
@@ -23,7 +21,6 @@ import { useMeetingShortcuts } from "../hooks/useMeetingShortcuts";
 import { useConfigStore } from "../stores/configStore";
 import { useSpeakerDetection } from "../hooks/useSpeakerDetection";
 import { useTopicDetection } from "../hooks/useTopicDetection";
-import { useTranslation } from "../hooks/useTranslation";
 import { MODE_COLORS } from "../lib/speakerColors";
 import { showLauncherWindow } from "../lib/windows";
 import { SCREENSHOT_EVENT } from "../lib/screenCapture";
@@ -57,7 +54,6 @@ import {
   Terminal,
   BarChart3,
   Bookmark,
-  Globe,
   Mic,
   MicOff,
   Volume2,
@@ -252,14 +248,6 @@ export function OverlayView() {
     setLevelShownAt(Date.now());
   };
 
-  const autoTranslateActive = useTranslationStore((s) => s.autoTranslateActive);
-  const setAutoTranslateActive = useTranslationStore((s) => s.setAutoTranslateActive);
-  const displayMode = useTranslationStore((s) => s.displayMode);
-  const setDisplayMode = useTranslationStore((s) => s.setDisplayMode);
-  const targetLang = useTranslationStore((s) => s.targetLang);
-  const batchProgress = useTranslationStore((s) => s.batchProgress);
-  const isBatchTranslating = batchProgress !== null;
-
   // addBookmarkAtNow: used by the B key (useMeetingShortcuts) and the toolbar button
   const addBookmarkAtNow = useBookmarkHotkey();
 
@@ -283,30 +271,10 @@ export function OverlayView() {
   // Live topic detection from backend events
   useTopicDetection();
 
-  // Translation event subscriptions + auto-translate trigger
-  useTranslation();
-
   const handleEndMeeting = useCallback(async () => {
     try { await endMeetingFlow(); showToast("Meeting ended", "info"); }
     catch (err) { showToast(err instanceof Error ? err.message : "Couldn't end meeting", "error"); }
   }, [endMeetingFlow]);
-
-  const handleTranslateAll = useCallback(async () => {
-    const meetingId = activeMeeting?.id;
-    if (!meetingId || !targetLang) return;
-    try {
-      const { total, alreadyDone, newlyTranslated } = await translateBatch(meetingId, targetLang);
-      if (newlyTranslated === 0) {
-        showToast(`All ${total} segments already translated`, "info");
-      } else if (alreadyDone > 0) {
-        showToast(`Translated ${newlyTranslated} new segments (${alreadyDone} already cached, ${total} total)`, "success");
-      } else {
-        showToast(`Translated all ${total} segments`, "success");
-      }
-    } catch (err) {
-      showToast(`Batch translation failed: ${err}`, "error");
-    }
-  }, [activeMeeting?.id, targetLang]);
 
   // Hide the overlay and show the dashboard; the overlay keeps its meeting
   // view, so RETURN, Ctrl+B or the tray bring it straight back.
@@ -574,56 +542,6 @@ export function OverlayView() {
           <HeaderBtn icon={<Settings className="h-3.5 w-3.5" />} onClick={() => { returnFocusToSettings = true; setCurrentView("settings"); }} tooltip="Settings" />
           <HeaderBtn icon={<ChevronUp className="h-3.5 w-3.5" />} onClick={() => { void toggleCompactOverlay(); }} tooltip="Compact top-center overlay" />
           <HeaderBtn icon={<Minus className="h-3.5 w-3.5" />} onClick={handleMinimizeToDashboard} tooltip={stealthHide ? `Hide to ${isMacPlatform() ? "menu bar" : "tray"} (${formatShortcut("CmdOrCtrl+B")} brings it back)` : `Minimize to Dashboard (${formatShortcut("CmdOrCtrl+B")} brings it back)`} />
-
-          {/* Translation controls */}
-          <button
-            onClick={() => setAutoTranslateActive(!autoTranslateActive)}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-all ${
-              autoTranslateActive
-                ? "bg-primary/10 text-primary ring-1 ring-primary/20"
-                : "text-muted-foreground hover:bg-accent"
-            }`}
-            aria-label="Toggle auto-translate"
-            aria-pressed={autoTranslateActive}
-          >
-            <Globe className="h-3 w-3" aria-hidden="true" />
-            {compactHeader ? <span className="sr-only">Translate</span> : "Translate"}
-          </button>
-
-          {autoTranslateActive && (
-            <>
-              <div className="flex rounded-md border border-border/30 overflow-hidden">
-                <button
-                  onClick={() => setDisplayMode("inline")}
-                  className={`px-2 py-0.5 text-[10px] font-medium transition-all ${
-                    displayMode === "inline" ? "bg-primary/15 text-primary" : "text-muted-foreground/50"
-                  }`}
-                >
-                  Inline
-                </button>
-                <button
-                  onClick={() => setDisplayMode("hover")}
-                  className={`px-2 py-0.5 text-[10px] font-medium border-l border-border/30 transition-all ${
-                    displayMode === "hover" ? "bg-primary/15 text-primary" : "text-muted-foreground/50"
-                  }`}
-                >
-                  Hover
-                </button>
-              </div>
-              <button
-                onClick={handleTranslateAll}
-                disabled={isBatchTranslating}
-                className="flex items-center gap-1 rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 cursor-pointer"
-                aria-label="Translate all past transcript segments"
-              >
-                {isBatchTranslating ? "Translating..." : "Translate All"}
-              </button>
-              <span className="text-[10px] text-muted-foreground/40 flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-success inline-block" />
-                {targetLang.toUpperCase()}
-              </span>
-            </>
-          )}
 
           <button
             onClick={handleEndMeeting}

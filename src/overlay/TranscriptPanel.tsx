@@ -27,13 +27,9 @@ export function TranscriptPanel({ onOpenDevLog, short = false }: { onOpenDevLog?
   const toggleMuteYou = useConfigStore((s) => s.toggleMuteYou);
   const toggleMuteThem = useConfigStore((s) => s.toggleMuteThem);
   const transcriptFontSize = useConfigStore((s) => s.transcriptFontSize ?? 13);
-  const translationFontSize = useConfigStore((s) => s.translationFontSize ?? 12);
   const setTranscriptFontSize = useConfigStore((s) => s.setTranscriptFontSize);
-  const setTranslationFontSize = useConfigStore((s) => s.setTranslationFontSize);
   const transcriptTextColor = useConfigStore((s) => s.transcriptTextColor ?? "#e4e4e7");
-  const translationTextColor = useConfigStore((s) => s.translationTextColor ?? "#fbbf24");
   const setTranscriptTextColor = useConfigStore((s) => s.setTranscriptTextColor);
-  const setTranslationTextColor = useConfigStore((s) => s.setTranslationTextColor);
   const isInPerson = audioMode === "in_person";
   // In in-person mode, room audio comes via the "them" config (system audio / AudienceMix),
   // so use systemLevel for the Room bar. micLevel is for the user's mic (online mode).
@@ -269,14 +265,6 @@ export function TranscriptPanel({ onOpenDevLog, short = false }: { onOpenDevLog?
           <button aria-label="Larger transcript text" onClick={() => setTranscriptFontSize(Math.min(20, transcriptFontSize + 1))} className="h-5 w-5 flex items-center justify-center rounded text-[0.75rem] font-medium text-muted-foreground/50 hover:bg-accent/40 transition-colors">A</button>
         </div>
         <ColorPickerButton value={transcriptTextColor} onChange={setTranscriptTextColor} label="Text color" />
-        <div className="h-3 w-px bg-border/10" />
-        <span className="text-[0.6rem] uppercase tracking-widest text-muted-foreground/40 font-medium">Translation</span>
-        <div className="flex items-center gap-0.5">
-          <button aria-label="Smaller translation text" onClick={() => setTranslationFontSize(Math.max(9, translationFontSize - 1))} className="h-5 w-5 flex items-center justify-center rounded text-[0.6rem] text-muted-foreground/50 hover:bg-accent/40 transition-colors">A</button>
-          <span className="text-[0.6rem] tabular-nums text-muted-foreground/50 w-5 text-center">{translationFontSize}</span>
-          <button aria-label="Larger translation text" onClick={() => setTranslationFontSize(Math.min(18, translationFontSize + 1))} className="h-5 w-5 flex items-center justify-center rounded text-[0.75rem] font-medium text-muted-foreground/50 hover:bg-accent/40 transition-colors">A</button>
-        </div>
-        <ColorPickerButton value={translationTextColor} onChange={setTranslationTextColor} label="Translation color" />
       </div>
 
       {/* Live audio activity indicators — mode-aware */}

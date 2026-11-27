@@ -10,7 +10,7 @@ vi.mock("../../lib/ipc", () => ({
     return h.state;
   },
   getMeetingNotes: async () => structuredClone(sampleDoc),
-  getNotetakerSettings: async () => ({ enabled: false, scope: "meeting", provider: null, model: null, effort: null, update_mode: "automatic", detail: "standard", language: "meeting", cap: 120000, colors: true }),
+  getNotetakerSettings: async () => ({ enabled: false, scope: "meeting", provider: null, model: null, effort: null, update_mode: "automatic", detail: "standard", language: "en", cap: 120000, colors: true }),
 }));
 vi.mock("../../lib/events", () => ({
   onNotetakerDoc: async () => () => {},

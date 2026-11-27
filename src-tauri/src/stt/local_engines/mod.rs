@@ -315,6 +315,10 @@ impl ModelManager {
                     .map(|m| ModelWithStatus {
                         definition: m.clone(),
                         is_downloaded: self.is_model_downloaded(m.engine, m.model_id),
+                        disk_usage_bytes: self
+                            .get_model_path(m.engine, m.model_id)
+                            .map(|path| path_size_bytes(&path))
+                            .unwrap_or(0),
                     })
                     .collect();
                 EngineWithStatus {
@@ -328,10 +332,37 @@ impl ModelManager {
     }
 }
 
+/// Return actual storage use for a model file or extracted model directory.
+/// Symlinks are not followed so a malformed model can't make this walk outside
+/// the managed models directory.
+fn path_size_bytes(path: &std::path::Path) -> u64 {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return 0;
+    };
+    if metadata.file_type().is_symlink() {
+        return 0;
+    }
+    if metadata.is_file() {
+        return metadata.len();
+    }
+    if !metadata.is_dir() {
+        return 0;
+    }
+
+    std::fs::read_dir(path)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| path_size_bytes(&entry.path()))
+        .sum()
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelWithStatus {
     pub definition: ModelDefinition,
     pub is_downloaded: bool,
+    pub disk_usage_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -340,4 +371,28 @@ pub struct EngineWithStatus {
     pub name: String,
     pub description: String,
     pub models: Vec<ModelWithStatus>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::path_size_bytes;
+
+    #[test]
+    fn model_storage_size_counts_files_recursively() {
+        let root = std::env::temp_dir().join(format!(
+            "lucid-model-size-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let nested = root.join("encoder");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(root.join("config.json"), b"12345").unwrap();
+        std::fs::write(nested.join("weights.bin"), b"123456789").unwrap();
+
+        assert_eq!(path_size_bytes(&root), 14);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

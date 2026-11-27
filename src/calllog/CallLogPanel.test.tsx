@@ -64,4 +64,10 @@ describe("CallLogPanel agent usage line", () => {
     expect(line).not.toHaveTextContent("included in your subscription");
     expect(line).toHaveTextContent("≈ $0.50 estimate");
   });
+
+  it("does not offer translated transcript exports", () => {
+    render(<CallLogPanel />);
+    expect(screen.queryByText(/Translated transcript|Bilingual transcript|Translating to/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /export transcript/i })).toBeNull();
+  });
 });

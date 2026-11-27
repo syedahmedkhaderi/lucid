@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({ state: null as unknown, doc: null as unknown, save
 vi.mock("../../lib/ipc", () => ({
   getNotetakerState: async () => h.state,
   getMeetingNotes: async () => h.doc,
-  getNotetakerSettings: async () => ({ enabled: false, scope: "meeting", provider: null, model: null, effort: null, update_mode: "automatic", detail: "standard", language: "meeting", cap: 120000, colors: true }),
+  getNotetakerSettings: async () => ({ enabled: false, scope: "meeting", provider: null, model: null, effort: null, update_mode: "automatic", detail: "standard", language: "en", cap: 120000, colors: true }),
   saveMeetingNotesEdit: async (_id: string, edit: unknown) => {
     h.saved.push(edit);
     return h.doc;
@@ -133,7 +133,7 @@ describe("NotesTab state of a meeting", () => {
     h.doc = structuredClone(sampleDoc);
     h.state = ns("running", []);
     useMeetingStore.setState({ activeMeeting: { id: "m1", title: "t" } as never });
-    useLiveNotesStore.setState({ settings: { enabled: true, scope: "meeting", provider: null, model: null, effort: null, update_mode: "automatic", detail: "standard", language: "meeting", cap: 120000, colors: true } as never });
+    useLiveNotesStore.setState({ settings: { enabled: true, scope: "meeting", provider: null, model: null, effort: null, update_mode: "automatic", detail: "standard", language: "en", cap: 120000, colors: true } as never });
     render(<NotesTab meetingId="m1" title="Sync" />);
     expect(await screen.findByTestId("notes-tab-state")).toHaveTextContent("Taking notes");
   });

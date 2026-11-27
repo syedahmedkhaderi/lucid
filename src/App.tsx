@@ -27,13 +27,11 @@ import { NoticeStack } from "./components/NoticeStack";
 import { DatabaseDamageNotice } from "./components/DatabaseDamageNotice";
 import { useTheme } from "./hooks/useTheme";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
-import { useTranslation } from "./hooks/useTranslation";
 import { useTraySync } from "./hooks/useTraySync";
 import { useStealthCursor } from "./hooks/useStealthCursor";
 import { useUpdater } from "./hooks/useUpdater";
 import { useAgentFallbackToast } from "./hooks/useAgentFallbackToast";
 import { refreshCliModelsOnStart } from "./stores/agentStore";
-import { useTranslationStore } from "./stores/translationStore";
 import { useWindowPlacement } from "./hooks/useWindowPlacement";
 import { ActiveMeetingProvider } from "./components/ActiveMeetingProvider";
 import { initMeetingSpeakers, resetMeetingScopedStores } from "./stores/resetMeeting";
@@ -78,9 +76,6 @@ function App() {
   // Demo mode keyboard shortcut (Ctrl+Shift+D)
   useDemoShortcut();
 
-  // Translation event subscriptions (needed for SelectionToolbar in all views)
-  useTranslation();
-
   // Sync frontend state to system tray icon & menu
   useTraySync();
 
@@ -98,23 +93,6 @@ function App() {
     // Workspaces load in both windows and follow every change.
     void useWorkspaceStore.getState().load();
     watchWorkspaces().catch(() => {});
-    useTranslationStore.getState().loadConfig().then(async () => {
-      // Sync backend translation provider with persisted frontend setting
-      const { provider } = useTranslationStore.getState();
-      if (provider) {
-        try {
-          const { setTranslationProvider, getCredentialSetting } = await import("./lib/ipc");
-          // Microsoft needs a region setting, which contains no credential.
-          let region: string | undefined;
-          if (provider === "microsoft") {
-            try {
-              region = (await getCredentialSetting("translation_microsoft_region")) || undefined;
-            } catch { /* region not stored yet */ }
-          }
-          await setTranslationProvider(provider, region).catch(() => {});
-        } catch { /* non-critical on startup */ }
-      }
-    });
     // Load scenario config (custom scenarios, overrides, active scenario)
     useScenarioStore.getState().loadScenarioConfig();
   }, [loadConfig]);

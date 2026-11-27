@@ -28,7 +28,7 @@ use crate::live_runtime::brief::{BriefCmd, BriefHandle, BriefParams};
 use crate::live_runtime::db::{LiveDb, LiveScope};
 use crate::live_runtime::llm::LlmFactory;
 use crate::live_runtime::notes::{NoteEdit, NotesCmd, NotesHandle, NotesParams};
-use crate::live_runtime::settings::{merge, BriefSettings, MemorySettings, NotetakerSettings, BRIEF_KEY, MEMORY_KEY, NOTETAKER_KEY};
+use crate::live_runtime::settings::{merge, BriefSettings, MemorySettings, NotetakerSettings, Validate, BRIEF_KEY, MEMORY_KEY, NOTETAKER_KEY};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
@@ -117,7 +117,10 @@ pub const ANSWER_MODES: &[&str] = &["Assist", "WhatToSay", "Shorten", "FollowUp"
 
 impl LiveRuntimes {
     pub fn new(deps: Deps) -> Arc<Self> {
-        let notetaker = deps.db.kv_get(NOTETAKER_KEY).and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
+        let mut notetaker: NotetakerSettings = deps.db.kv_get(NOTETAKER_KEY).and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
+        if notetaker.validate().is_err() {
+            notetaker = NotetakerSettings::default();
+        }
         let brief = deps.db.kv_get(BRIEF_KEY).and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
         deps.db.mark_interrupted();
         Arc::new(Self {

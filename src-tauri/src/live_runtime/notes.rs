@@ -184,7 +184,7 @@ fn prompt_of(s: &NotetakerSettings) -> NotesPromptOptions {
             "detailed" => Detail::Detailed,
             _ => Detail::Standard,
         },
-        language: if s.language == "meeting" { OutputLanguage::Meeting } else { OutputLanguage::Fixed(s.language.clone()) },
+        language: OutputLanguage::Fixed("en".into()),
         small_model: false,
     }
 }
@@ -215,6 +215,18 @@ pub fn spawn(p: NotesParams) -> Result<NotesHandle, String> {
     let actor = Actor::new(p, swap, &handle);
     tokio::spawn(actor.run(rx));
     Ok(handle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_saved_language_preferences_still_produce_english_notes() {
+        let mut settings = NotetakerSettings::default();
+        settings.language = "meeting".into();
+        assert_eq!(prompt_of(&settings).language, OutputLanguage::Fixed("en".into()));
+    }
 }
 
 struct Actor {

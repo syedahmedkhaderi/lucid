@@ -19,24 +19,22 @@ const config: MeetingAudioConfig = {
   preset_name: null,
 };
 
-describe("language picker in the status bar", () => {
+describe("English-only status bar", () => {
   beforeEach(() => {
     useConfigStore.setState({ meetingAudioConfig: config, sttLanguage: "en-US" });
   });
   afterEach(cleanup);
 
-  it("sits beside each side's mute button in the overlay footer during a meeting", () => {
+  it("does not show per-side language controls during an online meeting", () => {
     useMeetingStore.setState({ isRecording: true, audioMode: "online" });
     render(<ServiceStatusBar compact />);
-    expect(screen.getByRole("button", { name: /^You language/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Them language/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /language/i })).toBeNull();
   });
 
-  it("is a single Room picker in an in-person meeting", () => {
+  it("does not show a Room language control in an in-person meeting", () => {
     useMeetingStore.setState({ isRecording: true, audioMode: "in_person" });
     render(<ServiceStatusBar compact />);
-    expect(screen.getByRole("button", { name: /^Room language/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^You language/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /language/i })).toBeNull();
   });
 
   it("shows the registered MAI provider and exact model in the status chip", () => {

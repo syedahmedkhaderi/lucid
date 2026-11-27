@@ -196,6 +196,7 @@ describe("the four sections look alike", () => {
       list_talking_points: [note("a", "Opening")],
     });
     render(<LibraryPanel workspaceId="acme" />);
+    await userEvent.click(screen.getByRole("button", { name: "More meeting tools" }));
     await screen.findByRole("list", { name: "Memory items" });
     await screen.findByRole("list", { name: "Notes" });
     for (const [region, action] of [

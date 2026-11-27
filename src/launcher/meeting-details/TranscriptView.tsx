@@ -2,7 +2,7 @@ import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } fr
 import { formatShortcut } from "../../lib/shortcutLabel";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { focusAndMarkRow } from "./momentIndex";
-import type { TranscriptSegment, SpeakerIdentity, MeetingBookmark, TranslationResult, TranslationDisplayMode } from "../../lib/types";
+import type { TranscriptSegment, SpeakerIdentity, MeetingBookmark } from "../../lib/types";
 import type { TranscriptSearchState } from "../../hooks/useTranscriptSearch";
 import { useAudioPlayerStore } from "../../stores/audioPlayerStore";
 import { useAudioTranscriptSync } from "../../hooks/useAudioTranscriptSync";
@@ -12,7 +12,7 @@ import {
   getSpeakerColor,
 } from "../../lib/utils";
 import type { MergedSegment } from "../../lib/mergeSegments";
-import { FileText, Search, ChevronUp, ChevronDown, X, Globe, RefreshCw, Eye, EyeOff } from "lucide-react";
+import { FileText, Search, ChevronUp, ChevronDown, X } from "lucide-react";
 import { TranscriptContextMenu } from "../../overlay/TranscriptContextMenu";
 import { addMeetingBookmark, deleteMeetingBookmark, updateMeetingBookmark } from "../../lib/ipc";
 import { showToast } from "../../stores/toastStore";
@@ -44,29 +44,6 @@ interface TranscriptViewProps {
   initialScrollToIndex?: number | null;
   /** Called after the initial scroll is handled */
   onScrollHandled?: () => void;
-  /** Translations map: segmentId → TranslationResult */
-  translations?: Map<string, TranslationResult>;
-  /** Set of segment IDs currently being translated */
-  translatingSegments?: Set<string>;
-  /** Current translation display mode */
-  translationDisplayMode?: TranslationDisplayMode;
-  /** Current target language from translation settings */
-  currentTargetLang?: string;
-  /** Whether translations are visible (eye toggle) */
-  showTranslations?: boolean;
-  /** Callback for on-demand per-segment translation */
-  onTranslateSegment?: (segmentId: string, text: string) => void;
-  /** Callback for retranslating a mismatched segment */
-  onRetranslateSegment?: (segmentId: string, text: string) => void;
-  /** Translation toolbar props (merged into bottom bar) */
-  showToolbar?: boolean;
-  translatedCount?: number;
-  totalSegments?: number;
-  mismatchedCount?: number;
-  onDisplayModeChange?: (mode: TranslationDisplayMode) => void;
-  onRetranslateAll?: () => void;
-  onToggleTranslationVisibility?: () => void;
-  retranslating?: boolean;
   /** Rename a remote speaker (`them:<tag>`); every line with that tag follows. */
   onRenameSpeaker?: (speakerKey: string, name: string) => void;
 }
@@ -85,7 +62,7 @@ const ESTIMATED_ROW_HEIGHT = 48;
 const LIST_PADDING_Y = 8; // matches the former `py-2` wrapper
 const OVERSCAN_ROWS = 8;
 
-export function TranscriptView({ segments, mergedSegments, isVisible = true, search, meetingStartTime, recordingOffsetMs = 0, speakers, searchInputRef, bookmarks, meetingId, onBookmarksChanged, initialScrollToIndex, onScrollHandled, translations, translatingSegments, translationDisplayMode, currentTargetLang, showTranslations = true, onTranslateSegment, onRetranslateSegment, showToolbar, translatedCount = 0, totalSegments = 0, mismatchedCount = 0, onDisplayModeChange, onRetranslateAll, onToggleTranslationVisibility, retranslating, onRenameSpeaker }: TranscriptViewProps) {
+export function TranscriptView({ segments, mergedSegments, isVisible = true, search, meetingStartTime, recordingOffsetMs = 0, speakers, searchInputRef, bookmarks, meetingId, onBookmarksChanged, initialScrollToIndex, onScrollHandled, onRenameSpeaker }: TranscriptViewProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const localSearchInputRef = useRef<HTMLInputElement | null>(null);
   const setInputRef = useCallback((el: HTMLInputElement | null) => {
@@ -105,12 +82,8 @@ export function TranscriptView({ segments, mergedSegments, isVisible = true, sea
   // Typeset settings — shared with meeting overlay
   const transcriptFontSize = useConfigStore((s) => s.transcriptFontSize);
   const transcriptTextColor = useConfigStore((s) => s.transcriptTextColor);
-  const translationFontSize = useConfigStore((s) => s.translationFontSize);
-  const translationTextColor = useConfigStore((s) => s.translationTextColor);
   const setTranscriptFontSize = useConfigStore((s) => s.setTranscriptFontSize);
   const setTranscriptTextColor = useConfigStore((s) => s.setTranscriptTextColor);
-  const setTranslationFontSize = useConfigStore((s) => s.setTranslationFontSize);
-  const setTranslationTextColor = useConfigStore((s) => s.setTranslationTextColor);
 
   // ── Virtualized rows ──
   const virtualizer = useVirtualizer({
@@ -403,7 +376,6 @@ export function TranscriptView({ segments, mergedSegments, isVisible = true, sea
     );
   }
 
-  const translationsEnabled = showTranslations && !!translations;
   const virtualItems = virtualizer.getVirtualItems();
 
   return (
@@ -495,10 +467,6 @@ export function TranscriptView({ segments, mergedSegments, isVisible = true, sea
                   isSelected={i === selectedIndex}
                   isBookmarked={!!segBookmark}
                   bookmarkNote={segBookmark?.note}
-                  translation={translationsEnabled ? translations.get(segment.id) : undefined}
-                  isTranslating={translationsEnabled && !!translatingSegments?.has(segment.id)}
-                  translationDisplayMode={translationDisplayMode}
-                  currentTargetLang={currentTargetLang}
                   matchOffsets={matchOffsets}
                   searchQuery={matchOffsets ? search.query : ""}
                   isSearchMatch={i === activeMatchSegment}
@@ -510,14 +478,10 @@ export function TranscriptView({ segments, mergedSegments, isVisible = true, sea
                   onRenameSpeaker={onRenameSpeaker}
                   transcriptFontSize={transcriptFontSize}
                   transcriptTextColor={transcriptTextColor}
-                  translationFontSize={translationFontSize}
-                  translationTextColor={translationTextColor}
                   canBookmark={!!meetingId}
                   onSeek={handleRowSeek}
                   onToggleBookmark={handleRowToggleBookmark}
                   onContextMenu={meetingId ? handleContextMenu : undefined}
-                  onTranslate={translationsEnabled ? onTranslateSegment : undefined}
-                  onRetranslate={translationsEnabled ? onRetranslateSegment : undefined}
                 />
               );
             })}
@@ -538,9 +502,8 @@ export function TranscriptView({ segments, mergedSegments, isVisible = true, sea
         />
       )}
 
-      {/* Bottom bar — typeset controls (left) + translation toolbar (right) */}
+      {/* Transcript text controls */}
       <div className="flex items-center gap-3 mx-2 px-3 py-1.5 border-t border-border/10 text-[10px]">
-        {/* Left: Typeset controls */}
         <div className="flex items-center gap-1">
           <span className="font-semibold text-muted-foreground/60">Text</span>
           <button
@@ -556,86 +519,6 @@ export function TranscriptView({ segments, mergedSegments, isVisible = true, sea
           >A</button>
           <ColorPickerButton value={transcriptTextColor} onChange={setTranscriptTextColor} label="Text color" />
         </div>
-        <div className="h-4 w-px bg-border/10" />
-        <div className="flex items-center gap-1">
-          <span className="font-semibold text-muted-foreground/60">Translation</span>
-          <button
-            onClick={() => setTranslationFontSize(Math.max(9, translationFontSize - 1))}
-            aria-label="Smaller translation text"
-            className="flex h-6 w-6 items-center justify-center rounded text-[9px] font-bold text-muted-foreground/60 hover:bg-secondary/30 cursor-pointer"
-          >A</button>
-          <span className="min-w-[18px] text-center tabular-nums font-semibold text-muted-foreground/50">{translationFontSize}</span>
-          <button
-            onClick={() => setTranslationFontSize(Math.min(18, translationFontSize + 1))}
-            aria-label="Larger translation text"
-            className="flex h-6 w-6 items-center justify-center rounded text-[13px] font-bold text-muted-foreground/60 hover:bg-secondary/30 cursor-pointer"
-          >A</button>
-          <ColorPickerButton value={translationTextColor} onChange={setTranslationTextColor} label="Translation color" />
-        </div>
-
-        {/* Right: Translation toolbar (coverage, display mode, retranslate, visibility) */}
-        {showToolbar && (
-          <div className="ml-auto flex items-center gap-2">
-            {/* Coverage badge */}
-            <div className="flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5">
-              <Globe className="h-3 w-3 text-primary/60" />
-              <span className="font-semibold tabular-nums text-primary/70">{translatedCount}/{totalSegments}</span>
-              <div className="h-[3px] w-8 rounded-full bg-primary/15 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-primary/70 transition-all duration-300"
-                  style={{ width: `${totalSegments > 0 ? (translatedCount / totalSegments) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="h-4 w-px bg-border/10" />
-
-            {/* Inline / Hover toggle */}
-            {onDisplayModeChange && (
-              <div className="flex rounded-md border border-border/30 overflow-hidden">
-                <button
-                  onClick={() => onDisplayModeChange("inline")}
-                  className={`px-2 py-0.5 font-semibold transition-colors cursor-pointer ${
-                    translationDisplayMode === "inline"
-                      ? "bg-primary/15 text-primary"
-                      : "text-muted-foreground hover:bg-secondary/30"
-                  }`}
-                >Inline</button>
-                <button
-                  onClick={() => onDisplayModeChange("hover")}
-                  className={`px-2 py-0.5 font-semibold transition-colors cursor-pointer ${
-                    translationDisplayMode === "hover"
-                      ? "bg-primary/15 text-primary"
-                      : "text-muted-foreground hover:bg-secondary/30"
-                  }`}
-                >Hover</button>
-              </div>
-            )}
-
-            {/* Retranslate mismatched */}
-            {mismatchedCount > 0 && onRetranslateAll && (
-              <button
-                onClick={onRetranslateAll}
-                disabled={retranslating}
-                className="flex items-center gap-1 rounded-md px-2 py-0.5 font-semibold bg-amber-500/[0.08] border border-amber-500/20 text-amber-400 hover:bg-amber-500/15 transition-colors disabled:opacity-50 cursor-pointer"
-              >
-                <RefreshCw className={`h-2.5 w-2.5 ${retranslating ? "animate-spin" : ""}`} />
-                {mismatchedCount}
-              </button>
-            )}
-
-            {/* Visibility toggle */}
-            {onToggleTranslationVisibility && (
-              <button
-                onClick={onToggleTranslationVisibility}
-                className="rounded-md p-1 text-primary/50 hover:bg-primary/10 transition-colors cursor-pointer"
-                title={showTranslations ? "Hide translations" : "Show translations"}
-              >
-                {showTranslations ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Note editor modal */}

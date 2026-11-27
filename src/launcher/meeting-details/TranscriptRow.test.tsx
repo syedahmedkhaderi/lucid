@@ -27,8 +27,6 @@ function props(overrides: Partial<TranscriptRowProps> = {}): TranscriptRowProps 
     speakerColorClass: "",
     transcriptFontSize: 13,
     transcriptTextColor: "#fff",
-    translationFontSize: 12,
-    translationTextColor: "#fb0",
     canBookmark: false,
     onSeek: vi.fn(),
     onToggleBookmark: vi.fn(),

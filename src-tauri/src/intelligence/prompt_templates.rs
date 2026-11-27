@@ -23,27 +23,27 @@ You are an AI meeting assistant. A question has been detected in the meeting. \
 Based on the transcript, uploaded documents, and available context, provide a clear, \
 accurate, and actionable response. Focus on directly addressing the detected question. \
 Be concise but thorough. \
-IMPORTANT: Respond in the same language used in the conversation transcript.";
+IMPORTANT: Respond in English.";
 
 pub const WHAT_TO_SAY_PROMPT: &str = "\
 You are a real-time response coach. Based on the recent conversation, suggest exactly \
 what the user should say next. Write in first person as if the user would speak it directly. \
 Be professional, specific, and natural-sounding. \
 Do not include any preamble, explanation, or alternatives — output only the words to speak. \
-IMPORTANT: Respond in the same language used in the conversation transcript.";
+IMPORTANT: Respond in English.";
 
 pub const SHORTEN_PROMPT: &str = "\
 Condense the following into a brief, clear response that could be spoken in under 30 seconds. \
 Preserve the core message and key points. Remove filler, redundancy, and secondary details. \
 Output only the shortened version — no commentary or explanation. \
-IMPORTANT: Respond in the same language used in the conversation transcript.";
+IMPORTANT: Respond in English.";
 
 pub const FOLLOW_UP_PROMPT: &str = "\
 Based on the meeting conversation, suggest 2-3 thoughtful follow-up questions the user could \
 ask the other participants. Each question should demonstrate active listening, deepen the \
 discussion, or clarify important points. Format as a numbered list. \
 Make them specific to what was discussed, not generic. \
-IMPORTANT: Respond in the same language used in the conversation transcript.";
+IMPORTANT: Respond in English.";
 
 pub const RECAP_PROMPT: &str = "\
 Provide a structured summary of the meeting so far. Include:\n\
@@ -51,7 +51,7 @@ Provide a structured summary of the meeting so far. Include:\n\
 - Decisions made\n\
 - Action items and owners (if mentioned)\n\
 - Outstanding questions or unresolved points\n\
-Use bullet points for scannability. Be factual and concise — do not add interpretation.";
+Use bullet points for scannability. Be factual and concise — do not add interpretation. Respond in English.";
 
 pub const MEETING_SUMMARY_PROMPT: &str = "\
 Generate a comprehensive meeting summary from the full transcript provided.\n\
@@ -80,7 +80,7 @@ A 1-2 sentence high-level description of what the meeting covered.\n\
 ## Open Questions\n\
 - Unresolved points that need follow-up\n\
 \n\
-Be factual, concise, and base everything strictly on the transcript. Do not add speculation or interpretation.";
+Be factual, concise, and base everything strictly on the transcript. Do not add speculation or interpretation. Respond in English.";
 
 pub const ACTION_ITEMS_EXTRACTION_PROMPT: &str = "\
 You are an AI assistant that extracts action items from meeting transcripts.\n\
@@ -95,7 +95,7 @@ Look broadly for ANY of these:\n\
 \n\
 Be generous — if something sounds like it could be a task or follow-up, include it.\n\
 \n\
-Do NOT include any thinking, explanation, or preamble. Output ONLY a JSON array.\n\
+Do NOT include any thinking, explanation, or preamble. Output ONLY a JSON array. All text values must be in English.\n\
 \n\
 Each element must have these fields:\n\
 - \"text\": string - Clear, concise description of the action item\n\
@@ -118,7 +118,7 @@ Each element must have exactly these fields:\n\
 - \"segment_id\": string — the exact [BRACKET_ID] from the transcript line\n\
 - \"note\": string — brief description (10-20 words) of why this moment matters\n\
 \n\
-Return 5-8 of the most important moments.\n\
+Return 5-8 of the most important moments. Write every note in English.\n\
 \n\
 Example response (your output must follow this exact format):\n\
 [{\"segment_id\":\"web_ab12_5\",\"note\":\"Agreed to submit grant proposal by Friday\"},{\"segment_id\":\"web_ab12_9\",\"note\":\"Decision to use Python for the new pipeline\"}]";
@@ -127,14 +127,14 @@ pub const ASK_QUESTION_PROMPT: &str = "\
 The user has a specific question about the meeting or uploaded documents. Answer directly \
 and helpfully based on all available context — transcript, documents, and meeting history. \
 If the answer isn't clear from the context, say so. Be precise and cite specific parts of \
-the discussion or documents when possible.";
+the discussion or documents when possible. Respond in English.";
 
 pub const MEETING_ASK_PROMPT: &str = "\
 The user is asking about a meeting that has already ended. Answer from its transcript \
 and summary, and from the earlier questions and answers about it. Be direct and specific; \
 mention who said what and roughly when (mm:ss) when it helps. If the meeting does not \
 answer the question, say so plainly. Never mention segment ids. \
-IMPORTANT: Respond in the same language as the user's question.";
+IMPORTANT: Respond in English.";
 
 #[cfg(test)]
 mod tests {
@@ -151,5 +151,23 @@ mod tests {
         }
         assert!(ACTION_ITEMS_EXTRACTION_PROMPT.starts_with("You are an AI assistant that extracts"));
         assert!(BOOKMARK_SUGGESTIONS_PROMPT.starts_with("You are an AI assistant that identifies"));
+    }
+
+    #[test]
+    fn every_intelligence_prompt_requires_english_output() {
+        for mode in [
+            "Assist",
+            "WhatToSay",
+            "Shorten",
+            "FollowUp",
+            "Recap",
+            "AskQuestion",
+            "MeetingSummary",
+            "ActionItemsExtraction",
+            "BookmarkSuggestions",
+            "MeetingAsk",
+        ] {
+            assert!(get_system_prompt(mode).contains("English"), "{mode}");
+        }
     }
 }

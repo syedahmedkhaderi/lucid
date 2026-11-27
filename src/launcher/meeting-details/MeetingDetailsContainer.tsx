@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import type { Meeting, MeetingBookmark, RecordingInfo, TranslationResult } from "../../lib/types";
-import { getMeeting, getRecordingInfo, getAllMeetingTranslations, translateSegments, startPastMeetingSession, closePastMeetingSession, cancelGeneration, renameSpeaker } from "../../lib/ipc";
+import type { Meeting, MeetingBookmark, RecordingInfo } from "../../lib/types";
+import { getMeeting, getRecordingInfo, startPastMeetingSession, closePastMeetingSession, cancelGeneration, renameSpeaker } from "../../lib/ipc";
 import { withSpeakerName } from "../../lib/speakerLabels";
 import { showToast } from "../../stores/toastStore";
-import { onTranscriptFinal, onRecordingReady, onTranslationResult, onTranslationError } from "../../lib/events";
+import { onTranscriptFinal, onRecordingReady } from "../../lib/events";
 import { useMeetingStore } from "../../stores/meetingStore";
-import { useTranslationStore } from "../../stores/translationStore";
 import { useConfigStore } from "../../stores/configStore";
 import { useMeetingStats } from "../../hooks/useMeetingStats";
 import { useTranscriptSearch } from "../../hooks/useTranscriptSearch";
@@ -52,19 +51,6 @@ export function MeetingDetails({ meetingId, onBack }: MeetingDetailsProps) {
   const [scrollToSegmentIndex, setScrollToSegmentIndex] = useState<number | null>(null);
   const [recordingInfo, setRecordingInfo] = useState<RecordingInfo | null>(null);
   const [recordingProcessing, setRecordingProcessing] = useState(false);
-
-  // Translation state for post-meeting view
-  const [translations, setTranslations] = useState<Map<string, TranslationResult>>(new Map());
-  const [translatingSegments, setTranslatingSegments] = useState<Set<string>>(new Set());
-  const [translationsVisible, setTranslationsVisible] = useState(true);
-  const [retranslating, setRetranslating] = useState(false);
-
-  // Translation store selectors
-  const displayMode = useTranslationStore((s) => s.displayMode);
-  const setDisplayMode = useTranslationStore((s) => s.setDisplayMode);
-  const currentTargetLang = useTranslationStore((s) => s.targetLang);
-  const autoTranslateEnabled = useTranslationStore((s) => s.autoTranslateEnabled);
-  const showPostMeetingTranslation = useConfigStore((s) => s.showPostMeetingTranslation);
 
   // Demo mode — build Meeting from Zustand stores instead of IPC
   const isDemoActive = useDemoStore((s) => s.isDemoActive);
@@ -188,61 +174,6 @@ export function MeetingDetails({ meetingId, onBack }: MeetingDetailsProps) {
     return () => { unlisten.then((fn) => fn()); };
   }, [meeting?.id]);
 
-  // Load all translations for this meeting
-  useEffect(() => {
-    if (!meetingId || isDemoActive) return;
-    getAllMeetingTranslations(meetingId).then((results) => {
-      const map = new Map<string, TranslationResult>();
-      // Results are ordered by created_at DESC — first match per segment wins
-      for (const r of results) {
-        if (r.segment_id && !map.has(r.segment_id)) {
-          map.set(r.segment_id, r);
-        }
-      }
-      // Second pass: override with currentTargetLang matches
-      for (const r of results) {
-        if (r.segment_id && r.target_lang === currentTargetLang) {
-          map.set(r.segment_id, r);
-        }
-      }
-      setTranslations(map);
-    }).catch((err) => {
-      console.error("[MeetingDetails] Failed to load translations:", err);
-    });
-  }, [meetingId, currentTargetLang]);
-
-  // Listen for new translation results (from on-demand translating)
-  useEffect(() => {
-    const unlistenResult = onTranslationResult((result) => {
-      if (result.segment_id) {
-        setTranslations((prev) => {
-          const next = new Map(prev);
-          next.set(result.segment_id!, result);
-          return next;
-        });
-        setTranslatingSegments((prev) => {
-          const next = new Set(prev);
-          next.delete(result.segment_id!);
-          return next;
-        });
-      }
-    });
-    const unlistenError = onTranslationError((error) => {
-      if (error.segment_id) {
-        setTranslatingSegments((prev) => {
-          const next = new Set(prev);
-          next.delete(error.segment_id!);
-          return next;
-        });
-      }
-      setRetranslating(false);
-    });
-    return () => {
-      unlistenResult.then((fn) => fn());
-      unlistenError.then((fn) => fn());
-    };
-  }, []);
-
   // Audio keyboard shortcuts (Space, Arrow keys, [ ])
   useAudioKeyboardShortcuts();
 
@@ -299,63 +230,10 @@ export function MeetingDetails({ meetingId, onBack }: MeetingDetailsProps) {
     return () => document.removeEventListener("keydown", handler);
   }, [activeTab, summaryGeneration, meeting]);
 
-  // On-demand translate a single segment
-  const handleTranslateSegment = useCallback(async (segmentId: string, text: string) => {
-    if (!meetingId || !currentTargetLang) return;
-    setTranslatingSegments((prev) => new Set(prev).add(segmentId));
-    try {
-      await translateSegments([segmentId], [text], meetingId, currentTargetLang);
-    } catch (err) {
-      console.error("[MeetingDetails] Translate segment failed:", err);
-      setTranslatingSegments((prev) => {
-        const next = new Set(prev);
-        next.delete(segmentId);
-        return next;
-      });
-    }
-  }, [meetingId, currentTargetLang]);
-
-  // Retranslate a single mismatched segment
-  const handleRetranslateSegment = useCallback(async (segmentId: string, text: string) => {
-    await handleTranslateSegment(segmentId, text);
-  }, [handleTranslateSegment]);
-
-  // Retranslate all mismatched segments
-  const handleRetranslateAll = useCallback(async () => {
-    if (!meeting || !currentTargetLang) return;
-    const mismatched = meeting.transcript
-      .filter((s) => s.id && translations.has(s.id) && translations.get(s.id)!.target_lang !== currentTargetLang)
-      .map((s) => ({ id: s.id!, text: s.text }));
-    if (mismatched.length === 0) return;
-    setRetranslating(true);
-    for (const seg of mismatched) {
-      setTranslatingSegments((prev) => new Set(prev).add(seg.id));
-    }
-    try {
-      await translateSegments(
-        mismatched.map((s) => s.id),
-        mismatched.map((s) => s.text),
-        meeting.id,
-        currentTargetLang,
-      );
-    } catch (err) {
-      console.error("[MeetingDetails] Retranslate all failed:", err);
-    } finally {
-      setRetranslating(false);
-    }
-  }, [meeting, translations, currentTargetLang]);
-
-  // Translation toolbar stats — use merged segments to match what the user sees
   const mergedSegments = useMemo(
     () => meeting ? mergeConsecutiveSegments(meeting.transcript) : [],
     [meeting?.transcript]
   );
-  const totalSegments = mergedSegments.length;
-  const translatedCount = mergedSegments.filter((s) => s.id && translations.has(s.id)).length;
-  const mismatchedCount = mergedSegments.filter(
-    (s) => s.id && translations.has(s.id) && translations.get(s.id)!.target_lang !== currentTargetLang
-  ).length;
-  const showToolbar = showPostMeetingTranslation && (translations.size > 0 || autoTranslateEnabled);
 
   // Export
   const handleExport = useCallback(async () => {
@@ -394,8 +272,6 @@ export function MeetingDetails({ meetingId, onBack }: MeetingDetailsProps) {
     const at = rawIndexAtMs(meeting.transcript, new Date(meeting.start_time).getTime(), moment.ms);
     if (at !== null) setScrollToSegmentIndex(at);
   }, [moment, meeting, meetingId]);
-
-  const handleToggleTranslationVisibility = useCallback(() => setTranslationsVisible((v) => !v), []);
 
   if (loading) {
     return (
@@ -471,21 +347,6 @@ export function MeetingDetails({ meetingId, onBack }: MeetingDetailsProps) {
             onRenameSpeaker={handleRenameSpeaker}
             initialScrollToIndex={scrollToSegmentIndex}
             onScrollHandled={handleScrollHandled}
-            translations={translations}
-            translatingSegments={translatingSegments}
-            translationDisplayMode={displayMode}
-            currentTargetLang={currentTargetLang}
-            showTranslations={translationsVisible}
-            onTranslateSegment={handleTranslateSegment}
-            onRetranslateSegment={handleRetranslateSegment}
-            showToolbar={showToolbar}
-            translatedCount={translatedCount}
-            totalSegments={totalSegments}
-            mismatchedCount={mismatchedCount}
-            onDisplayModeChange={setDisplayMode}
-            onRetranslateAll={handleRetranslateAll}
-            onToggleTranslationVisibility={handleToggleTranslationVisibility}
-            retranslating={retranslating}
           />
         </div>
         {activeTab === "summary" && (

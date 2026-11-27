@@ -5,17 +5,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useConfigStore } from "../stores/configStore";
-import { useMeetingStore } from "../stores/meetingStore";
-import { skipYouStt } from "../lib/audioMode";
-import {
-  AUTO_STT_LANGUAGE,
-  STT_LANGUAGES,
-  autoDetectProblem,
-  cartesiaSupportsLanguage,
-  isDeepgramNova3,
-  sideLanguage,
-  sideLanguageHint,
-} from "../lib/sttLanguages";
 import {
   setSTTProvider,
   testSTTConnection,
@@ -182,6 +171,12 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
   },
 ];
 
+const SUPPORTED_STT_PROVIDERS = new Set<STTProviderType>([
+  "whisper_cpp",
+  "parakeet_tdt",
+  "groq_whisper",
+]);
+
 
 // ── Deepgram Models ──
 
@@ -300,10 +295,7 @@ export function STTSettings() {
   const setConfigSTTProvider = useConfigStore((s) => s.setSTTProvider);
   const meetingAudioConfig = useConfigStore((s) => s.meetingAudioConfig);
   const setMeetingAudioConfig = useConfigStore((s) => s.setMeetingAudioConfig);
-  const sttLanguage = useConfigStore((s) => s.sttLanguage);
-  const setSTTLanguage = useConfigStore((s) => s.setSTTLanguage);
   const activeWhisperModel = useConfigStore((s) => s.activeWhisperModel);
-  const deepgramModel = useConfigStore((s) => s.deepgramConfig.model);
   // Persisted: providers whose key has been saved + tested successfully
   const verifiedCloudProviders = useConfigStore((s) => s.verifiedCloudProviders);
   const setVerifiedCloudProviders = useConfigStore((s) => s.setVerifiedCloudProviders);
@@ -358,61 +350,11 @@ export function STTSettings() {
   const [localCapabilityCheckComplete, setLocalCapabilityCheckComplete] = useState(false);
   const [localCapabilityReason, setLocalCapabilityReason] = useState("");
   const visibleProviderOptions = PROVIDER_OPTIONS.filter((provider) => {
+    if (!SUPPORTED_STT_PROVIDERS.has(provider.value)) return false;
     if (provider.requiresModels && !["whisper_cpp", "parakeet_tdt"].includes(provider.requiresModels)) return false;
     if (["whisper_cpp", "parakeet_tdt"].includes(provider.value) && !localModelsAvailable) return false;
     return true;
   });
-  const activeParakeetModel = useConfigStore((s) =>
-    s.activeModelPerEngine.parakeet_tdt ?? "parakeet-tdt-0.6b-v3-int8"
-  );
-
-  // The "You" side as meetings will run it; before the audio setup exists, the picker's choice.
-  const youSide = meetingAudioConfig
-    ? { provider: meetingAudioConfig.you.stt_provider, localModel: meetingAudioConfig.you.local_model_id }
-    : { provider: selectedProvider, localModel: undefined };
-  const autoModels = { deepgram: deepgramModel, whisperCpp: activeWhisperModel, parakeet: activeParakeetModel };
-  const autoDetectionSelected = sttLanguage === AUTO_STT_LANGUAGE;
-  const inPerson = useMeetingStore((s) => skipYouStt(s.audioMode));
-  // This page picks the "You" provider; the "Them" side is set in Audio & Devices.
-  // A side with a language of its own is judged by that one, not the shared one.
-  const youAuto = sideLanguage(meetingAudioConfig?.you, sttLanguage) === AUTO_STT_LANGUAGE;
-  const themAuto = sideLanguage(meetingAudioConfig?.them, sttLanguage) === AUTO_STT_LANGUAGE;
-  // Whatever sets a side to Auto-detect (the shared language or its own) can run into it.
-  const autoProblems = [
-    inPerson || !youAuto ? null : autoDetectProblem(youSide, autoModels, "You"),
-    meetingAudioConfig && themAuto
-      ? autoDetectProblem(
-          { provider: meetingAudioConfig.them.stt_provider, localModel: meetingAudioConfig.them.local_model_id },
-          autoModels,
-          `${inPerson ? "Room" : "Them"} (set in Audio & Devices)`,
-        )
-      : null,
-  ].filter((p): p is string => p !== null);
-  const showAutoDetectionWarning = autoProblems.length > 0;
-
-  // The hints below follow the language "You" is transcribed in: its own, else the shared one.
-  const youLanguage = sideLanguage(meetingAudioConfig?.you, sttLanguage);
-  const languageHint = sideLanguageHint(
-    {
-      provider: selectedProvider,
-      localModel: meetingAudioConfig?.you.stt_provider === selectedProvider ? meetingAudioConfig.you.local_model_id : undefined,
-    },
-    youLanguage,
-    autoModels,
-  );
-  // Sides with a language of their own, which this shared setting doesn't decide.
-  const ownLanguageNotes = (
-    [
-      meetingAudioConfig?.you.language && !inPerson ? { name: "You", language: meetingAudioConfig.you.language } : null,
-      meetingAudioConfig?.them.language
-        ? { name: inPerson ? "Room" : "Them", language: meetingAudioConfig.them.language }
-        : null,
-    ].filter((note) => note !== null)
-  ).map(
-    (note) =>
-      `${note.name}: ${STT_LANGUAGES.find((l) => l.value === note.language)?.label ?? note.language}, set in Audio & Devices.`,
-  );
-
   const currentProviderOption = visibleProviderOptions.find(
     (p) => p.value === selectedProvider
   );
@@ -1316,7 +1258,7 @@ export function STTSettings() {
             </div>
           </dl>
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            Auto-detect uses Microsoft&apos;s default multilingual mode. Choose a specific language below to send it explicitly. Speaker diarization is not supported.
+            English transcription is sent explicitly. Speaker diarization is not supported.
           </p>
           <button
             type="button"
@@ -1329,62 +1271,9 @@ export function STTSettings() {
         </div>
       )}
 
-      {/* Universal Pause Detection */}
-      <PauseThresholdSetting />
-
-      {/* Deepgram Advanced Settings — shown when Deepgram is selected */}
-      {selectedProvider === "deepgram" && <DeepgramAdvancedSettings />}
-
-      {/* Groq Whisper Settings — shown when Groq is selected */}
-      {selectedProvider === "groq_whisper" && <GroqAdvancedSettings />}
-
-      {/* Whisper.cpp Dual-Pass Settings */}
-      {selectedProvider === "whisper_cpp" && <DualPassSettings />}
-
-      {/* Language Selection */}
-      <div className="rounded-xl border border-border/30 bg-card/50 p-5">
-        <h3 className="mb-3 text-sm font-semibold text-primary/80">
-          Transcription language
-        </h3>
-        <select
-          value={sttLanguage}
-          onChange={(e) => setSTTLanguage(e.target.value)}
-          aria-label="Transcription language"
-          aria-describedby={autoDetectionSelected || showAutoDetectionWarning ? "provider-stt-auto-description" : undefined}
-          className="w-full rounded-lg border border-border/50 bg-background px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
-        >
-          {STT_LANGUAGES.map((lang) => (
-            <option key={lang.value} value={lang.value}>
-              {lang.label}
-            </option>
-          ))}
-        </select>
-        {(autoDetectionSelected || showAutoDetectionWarning) && (
-          <div id="provider-stt-auto-description" className={`mt-2 space-y-1 text-xs ${showAutoDetectionWarning ? "text-warning" : "text-muted-foreground"}`}>
-            {showAutoDetectionWarning
-              ? autoProblems.map((problem) => <p key={problem}>{problem}</p>)
-              : <p>
-                  {selectedProvider === "azure_mai_streaming"
-                    ? "MAI-Transcribe-2-Streaming uses multilingual mode with automatic language detection by default."
-                    : selectedProvider === "deepgram" && isDeepgramNova3(deepgramModel)
-                    ? "Nova-3 can transcribe multiple languages within the same sentence."
-                    : "For speech that switches languages mid-sentence, use Deepgram Nova-3."}
-                </p>}
-          </div>
-        )}
-        {ownLanguageNotes.map((note) => (
-          <p key={note} className="mt-2 text-xs text-muted-foreground">{note}</p>
-        ))}
-        {languageHint && (
-          <p className={`mt-2 text-xs ${languageHint.tone === "warning" ? "text-warning" : "text-muted-foreground"}`}>
-            {languageHint.text}
-          </p>
-        )}
-        {selectedProvider === "cartesia" && (youLanguage === AUTO_STT_LANGUAGE || cartesiaSupportsLanguage(youLanguage)) && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Cartesia detects English, French, Hindi, Japanese and Spanish on its own.
-          </p>
-        )}
+      <div className="flex items-center justify-between rounded-xl border border-border/30 bg-card/50 px-4 py-3">
+        <span className="text-sm text-muted-foreground">Transcription language</span>
+        <span className="rounded-md border border-border/30 bg-background/50 px-2.5 py-1 text-xs font-medium text-foreground">English</span>
       </div>
 
       {/* Test Connection — only for local/always-ready providers; cloud uses Save & Test in the key section */}

@@ -2001,8 +2001,9 @@ async fn create_stt_provider_for_party(
                 .into(),
         );
     }
-    // This side's own language when it has one, else the shared transcription language.
-    let stt_language = config.effective_language(&get_stt_language(state));
+    // Meeting transcription is English-only. Ignore stale saved per-side
+    // language overrides so every provider receives the same language.
+    let stt_language = "en-US".to_string();
     let deepgram_config = matches!(&stt_type, STTProviderType::Deepgram)
         .then(|| get_deepgram_config(state));
 
@@ -2381,15 +2382,6 @@ fn get_local_model_path(
         .map_err(|_| "Model manager lock poisoned".to_string())?;
     mgr.get_model_path(engine, model_id)
         .ok_or_else(|| format!("Model {}:{} not downloaded", engine, model_id))
-}
-
-/// Get the current STT language from the router.
-fn get_stt_language(state: &AppState) -> String {
-    state
-        .stt
-        .as_ref()
-        .and_then(|stt| stt.lock().ok().map(|r| r.language.clone()))
-        .unwrap_or_else(|| "en-US".to_string())
 }
 
 /// The Auto-detect check of one side: nothing unless `language` is Auto-detect,

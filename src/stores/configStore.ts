@@ -9,6 +9,7 @@ import type {
   STTProviderType,
   HotkeyConfig,
   MeetingAudioConfig,
+  PartyAudioConfig,
   ContextStrategy,
   WhisperDualPassConfig,
   DeepgramConfig,
@@ -55,6 +56,29 @@ const DEFAULT_GROQ_CONFIG: GroqConfig = {
   prompt: "",
   segment_duration_secs: 5.0,
 };
+
+const SUPPORTED_STT_PROVIDERS = new Set<string>(["whisper_cpp", "parakeet_tdt", "groq_whisper"]);
+
+function normalizeSttProvider(provider: STTProviderType): STTProviderType {
+  return SUPPORTED_STT_PROVIDERS.has(provider) ? provider : "groq_whisper";
+}
+
+/** Keep persisted speech setup within Lucid's supported English engines. */
+function normalizeMeetingAudioConfig(config: MeetingAudioConfig): MeetingAudioConfig {
+  const normalizeParty = (party: PartyAudioConfig): PartyAudioConfig => {
+    const provider = normalizeSttProvider(party.stt_provider);
+    return {
+      ...party,
+      stt_provider: provider,
+      local_model_id: provider === "whisper_cpp" || provider === "parakeet_tdt" ? party.local_model_id : undefined,
+      language: "en-US",
+    };
+  };
+  const you = normalizeParty(config.you);
+  const them = normalizeParty(config.them);
+  const providerChanged = you.stt_provider !== config.you.stt_provider || them.stt_provider !== config.them.stt_provider;
+  return { ...config, you, them, preset_name: providerChanged ? null : config.preset_name };
+}
 
 const STORE_FILE = "config.json";
 
@@ -618,10 +642,12 @@ export const useConfigStore = create<ConfigState>((set) => ({
     persistValue("theme", theme);
   },
   setSTTProvider: (provider) => {
-    set({ sttProvider: provider });
-    persistValue("sttProvider", provider);
+    const supportedProvider = normalizeSttProvider(provider);
+    set({ sttProvider: supportedProvider });
+    persistValue("sttProvider", supportedProvider);
   },
-  setSTTLanguage: (language) => {
+  setSTTLanguage: (_language) => {
+    const language = "en-US";
     set({ sttLanguage: language });
     persistValue("sttLanguage", language);
     // Apply immediately to Rust backend
@@ -751,17 +777,18 @@ export const useConfigStore = create<ConfigState>((set) => ({
     persistValue("recordingEnabled", enabled);
   },
   setMeetingAudioConfig: (config) => {
-    set({ meetingAudioConfig: config });
-    persistValue("meetingAudioConfig", config);
+    const supportedConfig = normalizeMeetingAudioConfig(config);
+    set({ meetingAudioConfig: supportedConfig });
+    persistValue("meetingAudioConfig", supportedConfig);
     // Keep legacy fields in sync for backward compatibility
     set({
-      micDeviceId: config.you.device_id || null,
-      systemDeviceId: config.them.device_id || null,
-      recordingEnabled: config.recording_enabled,
+      micDeviceId: supportedConfig.you.device_id || null,
+      systemDeviceId: supportedConfig.them.device_id || null,
+      recordingEnabled: supportedConfig.recording_enabled,
     });
-    persistValue("micDeviceId", config.you.device_id || null);
-    persistValue("systemDeviceId", config.them.device_id || null);
-    persistValue("recordingEnabled", config.recording_enabled);
+    persistValue("micDeviceId", supportedConfig.you.device_id || null);
+    persistValue("systemDeviceId", supportedConfig.them.device_id || null);
+    persistValue("recordingEnabled", supportedConfig.recording_enabled);
   },
   saveCustomPreset: (name) => {
     const state = useConfigStore.getState();
@@ -1114,8 +1141,15 @@ export const useConfigStore = create<ConfigState>((set) => ({
       await privacyIpc.setPrivacyMode(privacyMode);
 
       const theme = await store.get<ThemeMode>("theme");
-      const sttProvider = await store.get<STTProviderType>("sttProvider");
-      const sttLanguage = await store.get<string>("sttLanguage");
+      const storedSttProvider = await store.get<STTProviderType>("sttProvider");
+      const sttProvider = storedSttProvider == null ? undefined : normalizeSttProvider(storedSttProvider);
+      if (sttProvider != null && sttProvider !== storedSttProvider) await store.set("sttProvider", sttProvider);
+      const storedSttLanguage = await store.get<string>("sttLanguage");
+      // Lucid's meeting transcription is English-only. Normalize settings from
+      // older versions at load time so stale language choices can't leak into
+      // browser speech recognition or a Rust provider.
+      const sttLanguage = "en-US";
+      if (storedSttLanguage !== sttLanguage) await store.set("sttLanguage", sttLanguage);
       const llmProvider = await store.get<LLMProviderType>("llmProvider");
       const llmModel = await store.get<string>("llmModel");
       const customLlmBaseUrl = await store.get<string>("customLlmBaseUrl");
@@ -1311,13 +1345,28 @@ export const useConfigStore = create<ConfigState>((set) => ({
         console.log("[configStore] Created default meetingAudioConfig (Groq Whisper)");
       }
 
+      if (resolvedMeetingConfig) {
+        const normalized = normalizeMeetingAudioConfig(resolvedMeetingConfig);
+        if (JSON.stringify(normalized) !== JSON.stringify(resolvedMeetingConfig)) {
+          resolvedMeetingConfig = normalized;
+          await store.set("meetingAudioConfig", normalized);
+        }
+      }
+      const resolvedCustomPresets = customPresets?.map(normalizeMeetingAudioConfig);
+      if (
+        resolvedCustomPresets &&
+        JSON.stringify(resolvedCustomPresets) !== JSON.stringify(customPresets)
+      ) {
+        await store.set("customPresets", resolvedCustomPresets);
+      }
+
       set((state) => ({
         ...state,
         _loaded: true,
         privacyMode,
         ...(theme != null && { theme }),
         ...(sttProvider != null && { sttProvider }),
-        ...(sttLanguage != null && { sttLanguage }),
+        sttLanguage,
         ...(llmProvider != null && { llmProvider }),
         ...(llmModel != null && { llmModel }),
         lastModelByProvider,
@@ -1332,7 +1381,7 @@ export const useConfigStore = create<ConfigState>((set) => ({
         ...(systemDeviceId !== undefined && { systemDeviceId }),
         ...(recordingEnabled != null && { recordingEnabled }),
         ...(resolvedMeetingConfig != null && { meetingAudioConfig: resolvedMeetingConfig }),
-        ...(customPresets != null && { customPresets }),
+        ...(resolvedCustomPresets != null && { customPresets: resolvedCustomPresets }),
         ...(autoTrigger != null && { autoTrigger }),
         ...(autoSummary != null && { autoSummary }),
         ...(contextWindowSeconds != null && { contextWindowSeconds }),
@@ -1376,7 +1425,6 @@ export const useConfigStore = create<ConfigState>((set) => ({
         overlaySetups: sanitizeSetups(overlaySetups),
         contextScope: normalizeContextScope(contextScope),
         contextScopeSticky: contextScopeSticky ?? true,
-        sttLanguage: sttLanguage ?? "en-US",
         showPostMeetingTranslation: showPostMeetingTranslation ?? true,
         ...(trayNotifications != null && { trayNotifications }),
         ...(trayAutoStart != null && { trayAutoStart }),
@@ -1420,7 +1468,11 @@ export const useConfigStore = create<ConfigState>((set) => ({
       // Set up cross-window sync: when another window changes the store,
       // update this window's Zustand state automatically.
       store.onKeyChange<MeetingAudioConfig>("meetingAudioConfig", (val) => {
-        if (val != null) set({ meetingAudioConfig: val });
+        if (val != null) {
+        const normalized = normalizeMeetingAudioConfig(val);
+          set({ meetingAudioConfig: normalized });
+          if (JSON.stringify(normalized) !== JSON.stringify(val)) persistValue("meetingAudioConfig", normalized);
+        }
       });
       store.onKeyChange<PrivacyMode>("privacyMode", (val) => {
         if (val === "private_local" || val === "cloud_allowed") set({ privacyMode: val });
@@ -1438,7 +1490,10 @@ export const useConfigStore = create<ConfigState>((set) => ({
         if (val != null) set({ sttProvider: val });
       });
       store.onKeyChange<string>("sttLanguage", (val) => {
-        if (val != null) set({ sttLanguage: val });
+        if (val !== "en-US") {
+          set({ sttLanguage: "en-US" });
+          persistValue("sttLanguage", "en-US");
+        }
       });
       store.onKeyChange<LLMProviderType>("llmProvider", (val) => {
         if (val != null) set({ llmProvider: val });
@@ -1534,7 +1589,7 @@ export const useConfigStore = create<ConfigState>((set) => ({
       }
 
       // Sync persisted STT language to Rust backend on startup.
-      const loadedSttLanguage = sttLanguage ?? "en-US";
+      const loadedSttLanguage = sttLanguage;
       import("../lib/ipc").then(({ setSTTLanguage: setBackendSTTLanguage }) =>
         setBackendSTTLanguage(loadedSttLanguage)
           .catch((e) => console.warn("[configStore] Failed to sync STT language on load:", e))

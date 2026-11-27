@@ -4,7 +4,7 @@ Updated: 2026-11-27
 
 ## Completed
 
-- Created the project at `the Lucid source directory` from NexQ `v3.0.0`, preserving history and MIT license. Pinned commit: `d83db586024270bfd0bcf7221a55275b104c4246`; published to the private [`syedahmedkhaderi/lucid`](https://github.com/syedahmedkhaderi/lucid) repository on `main`; upstream remote retained.
+- Created the project at `the Lucid source directory` from NexQ `v3.0.0`, preserving history and MIT license. Pinned commit: `d83db586024270bfd0bcf7221a55275b104c4246`; published to the public [`syedahmedkhaderi/lucid`](https://github.com/syedahmedkhaderi/lucid) repository on `main`; upstream remote retained.
 - Rebranded the app package, Tauri product, Rust crate, visible UI, installer strings, icons, and user-data identity (`com.lucid.desktop`). NexQ user data is isolated and is not automatically migrated.
 - Removed the upstream update endpoint/key and disabled update artifacts until Lucid owns a signed release channel.
 - Added a compact triangular top-center overlay with monitor-aware positioning and restoration of the expanded window bounds.
@@ -28,9 +28,9 @@ Updated: 2026-11-27
 ## Verified on this Apple Silicon Mac
 
 - `npm ci`: passed; 396 packages audited, 0 vulnerabilities. Node 24.1.0 emits a declared engine warning from jsdom (requires 24.15.0+ or 22.22.2+).
-- `npm test -- --reporter=dot`: 258 files passed; 3,940 tests passed; 2 skipped.
+- `npm test -- --reporter=dot`: 260 files passed; 3,891 tests passed; 2 skipped.
 - `npm run build`: passed. Existing Tailwind and ineffective dynamic-import warnings remain.
-- `source scripts/macos-env.sh; export CMAKE_MAKE_PROGRAM="$(command -v ninja)"; cargo test --quiet`: 2,037 passed; 24 ignored; 0 failed across all Rust targets. The explicit Ninja path is needed for the nested Cargo build in the ACP integration tests on this host.
+- `LIBCLANG_PATH=/Library/Developer/CommandLineTools/usr/lib cargo test --lib --quiet`: 1,971 passed; 15 ignored; 0 failed. Nested integration targets were not run in this command.
 - Dependency scans: `npm audit --omit=dev` found 0 vulnerabilities. `cargo-audit` 0.23.0 found 0 vulnerable Rust packages after updating `cookie` to 0.18.3, `url` to 2.5.9, and `rustix` to 1.1.6; nine warnings remain for unmaintained/yanked crates and Linux GTK's `glib` unsoundness advisory.
 - Local retrieval evaluation: 100% hit@1 and hit@8 across 30 questions and 42 synthetic English/Japanese/Chinese meetings. Search benchmark: 500 × 10,000-word synthetic transcripts, 24,000 passages, p50 87.9 ms / p95 97.2 ms / max 99.6 ms over 120 warm searches; corpus indexing 6.2 s with SQLite optimized at level 3. Unoptimized SQLite baseline p95 was 109.9 ms. These do not measure generated answer accuracy or end-to-end latency.
 - `./build-mac.sh --no-install --bundles app`: passed after the credential-profile, write-only secret IPC, and updater-config startup fixes. The installed `/Applications/Lucid.app` was launched and reached the Lucid dashboard. The ARM64 bundle is 86.99 MiB; its `com.lucid.desktop` identifier and `0.1.0` version were checked, and `codesign --verify --deep --strict` passed. Notarization is unavailable because signing credentials are not configured.
@@ -42,6 +42,9 @@ Updated: 2026-11-27
 - The test harness paths were updated for Cargo 1.100's build output layout.
 - Mac meeting-mode local STT smoke test: downloaded and checksum-verified Whisper Large v3 Turbo and Parakeet TDT 0.6B v3 through Lucid, selected each for live system-audio capture, and fed two synthesized English utterances through an actual private meeting session. Parakeet returned both utterances accurately; Whisper returned partial/revised text with noticeable recognition errors. This verifies local model loading, system loopback, and live transcript routing only; it is not a human-participant meeting, a broad accuracy benchmark, or a production call. No cloud STT request was used.
 - The setup wizard and Settings expose only Whisper Large v3 Turbo, Parakeet TDT 0.6B v3, and Groq Whisper for the supported transcription path. Local model download and activation are available in the app; unsupported hardware is offered Groq instead. The exact per-party live audio selectors now include installed Whisper Turbo and Parakeet models.
+- Simplified meeting speech setup to those three options and English. Legacy saved speech providers migrate to Groq; live notes and answer prompts are English-only. Translation actions were removed from the meeting transcript, answer selection, and settings UI.
+- Added model storage usage and confirmed deletion controls. Deletion requires confirmation, is disabled during a meeting, and clears an active selection so Lucid can fall back to Groq.
+- Reduced the default workspace sidebar to the document library; instructions, talking points, memory, and context details open under “More meeting tools.”
 - Drafted a Windows GitHub Actions workflow to run frontend and Rust tests, build the NSIS installer, install it, and smoke-launch the packaged app. It is not committed to the public repository because the available GitHub writer and CLI credentials cannot write workflow files; the hosted Windows check therefore cannot run yet.
 - Per-meeting document selection focused tests: 16 frontend tests and 2 Rust tests passed; TypeScript typecheck passed. PDF page extraction, page-aware indexing, page persistence, citation labels, source-exact fact extraction, v21 fact-cache rebuild, and no-generation direct numeric lookup have dedicated tests. Full frontend and Rust suites pass with these features included.
 

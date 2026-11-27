@@ -115,7 +115,7 @@ Your role:
 - When useful, offer a follow-up question an examiner might ask
 - If it becomes clear this is a real, graded exam, do not help answer it. Say that this scenario is for practice
 
-Always respond in the same language the examiner is using.`,
+Always respond in English.`,
     summary_prompt: `Summarize this oral exam practice session:
 ## Questions Asked
 List each practice question, in order.

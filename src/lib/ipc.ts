@@ -582,6 +582,7 @@ export async function listLocalSTTEngines(): Promise<LocalSTTEngineInfo[]> {
       engine: m.definition.engine,
       name: m.definition.display_name,
       size_bytes: m.definition.size_bytes,
+      disk_usage_bytes: m.disk_usage_bytes ?? 0,
       accuracy_rating: m.definition.accuracy_rating,
       speed_rating: m.definition.speed_rating,
       is_streaming: m.definition.is_streaming,

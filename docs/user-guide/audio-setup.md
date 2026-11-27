@@ -86,9 +86,9 @@ Audio capture and speech recognition are separate. Choose a provider for **each*
 
 The meter confirms audio capture; it does not by itself confirm that a model is downloaded, active, or returning text.
 
-## Language for Each Side
+## Language
 
-Each card in **Settings > Audio & Devices** has a **Language** menu. It starts on **Default**, which follows the transcription language; pick another to transcribe that side (You, Them, or Room) in its own language, for example you in English and the others in Spanish. See [A different language for each side](ai-providers.md#a-different-language-for-each-side).
+Meeting transcription and AI answers are English-only. Both audio channels use English; there are no per-side language or translation controls.
 
 ## Recording
 
@@ -161,7 +161,7 @@ Lucid can record meeting audio alongside the live transcript.
 
 - Check that your system is not entering sleep mode during the meeting (Windows Settings > System > Power & Sleep)
 - For USB audio devices, disable USB selective suspend in Power Options
-- Web Speech API handles long sessions best -- consider switching to it for extended meetings
+- If speech recognition stops, confirm the selected model is downloaded and active, or check that Groq cloud processing is allowed and its key is valid.
 - If the issue persists, end and restart the meeting to reinitialize audio capture
 
 ## Noise and Audio Quality

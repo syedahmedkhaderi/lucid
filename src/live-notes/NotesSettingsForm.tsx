@@ -13,22 +13,6 @@ export function formatTokens(n: number): string {
   return String(n);
 }
 
-const LANGUAGES: Array<[string, string]> = [
-  ["meeting", "The meeting's language"],
-  ["en", "English"],
-  ["es", "Spanish"],
-  ["fr", "French"],
-  ["de", "German"],
-  ["it", "Italian"],
-  ["pt", "Portuguese"],
-  ["nl", "Dutch"],
-  ["ja", "Japanese"],
-  ["ko", "Korean"],
-  ["zh", "Chinese"],
-  ["ar", "Arabic"],
-  ["hi", "Hindi"],
-];
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -92,13 +76,8 @@ export function NotesSettingsForm({
           ]}
         />
       </Field>
-      <Field label="Language of the notes">
-        <Select
-          label="Language of the notes"
-          value={settings.language}
-          onChange={(language) => onChange({ language })}
-          options={LANGUAGES.map(([value, label]) => ({ value, label }))}
-        />
+      <Field label="Language">
+        <p className="ui-field flex min-h-10 items-center px-3 text-sm text-foreground">English</p>
       </Field>
       <Field label="Model">
         <ModelField

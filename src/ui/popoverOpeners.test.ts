@@ -5,8 +5,6 @@ const files = import.meta.glob(
   [
     "../overlay/dock/LayoutMenu.tsx",
     "../overlay/ContextScopePicker.tsx",
-    "../overlay/SideLanguagePicker.tsx",
-    "../calllog/CallLogPanel.tsx",
     "../components/ServiceStatusBar.tsx",
     "../components/AgentStatusChip.tsx",
     "../live-notes/LiveNotesPanel.tsx",
@@ -22,9 +20,7 @@ const files = import.meta.glob(
 describe("popover openers use the shared placement", () => {
   const uses: Record<string, RegExp> = {
     "../overlay/dock/LayoutMenu.tsx": /<Popover\b/,
-    "../calllog/CallLogPanel.tsx": /<Popover\b/,
     "../overlay/ContextScopePicker.tsx": /placeBox\(/,
-    "../overlay/SideLanguagePicker.tsx": /placeBox\(/,
     "../components/ServiceStatusBar.tsx": /<AnchoredBox/,
     "../components/AgentStatusChip.tsx": /<AnchoredBox/,
     // notes and brief options are ui Menu, which places with placeBox
@@ -44,7 +40,6 @@ describe("popover openers use the shared placement", () => {
   });
   it("none of them hand-places with a fixed right-0/left-0 offset any more", () => {
     expect(files["../overlay/dock/LayoutMenu.tsx"]).not.toMatch(/absolute right-0 top-full/);
-    expect(files["../calllog/CallLogPanel.tsx"]).not.toMatch(/absolute right-0 top-full/);
   });
 });
 

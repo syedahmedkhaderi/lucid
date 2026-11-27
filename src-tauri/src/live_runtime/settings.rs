@@ -22,7 +22,7 @@ pub struct NotetakerSettings {
     pub update_mode: String,
     /// "brief" | "standard" | "detailed"
     pub detail: String,
-    /// "meeting" follows the meeting language.
+    /// Fixed output language. Retained for config compatibility; validated as English.
     pub language: String,
     pub cap: u64,
     pub colors: bool,
@@ -38,7 +38,7 @@ impl Default for NotetakerSettings {
             effort: None,
             update_mode: "automatic".into(),
             detail: "standard".into(),
-            language: "meeting".into(),
+            language: "en".into(),
             cap: DEFAULT_CAP,
             colors: true,
         }
@@ -99,10 +99,7 @@ impl Validate for NotetakerSettings {
         if !["brief", "standard", "detailed"].contains(&self.detail.as_str()) {
             return Err(format!("Unknown detail level: {}", self.detail));
         }
-        if self.language.trim().is_empty() {
-            self.language = "meeting".into();
-        }
-        self.language = self.language.chars().take(40).collect();
+        self.language = "en".into();
         Ok(())
     }
 }
@@ -149,6 +146,7 @@ mod tests {
         assert_eq!(m.update_mode, "automatic");
         assert!(merge(&s, &json!({"detail": "huge"})).is_err());
         assert!(merge(&s, &json!({"nope": 1})).is_err());
+        assert_eq!(merge(&s, &json!({"language": "es"})).unwrap().language, "en");
         let cleared = merge(&m, &json!({"provider": null})).unwrap();
         assert_eq!(cleared.provider, None);
         assert_eq!(merge(&BriefSettings::default(), &json!({"cap": 50_000})).unwrap().cap, 50_000);
