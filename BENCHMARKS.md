@@ -39,9 +39,9 @@ The retrieval accuracy fixture measures whether search returns the correct meeti
 | Check | Result |
 |---|---|
 | Frontend tests | 3,931 passed; 2 skipped (255 files) |
-| Rust tests | 2,006 passed; 24 ignored across unit and integration targets |
+| Rust tests | 2,007 passed; 24 ignored across unit and integration targets |
 | Frontend production build | Passed; existing Tailwind and ineffective dynamic-import warnings remain |
-| macOS app bundle | ARM64; 85.91 MiB; ad-hoc signature verification passed |
+| macOS app bundle | ARM64; 85.88 MiB; ad-hoc signature verification passed |
 | macOS installer image | 27 MB HFS+ DMG; `hdiutil verify` passed; mounted and confirmed `Lucid.app` plus Applications shortcut |
 
 The current DMG SHA-256 is recorded in [PROGRESS.md](PROGRESS.md). Notarization, Gatekeeper behavior, Windows runtime/audio, and real-provider speech quality remain untested.
