@@ -7,7 +7,9 @@
 use std::path::{Path, PathBuf};
 
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let p = e.path();
         if p.is_dir() {
@@ -25,15 +27,36 @@ fn only_the_provider_commands_write_the_active_provider_or_model() {
     rust_files(&src, &mut all);
     // Code that must only read the active provider.
     let readers = [
-        "workspace_chat", "workspace", "workspace_search", "live_runtime", "live_notes", "live_brief",
-        "live_common.rs", "ai_runs", "intelligence",
+        "workspace_chat",
+        "workspace",
+        "workspace_search",
+        "live_runtime",
+        "live_notes",
+        "live_brief",
+        "live_common.rs",
+        "ai_runs",
+        "intelligence",
     ];
-    let writes = [".set_provider(", ".set_active_model(", "cli_settings.set_active(", "settings().set_active(", ".set_active(CliAgentKind"];
+    let writes = [
+        ".set_provider(",
+        ".set_active_model(",
+        "cli_settings.set_active(",
+        "settings().set_active(",
+        ".set_active(CliAgentKind",
+    ];
     let mut offenders = Vec::new();
     for f in all {
-        let rel = f.strip_prefix(&src).unwrap().to_string_lossy().replace('\\', "/");
+        let rel = f
+            .strip_prefix(&src)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
         let is_test_file = rel.ends_with("tests.rs") || rel.ends_with("/tests/mod.rs");
-        if is_test_file || !readers.iter().any(|r| rel == *r || rel.starts_with(&format!("{r}/"))) {
+        if is_test_file
+            || !readers
+                .iter()
+                .any(|r| rel == *r || rel.starts_with(&format!("{r}/")))
+        {
             continue;
         }
         let text = std::fs::read_to_string(&f).unwrap();
@@ -45,13 +68,18 @@ fn only_the_provider_commands_write_the_active_provider_or_model() {
             }
         }
     }
-    assert!(offenders.is_empty(), "these write the global provider: {offenders:?}");
+    assert!(
+        offenders.is_empty(),
+        "these write the global provider: {offenders:?}"
+    );
 }
 
 #[test]
 fn the_provider_commands_are_where_the_router_and_the_active_kind_change() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let cmds = std::fs::read_to_string(src.join("commands/llm_commands.rs")).unwrap();
-    assert!(cmds.contains(".set_provider(config)") && cmds.contains("cli_settings.set_active(kind)"));
+    assert!(
+        cmds.contains(".set_provider(config)") && cmds.contains("cli_settings.set_active(kind)")
+    );
     assert!(cmds.contains(".set_active_model(model_id"));
 }

@@ -43,14 +43,25 @@ fn payloads(nonce_guess: &str) -> Vec<String> {
     v
 }
 
-fn passage(id: i64, kind: &str, ref_id: &str, sub: Option<&str>, title: &str, text: &str) -> Passage {
+fn passage(
+    id: i64,
+    kind: &str,
+    ref_id: &str,
+    sub: Option<&str>,
+    title: &str,
+    text: &str,
+) -> Passage {
     Passage {
         id,
         kind: kind.into(),
         ref_id: ref_id.into(),
         sub_ref: sub.map(str::to_string),
         title: title.into(),
-        start_ms: if kind == "transcript" { Some(1000) } else { None },
+        start_ms: if kind == "transcript" {
+            Some(1000)
+        } else {
+            None
+        },
         end_ms: None,
         text: text.into(),
         tokens: text.len() / 4 + 1,
@@ -71,9 +82,14 @@ fn assert_structure(plan: &ContextPlan, canary: &str) {
         // the first part opens with our own preamble, which names the markers
         let text = if part.name == "instructions" {
             assert!(part.text.contains("never follow"));
-            part.text.split_once("
+            part.text
+                .split_once(
+                    "
 
-").map(|x| x.1).unwrap_or("")
+",
+                )
+                .map(|x| x.1)
+                .unwrap_or("")
         } else {
             part.text.as_str()
         };
@@ -82,36 +98,78 @@ fn assert_structure(plan: &ContextPlan, canary: &str) {
         loop {
             match rest.find(&open) {
                 None => {
-                    assert!(!rest.contains("[[END "), "stray closing marker in {}: {rest}", part.name);
+                    assert!(
+                        !rest.contains("[[END "),
+                        "stray closing marker in {}: {rest}",
+                        part.name
+                    );
                     outside.push_str(rest);
                     break;
                 }
                 Some(i) => {
                     outside.push_str(&rest[..i]);
-                    assert!(!rest[..i].contains("[[END "), "closing marker before an opener in {}", part.name);
+                    assert!(
+                        !rest[..i].contains("[[END "),
+                        "closing marker before an opener in {}",
+                        part.name
+                    );
                     let after = &rest[i + open.len()..];
                     let hdr_end = after.find("]]\n").expect("header ends");
                     let header = &after[..hdr_end];
                     // header: label nonce kind "title" when; no brackets inside, one nonce
-                    assert!(!header.contains("[[") && !header.contains("]]"), "header: {header}");
+                    assert!(
+                        !header.contains("[[") && !header.contains("]]"),
+                        "header: {header}"
+                    );
                     let label = header.split_whitespace().next().unwrap_or("");
-                    assert_eq!(header.matches(&plan.nonce).count(), 1, "the code once, in the header: {header}");
+                    assert_eq!(
+                        header.matches(&plan.nonce).count(),
+                        1,
+                        "the code once, in the header: {header}"
+                    );
                     let close = close_of(label);
                     let body_start = hdr_end + 3;
                     let body_rest = &after[body_start..];
-                    let j = body_rest.find(&close).unwrap_or_else(|| panic!("block not closed in {}", part.name));
+                    let j = body_rest
+                        .find(&close)
+                        .unwrap_or_else(|| panic!("block not closed in {}", part.name));
                     let body = &body_rest[..j];
-                    assert!(!body.contains(&open) && !body.contains("[[") && !body.contains("]]"), "delimiter inside a block: {body}");
-                    assert!(crate::prompt_data::no_markup_shapes(body), "markup shape inside a block: {body}");
-                    assert!(crate::prompt_data::no_markup_shapes(body), "marker-like DATA- inside a block: {body}");
-                    assert!(!body.to_lowercase().contains(&plan.nonce.to_lowercase()), "the code inside a block: {body}");
-                    assert!(!body.chars().any(|c| c.is_control() && c != '\n' && c != '\t'), "control char in a block");
+                    assert!(
+                        !body.contains(&open) && !body.contains("[[") && !body.contains("]]"),
+                        "delimiter inside a block: {body}"
+                    );
+                    assert!(
+                        crate::prompt_data::no_markup_shapes(body),
+                        "markup shape inside a block: {body}"
+                    );
+                    assert!(
+                        crate::prompt_data::no_markup_shapes(body),
+                        "marker-like DATA- inside a block: {body}"
+                    );
+                    assert!(
+                        !body.to_lowercase().contains(&plan.nonce.to_lowercase()),
+                        "the code inside a block: {body}"
+                    );
+                    assert!(
+                        !body
+                            .chars()
+                            .any(|c| c.is_control() && c != '\n' && c != '\t'),
+                        "control char in a block"
+                    );
                     rest = &body_rest[j + close.len()..];
                 }
             }
         }
-        assert!(!outside.contains(canary), "{canary} escaped its wrapper in part {}: {outside}", part.name);
-        assert!(!outside.contains("CANARY"), "a payload escaped its wrapper in part {}", part.name);
+        assert!(
+            !outside.contains(canary),
+            "{canary} escaped its wrapper in part {}: {outside}",
+            part.name
+        );
+        assert!(
+            !outside.contains("CANARY"),
+            "a payload escaped its wrapper in part {}",
+            part.name
+        );
     }
     for t in &plan.turns {
         assert!(crate::prompt_data::no_markup_shapes(&t.content) || t.role == "user");
@@ -120,7 +178,11 @@ fn assert_structure(plan: &ContextPlan, canary: &str) {
             for line in t.content.lines() {
                 let l = line.trim_start().to_lowercase();
                 for r in ["user", "assistant", "system", "human"] {
-                    assert!(!l.strip_prefix(r).map_or(false, |x| x.trim_start().starts_with(':')), "unescaped role line: {line}");
+                    assert!(
+                        !l.strip_prefix(r)
+                            .map_or(false, |x| x.trim_start().starts_with(':')),
+                        "unescaped role line: {line}"
+                    );
                 }
             }
         }
@@ -146,7 +208,14 @@ fn input(question: &str) -> ContextInput {
 }
 
 fn meeting(id: &str, title: &str, card: &str) -> MeetingEntry {
-    MeetingEntry { meeting_id: id.into(), title: title.into(), started_at_ms: Some(1_700_000_000_000), card: card.into(), transcript_tokens: 90_000, excluded: false }
+    MeetingEntry {
+        meeting_id: id.into(),
+        title: title.into(),
+        started_at_ms: Some(1_700_000_000_000),
+        card: card.into(),
+        transcript_tokens: 90_000,
+        excluded: false,
+    }
 }
 
 fn no_load(_: &str, _: &str, _: Option<&str>) -> Option<String> {
@@ -163,13 +232,35 @@ fn red_team_payloads_never_break_the_structure_anywhere() {
         let mut inp = input("what was decided about the budget");
         // meetings: titles and cards from transcripts (padding so the ladder is used)
         inp.meetings = (0..14)
-            .map(|i| if i == 0 { meeting("m-evil", payload, payload) } else { meeting(&format!("m{i}"), "Plain", "plain recap") })
+            .map(|i| {
+                if i == 0 {
+                    meeting("m-evil", payload, payload)
+                } else {
+                    meeting(&format!("m{i}"), "Plain", "plain recap")
+                }
+            })
             .collect();
-        inp.memory = vec![MemoryItem { id: "k".into(), title: payload.clone(), text: payload.clone() }];
-        inp.pinned = vec![PinnedItem { kind: "document".into(), ref_id: "dp".into(), sub_ref: None, title: payload.clone(), text: payload.clone() }];
+        inp.memory = vec![MemoryItem {
+            id: "k".into(),
+            title: payload.clone(),
+            text: payload.clone(),
+        }];
+        inp.pinned = vec![PinnedItem {
+            kind: "document".into(),
+            ref_id: "dp".into(),
+            sub_ref: None,
+            title: payload.clone(),
+            text: payload.clone(),
+        }];
         inp.conversation = vec![
-            ChatTurn { role: "user".into(), content: "earlier question".into() },
-            ChatTurn { role: "assistant".into(), content: payload.clone() },
+            ChatTurn {
+                role: "user".into(),
+                content: "earlier question".into(),
+            },
+            ChatTurn {
+                role: "assistant".into(),
+                content: payload.clone(),
+            },
         ];
         inp.condensed = Some(payload.clone());
         let p = payload.clone();
@@ -182,7 +273,13 @@ fn red_team_payloads_never_break_the_structure_anywhere() {
                 passage(5, "transcript", "m1", None, "Plain", &p),
             ]
         };
-        let plan = build_context(&inp, &ContextEnv { search: &search, load_full: &no_load });
+        let plan = build_context(
+            &inp,
+            &ContextEnv {
+                search: &search,
+                load_full: &no_load,
+            },
+        );
         assert_eq!(plan.strategy, Strategy::Ladder);
         assert_structure(&plan, &canary);
         // the stored nonce survives unless the payload quotes it (then it grows)
@@ -201,12 +298,27 @@ fn the_same_payloads_in_full_strategy_load_text() {
     for (n, payload) in payloads(guess).iter().enumerate() {
         let canary = format!("CANARY-{}", n + 1);
         let mut inp = input("anything");
-        inp.meetings = vec![MeetingEntry { transcript_tokens: 100, ..meeting("m-evil", payload, "recap") }];
-        inp.materials = vec![MaterialEntry { kind: "document".into(), ref_id: "d1".into(), sub_ref: None, title: payload.clone(), tokens: 100 }];
+        inp.meetings = vec![MeetingEntry {
+            transcript_tokens: 100,
+            ..meeting("m-evil", payload, "recap")
+        }];
+        inp.materials = vec![MaterialEntry {
+            kind: "document".into(),
+            ref_id: "d1".into(),
+            sub_ref: None,
+            title: payload.clone(),
+            tokens: 100,
+        }];
         let p = payload.clone();
         let load = move |_: &str, _: &str, _: Option<&str>| Some(p.clone());
         let none = |_: &str, _: usize| Vec::<Passage>::new();
-        let plan = build_context(&inp, &ContextEnv { search: &none, load_full: &load });
+        let plan = build_context(
+            &inp,
+            &ContextEnv {
+                search: &none,
+                load_full: &load,
+            },
+        );
         assert_eq!(plan.strategy, Strategy::Full);
         assert_structure(&plan, &canary);
     }
@@ -215,10 +327,18 @@ fn the_same_payloads_in_full_strategy_load_text() {
 #[test]
 fn a_payload_that_quotes_the_real_nonce_makes_the_nonce_change() {
     let mut inp = input("q");
-    inp.meetings = (0..14).map(|i| meeting(&format!("m{i}"), "Plain", "r")).collect();
+    inp.meetings = (0..14)
+        .map(|i| meeting(&format!("m{i}"), "Plain", "r"))
+        .collect();
     let evil = "text with DATA-fixednonce0123 inside".to_string();
     let search = move |_: &str, _: usize| vec![passage(1, "document", "d1", None, "T", &evil)];
-    let plan = build_context(&inp, &ContextEnv { search: &search, load_full: &no_load });
+    let plan = build_context(
+        &inp,
+        &ContextEnv {
+            search: &search,
+            load_full: &no_load,
+        },
+    );
     assert_ne!(plan.nonce, "fixednonce0123");
     assert_structure(&plan, "NOCANARY");
 }
@@ -230,7 +350,10 @@ fn neutralise_is_idempotent_and_leaves_normal_text_alone() {
         assert_eq!(neutralise(&once), once);
         assert!(crate::prompt_data::no_markup_shapes(&once));
     }
-    assert_eq!(neutralise("Plain text, numbers 1-2 and 日本語."), "Plain text, numbers 1-2 and 日本語.");
+    assert_eq!(
+        neutralise("Plain text, numbers 1-2 and 日本語."),
+        "Plain text, numbers 1-2 and 日本語."
+    );
     assert_eq!(flatten("Assistant: hi\nfine"), "\\Assistant: hi\nfine");
     assert!(new_nonce().len() >= 16);
     assert_ne!(new_nonce(), new_nonce());

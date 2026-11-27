@@ -60,7 +60,10 @@ pub fn find_agy() -> Option<PathBuf> {
 /// The first of `candidates` that is an existing `.exe`.
 pub fn first_exe(candidates: Vec<PathBuf>) -> Option<PathBuf> {
     candidates.into_iter().find(|p| {
-        p.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("exe")) && p.is_file()
+        p.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+            && p.is_file()
     })
 }
 
@@ -71,17 +74,32 @@ mod tests {
     #[test]
     fn antigravity_args_are_acp_without_telemetry() {
         let args = antigravity_args_in(Path::new("C:\\Data\\agent-agy"));
-        assert_eq!(args, vec!["acp", "--disable-telemetry", "--sandbox", "--gemini-dir", "C:\\Data\\agent-agy"]);
+        assert_eq!(
+            args,
+            vec![
+                "acp",
+                "--disable-telemetry",
+                "--sandbox",
+                "--gemini-dir",
+                "C:\\Data\\agent-agy"
+            ]
+        );
         // Lucid's own folder, not the user's `.gemini`.
         let own = antigravity_args();
-        assert!(own[4].ends_with("agent-agy") && !own[4].contains(".gemini"), "{own:?}");
+        assert!(
+            own[4].ends_with("agent-agy") && !own[4].contains(".gemini"),
+            "{own:?}"
+        );
     }
 
     #[test]
     fn the_installer_folder_is_under_local_app_data() {
         assert_eq!(
             agy_in_local_app_data(Path::new("C:\\Users\\a\\AppData\\Local")),
-            PathBuf::from("C:\\Users\\a\\AppData\\Local").join("agy").join("bin").join("agy.exe")
+            PathBuf::from("C:\\Users\\a\\AppData\\Local")
+                .join("agy")
+                .join("bin")
+                .join("agy.exe")
         );
     }
 
@@ -93,7 +111,10 @@ mod tests {
         let shim = dir.join("agy.cmd");
         std::fs::write(&exe, "").unwrap();
         std::fs::write(&shim, "").unwrap();
-        assert_eq!(first_exe(vec![shim.clone(), exe.clone()]), Some(exe.clone()));
+        assert_eq!(
+            first_exe(vec![shim.clone(), exe.clone()]),
+            Some(exe.clone())
+        );
         assert_eq!(first_exe(vec![shim]), None);
         assert_eq!(first_exe(vec![dir.join("missing.exe")]), None);
         assert_eq!(first_exe(Vec::new()), None);

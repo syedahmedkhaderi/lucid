@@ -16,7 +16,10 @@ fn file_id_for(owner: Option<&str>) -> String {
 
 /// The `LIKE` pattern (with `\` as the escape) of every file id of `meeting`'s transcript.
 pub fn file_id_pattern(meeting: &str) -> String {
-    let escaped = meeting.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    let escaped = meeting
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
     format!("transcript\\_{escaped}\\_%")
 }
 

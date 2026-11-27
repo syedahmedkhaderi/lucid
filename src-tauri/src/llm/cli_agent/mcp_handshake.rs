@@ -72,17 +72,21 @@ impl HandshakeError {
         let text = match self {
             Self::Timeout => "The server took too long to start.".to_string(),
             Self::Stopped => {
-                "The server failed to start. Check its command, arguments and sign-in values.".to_string()
+                "The server failed to start. Check its command, arguments and sign-in values."
+                    .to_string()
             }
             Self::Rpc(Some(code)) => format!("The server refused the request (error {code})."),
             Self::Rpc(None) => "The server refused the request.".to_string(),
             Self::Protocol(text) => format!("The server's answer wasn't valid MCP: {text}"),
             Self::Http(401 | 403) => {
-                "The server needs a sign-in Lucid doesn't have. Check its header values.".to_string()
+                "The server needs a sign-in Lucid doesn't have. Check its header values."
+                    .to_string()
             }
-            Self::Http(404 | 405) => "The server doesn't accept streamable HTTP requests. Servers that only \
+            Self::Http(404 | 405) => {
+                "The server doesn't accept streamable HTTP requests. Servers that only \
                  speak the older SSE transport can't be checked yet."
-                .to_string(),
+                    .to_string()
+            }
             Self::Http(code) => format!("The server didn't accept the request (HTTP {code})."),
             Self::Redirect => "The server answered with a redirect; use the final URL.".to_string(),
             Self::TooLarge => "The server sent more data than a Check reads.".to_string(),
@@ -173,7 +177,10 @@ fn same_id(value: &Value, want: u64) -> bool {
 fn classify(message: &Value, want: u64) -> Incoming {
     if let Some(method) = message.get("method").and_then(Value::as_str) {
         return match message.get("id") {
-            Some(id) if !id.is_null() => Incoming::ServerRequest { id: id.clone(), method: method.to_string() },
+            Some(id) if !id.is_null() => Incoming::ServerRequest {
+                id: id.clone(),
+                method: method.to_string(),
+            },
             _ => Incoming::Ignore,
         };
     }
@@ -191,8 +198,16 @@ fn classify(message: &Value, want: u64) -> Incoming {
 
 /// How Claude names a tool: anything but letters, digits, `_` and `-` becomes `_`.
 fn tool_name(key: &str, tool: &str) -> String {
-    let clean: String =
-        tool.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).collect();
+    let clean: String = tool
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     format!("mcp__{key}__{clean}")
 }
 
@@ -214,7 +229,10 @@ pub fn stricter(a: ToolHints, b: ToolHints) -> ToolHints {
         (Some(false), Some(false)) => Some(false),
         _ => None,
     };
-    ToolHints { read_only, destructive }
+    ToolHints {
+        read_only,
+        destructive,
+    }
 }
 
 /// The tools of one `tools/list` result with their hints (full names; a name
@@ -225,7 +243,14 @@ pub fn stricter(a: ToolHints, b: ToolHints) -> ToolHints {
 fn tools_page_hinted(
     result: &Value,
     key: &str,
-) -> Result<(Vec<String>, std::collections::HashMap<String, ToolHints>, Option<String>), HandshakeError> {
+) -> Result<
+    (
+        Vec<String>,
+        std::collections::HashMap<String, ToolHints>,
+        Option<String>,
+    ),
+    HandshakeError,
+> {
     let tools = result
         .get("tools")
         .and_then(Value::as_array)
@@ -233,14 +258,19 @@ fn tools_page_hinted(
     let mut names = Vec::new();
     let mut hints: std::collections::HashMap<String, ToolHints> = Default::default();
     for t in tools {
-        let Some(name) = t.get("name").and_then(Value::as_str) else { continue };
+        let Some(name) = t.get("name").and_then(Value::as_str) else {
+            continue;
+        };
         if name.chars().count() > MAX_TOOL_NAME || names.len() >= MAX_TOOLS {
             continue;
         }
         let full = tool_name(key, name);
         let ann = t.get("annotations");
         let flag = |k: &str| ann.and_then(|a| a.get(k)).and_then(Value::as_bool);
-        let seen = ToolHints { read_only: flag("readOnlyHint"), destructive: flag("destructiveHint") };
+        let seen = ToolHints {
+            read_only: flag("readOnlyHint"),
+            destructive: flag("destructiveHint"),
+        };
         let merged = match hints.get(&full) {
             Some(before) => stricter(*before, seen),
             None => seen,
@@ -263,7 +293,10 @@ fn tools_page(result: &Value, key: &str) -> Result<(Vec<String>, Option<String>)
 }
 
 /// Fold one page's hints into the list's, keeping the stricter on a collision.
-fn add_hints(all: &mut std::collections::HashMap<String, ToolHints>, page: std::collections::HashMap<String, ToolHints>) {
+fn add_hints(
+    all: &mut std::collections::HashMap<String, ToolHints>,
+    page: std::collections::HashMap<String, ToolHints>,
+) {
     for (name, h) in page {
         let merged = match all.get(&name) {
             Some(before) => stricter(*before, h),
@@ -305,7 +338,11 @@ struct SseBuffer {
 
 impl SseBuffer {
     fn new(limit: usize) -> Self {
-        Self { buf: Vec::new(), scanned: 0, limit }
+        Self {
+            buf: Vec::new(),
+            scanned: 0,
+            limit,
+        }
     }
 
     fn push(&mut self, bytes: &[u8]) -> Result<Vec<String>, HandshakeError> {
@@ -344,8 +381,14 @@ impl SseBuffer {
 /// after it is.
 fn event_end(buf: &[u8], from: usize) -> Option<(usize, usize)> {
     let tail = buf.get(from..)?;
-    let lf = tail.windows(2).position(|w| w == b"\n\n").map(|p| (from + p, 2));
-    let crlf = tail.windows(4).position(|w| w == b"\r\n\r\n").map(|p| (from + p, 4));
+    let lf = tail
+        .windows(2)
+        .position(|w| w == b"\n\n")
+        .map(|p| (from + p, 2));
+    let crlf = tail
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|p| (from + p, 4));
     match (lf, crlf) {
         (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
         (a, b) => a.or(b),
@@ -359,7 +402,9 @@ fn event_data(event: &str) -> Option<String> {
         .filter_map(|l| l.strip_prefix("data:"))
         .map(|d| d.strip_prefix(' ').unwrap_or(d))
         .collect();
-    (!lines.is_empty()).then(|| lines.join("\n")).filter(|d| !d.trim().is_empty())
+    (!lines.is_empty())
+        .then(|| lines.join("\n"))
+        .filter(|d| !d.trim().is_empty())
 }
 
 /// The messages in a complete SSE body.
@@ -381,9 +426,16 @@ trait LineSource {
 
 /// The next line of `reader` (at most `max` bytes), `None` at its end;
 /// [`HandshakeError::TooLarge`] for a longer line.
-fn read_capped_line<R: BufRead>(reader: &mut R, max: usize) -> Result<Option<String>, HandshakeError> {
+fn read_capped_line<R: BufRead>(
+    reader: &mut R,
+    max: usize,
+) -> Result<Option<String>, HandshakeError> {
     let mut buf = Vec::new();
-    match reader.by_ref().take(max as u64 + 1).read_until(b'\n', &mut buf) {
+    match reader
+        .by_ref()
+        .take(max as u64 + 1)
+        .read_until(b'\n', &mut buf)
+    {
         Ok(0) | Err(_) => Ok(None),
         Ok(_) if buf.len() > max && !buf.ends_with(b"\n") => Err(HandshakeError::TooLarge),
         Ok(_) => Ok(Some(String::from_utf8_lossy(&buf).into_owned())),
@@ -400,7 +452,10 @@ struct BufLines<R: BufRead> {
 #[cfg(test)]
 impl<R: BufRead> BufLines<R> {
     fn new(reader: R) -> Self {
-        Self { reader, max_line: MAX_LINE }
+        Self {
+            reader,
+            max_line: MAX_LINE,
+        }
     }
 }
 
@@ -417,7 +472,9 @@ struct ChannelLines(mpsc::Receiver<Result<String, HandshakeError>>);
 
 impl LineSource for ChannelLines {
     fn next_line(&mut self, deadline: Instant) -> Result<Option<String>, HandshakeError> {
-        let left = deadline.checked_duration_since(Instant::now()).ok_or(HandshakeError::Timeout)?;
+        let left = deadline
+            .checked_duration_since(Instant::now())
+            .ok_or(HandshakeError::Timeout)?;
         match self.0.recv_timeout(left) {
             Ok(line) => line.map(Some),
             Err(mpsc::RecvTimeoutError::Timeout) => Err(HandshakeError::Timeout),
@@ -427,7 +484,9 @@ impl LineSource for ChannelLines {
 }
 
 fn send_line(out: &mut impl Write, message: &Value) -> Result<(), HandshakeError> {
-    writeln!(out, "{message}").and_then(|_| out.flush()).map_err(|_| HandshakeError::Stopped)
+    writeln!(out, "{message}")
+        .and_then(|_| out.flush())
+        .map_err(|_| HandshakeError::Stopped)
 }
 
 fn check_deadline(deadline: Instant) -> Result<(), HandshakeError> {
@@ -525,8 +584,14 @@ fn stdio_handshake_hinted(
     let mut cursor: Option<String> = None;
     for page in 0..MAX_PAGES {
         let id = 2 + page as u64;
-        let result =
-            stdio_request(src, out, &tools_list_request(id, cursor.as_deref()), id, deadline, &mut budget)?;
+        let result = stdio_request(
+            src,
+            out,
+            &tools_list_request(id, cursor.as_deref()),
+            id,
+            deadline,
+            &mut budget,
+        )?;
         let (names, page_hints, next) = tools_page_hinted(&result, key)?;
         add_hints(&mut hints, page_hints);
         if add_tools(&mut tools, names) {
@@ -541,7 +606,10 @@ fn stdio_handshake_hinted(
 }
 
 /// Only what is listed keeps its hints.
-fn finish_listed(tools: Vec<String>, mut hints: std::collections::HashMap<String, ToolHints>) -> Listed {
+fn finish_listed(
+    tools: Vec<String>,
+    mut hints: std::collections::HashMap<String, ToolHints>,
+) -> Listed {
     let listed: std::collections::HashSet<&String> = tools.iter().collect();
     hints.retain(|name, _| listed.contains(name));
     (tools, hints)
@@ -559,7 +627,10 @@ fn stdio_check(
     limit: Duration,
 ) -> Result<Listed, HandshakeError> {
     let deadline = Instant::now() + limit;
-    let path = env.iter().find(|(k, _)| k.eq_ignore_ascii_case("PATH")).map(|(_, v)| std::ffi::OsString::from(v));
+    let path = env
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("PATH"))
+        .map(|(_, v)| std::ffi::OsString::from(v));
     let mut cmd = Command::new(resolve_command(command, path.as_deref()));
     configure_command(&mut cmd, &sandbox_dir());
     cmd.args(args)
@@ -595,13 +666,16 @@ fn stdio_check(
     let (done_tx, done_rx) = mpsc::channel();
     let key = key.to_string();
     std::thread::spawn(move || {
-        let result = stdio_handshake_hinted(&mut ChannelLines(rx), &mut stdin, &key, deadline, MAX_BYTES);
+        let result =
+            stdio_handshake_hinted(&mut ChannelLines(rx), &mut stdin, &key, deadline, MAX_BYTES);
         drop(stdin);
         let _ = done_tx.send(result);
     });
     // The handshake gives up at the deadline itself; this is for a write that blocks.
     let wait = (deadline + WATCHDOG_GRACE).saturating_duration_since(Instant::now());
-    let result = done_rx.recv_timeout(wait).unwrap_or(Err(HandshakeError::Timeout));
+    let result = done_rx
+        .recv_timeout(wait)
+        .unwrap_or(Err(HandshakeError::Timeout));
     // Ending the tree also frees a thread stuck on a pipe.
     tree.kill(&mut child);
     result
@@ -628,12 +702,18 @@ async fn http_post(
         .header("Accept", "application/json, text/event-stream")
         .header("Content-Type", "application/json");
     if let Some(id) = session {
-        req = req.header("Mcp-Session-Id", id).header("MCP-Protocol-Version", PROTOCOL_VERSION);
+        req = req
+            .header("Mcp-Session-Id", id)
+            .header("MCP-Protocol-Version", PROTOCOL_VERSION);
     }
     for (name, value) in headers {
         req = req.header(name.as_str(), value.as_str());
     }
-    let resp = req.json(message).send().await.map_err(|_| HandshakeError::Unreachable)?;
+    let resp = req
+        .json(message)
+        .send()
+        .await
+        .map_err(|_| HandshakeError::Unreachable)?;
     let status = resp.status();
     if status.is_redirection() {
         return Err(HandshakeError::Redirect);
@@ -700,7 +780,9 @@ async fn http_handshake(
     headers: &[(String, String)],
     key: &str,
 ) -> Result<Vec<String>, HandshakeError> {
-    http_handshake_hinted(url, headers, key).await.map(|(names, _)| names)
+    http_handshake_hinted(url, headers, key)
+        .await
+        .map(|(names, _)| names)
 }
 
 async fn http_handshake_hinted(
@@ -715,8 +797,26 @@ async fn http_handshake_hinted(
         .build()
         .map_err(|_| HandshakeError::Unreachable)?;
     let mut budget = Budget::new(MAX_BYTES);
-    let (_, session) = http_post(&client, url, headers, None, &initialize_request(1), Some(1), &mut budget).await?;
-    http_post(&client, url, headers, session.as_deref(), &initialized_notification(), None, &mut budget).await?;
+    let (_, session) = http_post(
+        &client,
+        url,
+        headers,
+        None,
+        &initialize_request(1),
+        Some(1),
+        &mut budget,
+    )
+    .await?;
+    http_post(
+        &client,
+        url,
+        headers,
+        session.as_deref(),
+        &initialized_notification(),
+        None,
+        &mut budget,
+    )
+    .await?;
     let mut tools = Vec::new();
     let mut hints = Default::default();
     let mut cursor: Option<String> = None;
@@ -724,10 +824,21 @@ async fn http_handshake_hinted(
     for page in 0..MAX_PAGES {
         let id = 2 + page as u64;
         let message = tools_list_request(id, cursor.as_deref());
-        let step = http_post(&client, url, headers, session.as_deref(), &message, Some(id), &mut budget).await;
+        let step = http_post(
+            &client,
+            url,
+            headers,
+            session.as_deref(),
+            &message,
+            Some(id),
+            &mut budget,
+        )
+        .await;
         let result = match step {
             Ok((Some(result), _)) => tools_page_hinted(&result, key),
-            Ok((None, _)) => Err(HandshakeError::Protocol("no answer to the request".to_string())),
+            Ok((None, _)) => Err(HandshakeError::Protocol(
+                "no answer to the request".to_string(),
+            )),
             Err(e) => Err(e),
         };
         match result {
@@ -749,7 +860,10 @@ async fn http_handshake_hinted(
     }
     // Politely end the session; a server may not support it.
     if let Some(id) = session {
-        let mut req = client.delete(url).header("Mcp-Session-Id", id).timeout(Duration::from_secs(2));
+        let mut req = client
+            .delete(url)
+            .header("Mcp-Session-Id", id)
+            .timeout(Duration::from_secs(2));
         for (name, value) in headers {
             req = req.header(name.as_str(), value.as_str());
         }
@@ -767,7 +881,9 @@ pub async fn list_tools(
     server: &McpServer,
     secret: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Result<Vec<String>, String> {
-    list_tools_with_hints(server, secret).await.map(|(names, _)| names)
+    list_tools_with_hints(server, secret)
+        .await
+        .map(|(names, _)| names)
 }
 
 /// [`list_tools`] with what the server said about each tool (read from this
@@ -784,7 +900,8 @@ pub async fn list_tools_with_hints(
             let mut env: Vec<(String, String)> = Vec::new();
             for var in &server.env {
                 let value = if var.secret {
-                    let value = secret(&credential_id(&server.key, &var.name)).ok_or_else(|| missing(&var.name))?;
+                    let value = secret(&credential_id(&server.key, &var.name))
+                        .ok_or_else(|| missing(&var.name))?;
                     secrets.extend(secret_variants(&value));
                     value
                 } else {
@@ -805,7 +922,9 @@ pub async fn list_tools_with_hints(
                 secrets.extend(secret_variants(&value));
                 headers.push((name.clone(), value));
             }
-            match tokio::time::timeout(limit, http_handshake_hinted(url, &headers, &server.key)).await {
+            match tokio::time::timeout(limit, http_handshake_hinted(url, &headers, &server.key))
+                .await
+            {
                 Ok(result) => result,
                 Err(_) => Err(HandshakeError::Timeout),
             }
@@ -833,22 +952,37 @@ mod tests {
         assert_eq!(init["params"]["clientInfo"]["name"], "nexq");
         assert!(initialized_notification().get("id").is_none());
         assert_eq!(tools_list_request(3, None)["params"], json!({}));
-        assert_eq!(tools_list_request(3, Some("abc"))["params"]["cursor"], "abc");
+        assert_eq!(
+            tools_list_request(3, Some("abc"))["params"]["cursor"],
+            "abc"
+        );
     }
 
     #[test]
     fn classify_tells_answers_requests_and_noise_apart() {
         let ok = json!({ "jsonrpc": "2.0", "id": 2, "result": { "tools": [] } });
-        assert_eq!(classify(&ok, 2), Incoming::Response(Ok(json!({ "tools": [] }))));
+        assert_eq!(
+            classify(&ok, 2),
+            Incoming::Response(Ok(json!({ "tools": [] })))
+        );
         assert_eq!(classify(&ok, 3), Incoming::Ignore);
         let err = json!({ "jsonrpc": "2.0", "id": 2, "error": { "code": -1, "message": "boom" } });
         assert_eq!(classify(&err, 2), Incoming::Response(Err(Some(-1))));
         let ping = json!({ "jsonrpc": "2.0", "id": 9, "method": "ping" });
-        assert_eq!(classify(&ping, 2), Incoming::ServerRequest { id: json!(9), method: "ping".into() });
+        assert_eq!(
+            classify(&ping, 2),
+            Incoming::ServerRequest {
+                id: json!(9),
+                method: "ping".into()
+            }
+        );
         let note = json!({ "jsonrpc": "2.0", "method": "notifications/message" });
         assert_eq!(classify(&note, 2), Incoming::Ignore);
         // A string id that spells our number is ours.
-        assert_eq!(classify(&json!({ "id": "2", "result": {} }), 2), Incoming::Response(Ok(json!({}))));
+        assert_eq!(
+            classify(&json!({ "id": "2", "result": {} }), 2),
+            Incoming::Response(Ok(json!({})))
+        );
     }
 
     #[test]
@@ -858,11 +992,17 @@ mod tests {
             "nextCursor": "page2"
         });
         let (names, next) = tools_page(&result, "my-server").unwrap();
-        assert_eq!(names, vec!["mcp__my-server__get_note", "mcp__my-server__weird_name_v2"]);
+        assert_eq!(
+            names,
+            vec!["mcp__my-server__get_note", "mcp__my-server__weird_name_v2"]
+        );
         assert_eq!(next.as_deref(), Some("page2"));
         let (_, none) = tools_page(&json!({ "tools": [], "nextCursor": "" }), "k").unwrap();
         assert_eq!(none, None);
-        assert!(matches!(tools_page(&json!({}), "k"), Err(HandshakeError::Protocol(_))));
+        assert!(matches!(
+            tools_page(&json!({}), "k"),
+            Err(HandshakeError::Protocol(_))
+        ));
     }
 
     #[test]
@@ -878,7 +1018,10 @@ mod tests {
                     id: 7\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\n\n";
         let messages = sse_messages(body);
         assert_eq!(messages.len(), 2);
-        assert_eq!(classify(&messages[1], 1), Incoming::Response(Ok(json!({ "ok": true }))));
+        assert_eq!(
+            classify(&messages[1], 1),
+            Incoming::Response(Ok(json!({ "ok": true })))
+        );
         // CRLF line ends, data split over lines, no blank line at the very end.
         let crlf = "data: {\"id\":1,\r\ndata: \"result\":{}}\r\n\r\n";
         assert_eq!(sse_messages(crlf).len(), 1);
@@ -892,7 +1035,10 @@ mod tests {
         assert!(sse.push(b"data: {\"id\":1,").unwrap().is_empty());
         assert!(sse.push(b"\"result\":{}}\n").unwrap().is_empty());
         let events = sse.push(b"\ndata: next\n\n").unwrap();
-        assert_eq!(events, vec!["{\"id\":1,\"result\":{}}".to_string(), "next".to_string()]);
+        assert_eq!(
+            events,
+            vec!["{\"id\":1,\"result\":{}}".to_string(), "next".to_string()]
+        );
     }
 
     #[test]
@@ -932,12 +1078,26 @@ mod tests {
         let mut out: Vec<u8> = Vec::new();
         let tools = stdio_handshake(&mut src, &mut out, "srv", far()).unwrap();
         assert_eq!(tools, vec!["mcp__srv__a", "mcp__srv__b"]);
-        let sent: Vec<Value> =
-            String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let sent: Vec<Value> = String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
         let methods: Vec<&str> = sent.iter().filter_map(|m| m["method"].as_str()).collect();
-        assert_eq!(methods, vec!["initialize", "notifications/initialized", "tools/list", "tools/list"]);
+        assert_eq!(
+            methods,
+            vec![
+                "initialize",
+                "notifications/initialized",
+                "tools/list",
+                "tools/list"
+            ]
+        );
         // The server's own request was answered with an error.
-        let refused = sent.iter().find(|m| m["id"] == "srv-1").expect("reply to the server request");
+        let refused = sent
+            .iter()
+            .find(|m| m["id"] == "srv-1")
+            .expect("reply to the server request");
         assert_eq!(refused["error"]["code"], -32601);
         // The second page asked with the cursor.
         assert_eq!(sent.last().unwrap()["params"]["cursor"], "c2");
@@ -945,11 +1105,16 @@ mod tests {
 
     #[test]
     fn handshake_reports_rpc_errors_and_closed_servers() {
-        let mut src = transcript(&[json!({ "jsonrpc": "2.0", "id": 1, "error": { "code": -32000, "message": "no" } })]);
+        let mut src = transcript(&[
+            json!({ "jsonrpc": "2.0", "id": 1, "error": { "code": -32000, "message": "no" } }),
+        ]);
         let err = stdio_handshake(&mut src, &mut Vec::new(), "k", far()).unwrap_err();
         assert_eq!(err, HandshakeError::Rpc(Some(-32000)));
         let mut empty = transcript(&[]);
-        assert_eq!(stdio_handshake(&mut empty, &mut Vec::new(), "k", far()).unwrap_err(), HandshakeError::Stopped);
+        assert_eq!(
+            stdio_handshake(&mut empty, &mut Vec::new(), "k", far()).unwrap_err(),
+            HandshakeError::Stopped
+        );
         // initialize fine, then tools/list refused.
         let mut half = transcript(&[
             json!({ "id": 1, "result": {} }),
@@ -998,7 +1163,10 @@ mod tests {
         let mut src = BufLines::new(std::io::BufReader::new(client_in));
         let tools = stdio_handshake(&mut src, &mut client_out, "nexq_notes", far()).unwrap();
         assert!(!tools.is_empty(), "{tools:?}");
-        assert!(tools.iter().all(|t| t.starts_with("mcp__nexq_notes__")), "{tools:?}");
+        assert!(
+            tools.iter().all(|t| t.starts_with("mcp__nexq_notes__")),
+            "{tools:?}"
+        );
         drop(client_out); // the server sees EOF and ends
         server.join().unwrap().unwrap();
     }
@@ -1010,19 +1178,31 @@ mod tests {
         let err = stdio_handshake(&mut src, &mut Vec::new(), "k", far()).unwrap_err();
         let text = err.message(&[]);
         assert_eq!(text, "The server refused the request (error -32602).");
-        assert_eq!(HandshakeError::Rpc(None).message(&[]), "The server refused the request.");
+        assert_eq!(
+            HandshakeError::Rpc(None).message(&[]),
+            "The server refused the request."
+        );
     }
 
     #[test]
     fn a_line_over_the_cap_is_refused() {
-        let mut src = BufLines { reader: Cursor::new(format!("{}\n", "x".repeat(300)).into_bytes()), max_line: 100 };
+        let mut src = BufLines {
+            reader: Cursor::new(format!("{}\n", "x".repeat(300)).into_bytes()),
+            max_line: 100,
+        };
         assert_eq!(src.next_line(far()).unwrap_err(), HandshakeError::TooLarge);
         // A line exactly at the cap is fine.
-        let mut ok = BufLines { reader: Cursor::new(format!("{}\nnext\n", "y".repeat(99)).into_bytes()), max_line: 100 };
+        let mut ok = BufLines {
+            reader: Cursor::new(format!("{}\nnext\n", "y".repeat(99)).into_bytes()),
+            max_line: 100,
+        };
         assert_eq!(ok.next_line(far()).unwrap().unwrap().trim_end().len(), 99);
         assert_eq!(ok.next_line(far()).unwrap().as_deref(), Some("next\n"));
         // Through the handshake: an endless line without a newline.
-        let mut flood = BufLines { reader: Cursor::new(vec![b'z'; 5000]), max_line: 1000 };
+        let mut flood = BufLines {
+            reader: Cursor::new(vec![b'z'; 5000]),
+            max_line: 1000,
+        };
         assert_eq!(
             stdio_handshake(&mut flood, &mut Vec::new(), "k", far()).unwrap_err(),
             HandshakeError::TooLarge
@@ -1041,7 +1221,10 @@ mod tests {
     fn an_sse_event_that_never_ends_is_refused() {
         let mut sse = SseBuffer::new(1000);
         assert!(sse.push(&[b'a'; 600]).unwrap().is_empty());
-        assert_eq!(sse.push(&[b'a'; 600]).unwrap_err(), HandshakeError::TooLarge);
+        assert_eq!(
+            sse.push(&[b'a'; 600]).unwrap_err(),
+            HandshakeError::TooLarge
+        );
         // A blank line split over two chunks is still found by the resumed scan.
         let mut split = SseBuffer::new(1000);
         assert!(split.push(b"data: one\r\n\r").unwrap().is_empty());
@@ -1052,9 +1235,15 @@ mod tests {
     fn tools_over_the_caps_are_trimmed() {
         let long = "n".repeat(MAX_TOOL_NAME + 1);
         let fine = "n".repeat(MAX_TOOL_NAME);
-        let (names, _) = tools_page(&json!({ "tools": [{ "name": long }, { "name": fine }] }), "k").unwrap();
+        let (names, _) = tools_page(
+            &json!({ "tools": [{ "name": long }, { "name": fine }] }),
+            "k",
+        )
+        .unwrap();
         assert_eq!(names.len(), 1);
-        let many: Vec<Value> = (0..1500).map(|i| json!({ "name": format!("t{i}") })).collect();
+        let many: Vec<Value> = (0..1500)
+            .map(|i| json!({ "name": format!("t{i}") }))
+            .collect();
         let (names, _) = tools_page(&json!({ "tools": many }), "k").unwrap();
         assert_eq!(names.len(), MAX_TOOLS);
         let mut all = Vec::new();
@@ -1079,7 +1268,9 @@ mod tests {
 
     #[test]
     fn a_passed_deadline_stops_a_flood_of_messages() {
-        let noise: Vec<Value> = (0..50).map(|i| json!({ "id": 100 + i, "method": "ping" })).collect();
+        let noise: Vec<Value> = (0..50)
+            .map(|i| json!({ "id": 100 + i, "method": "ping" }))
+            .collect();
         let mut src = transcript(&noise);
         let err = stdio_handshake(&mut src, &mut Vec::new(), "k", Instant::now()).unwrap_err();
         assert_eq!(err, HandshakeError::Timeout);
@@ -1100,7 +1291,9 @@ mod tests {
         let log = seen.clone();
         tokio::spawn(async move {
             loop {
-                let Ok((mut sock, _)) = listener.accept().await else { return };
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
                 let mut data = Vec::new();
                 let mut chunk = [0u8; 4096];
                 loop {
@@ -1113,7 +1306,11 @@ mod tests {
                     if let Some(split) = text.find("\r\n\r\n") {
                         let len = text[..split]
                             .lines()
-                            .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)))
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                            })
                             .unwrap_or(0);
                         if data.len() >= split + 4 + len {
                             break;
@@ -1159,17 +1356,41 @@ mod tests {
 
     #[tokio::test]
     async fn http_handshake_takes_json_and_sse_answers_and_carries_the_session() {
-        let init = json!({ "jsonrpc": "2.0", "id": 1, "result": { "protocolVersion": "2025-06-18" } }).to_string();
+        let init =
+            json!({ "jsonrpc": "2.0", "id": 1, "result": { "protocolVersion": "2025-06-18" } })
+                .to_string();
         let page1 = format!(
             "event: message\ndata: {}\n\n",
             json!({ "jsonrpc": "2.0", "id": 2, "result": { "tools": [{ "name": "one" }], "nextCursor": "p2" } })
         );
-        let page2 = json!({ "jsonrpc": "2.0", "id": 3, "result": { "tools": [{ "name": "two" }] } }).to_string();
+        let page2 =
+            json!({ "jsonrpc": "2.0", "id": 3, "result": { "tools": [{ "name": "two" }] } })
+                .to_string();
         let (url, seen) = fake_http(vec![
-            ("initialize", "application/json".into(), init, "Mcp-Session-Id: sess-42\r\n".into()),
-            ("notifications/initialized", "202".into(), String::new(), String::new()),
-            ("tools/list|", "text/event-stream".into(), page1, String::new()),
-            ("tools/list|p2", "application/json".into(), page2, String::new()),
+            (
+                "initialize",
+                "application/json".into(),
+                init,
+                "Mcp-Session-Id: sess-42\r\n".into(),
+            ),
+            (
+                "notifications/initialized",
+                "202".into(),
+                String::new(),
+                String::new(),
+            ),
+            (
+                "tools/list|",
+                "text/event-stream".into(),
+                page1,
+                String::new(),
+            ),
+            (
+                "tools/list|p2",
+                "application/json".into(),
+                page2,
+                String::new(),
+            ),
         ])
         .await;
         let headers = vec![("X-Api-Key".to_string(), "k-123".to_string())];
@@ -1177,11 +1398,17 @@ mod tests {
         assert_eq!(tools, vec!["mcp__web__one", "mcp__web__two"]);
         let requests = seen.lock().unwrap().clone();
         let lower: Vec<String> = requests.iter().map(|r| r.to_ascii_lowercase()).collect();
-        assert!(lower[0].contains("accept: application/json, text/event-stream"), "{}", lower[0]);
+        assert!(
+            lower[0].contains("accept: application/json, text/event-stream"),
+            "{}",
+            lower[0]
+        );
         assert!(lower[0].contains("x-api-key: k-123"));
         assert!(!lower[0].contains("mcp-session-id"));
         // Everything after initialize carries the session id.
-        assert!(lower[1..4].iter().all(|r| r.contains("mcp-session-id: sess-42")));
+        assert!(lower[1..4]
+            .iter()
+            .all(|r| r.contains("mcp-session-id: sess-42")));
     }
 
     #[tokio::test]
@@ -1203,12 +1430,30 @@ mod tests {
     #[tokio::test]
     async fn http_bodies_over_the_cap_are_refused() {
         let big = format!("{{\"pad\":\"{}\"}}", "x".repeat(MAX_BYTES + 1000));
-        let (url, _) = fake_http(vec![("initialize", "application/json".into(), big, String::new())]).await;
-        assert_eq!(http_handshake(&url, &[], "k").await.unwrap_err(), HandshakeError::TooLarge);
+        let (url, _) = fake_http(vec![(
+            "initialize",
+            "application/json".into(),
+            big,
+            String::new(),
+        )])
+        .await;
+        assert_eq!(
+            http_handshake(&url, &[], "k").await.unwrap_err(),
+            HandshakeError::TooLarge
+        );
         // An SSE event that never ends.
         let endless = format!("data: {}", "y".repeat(MAX_BYTES + 1000));
-        let (url, _) = fake_http(vec![("initialize", "text/event-stream".into(), endless, String::new())]).await;
-        assert_eq!(http_handshake(&url, &[], "k").await.unwrap_err(), HandshakeError::TooLarge);
+        let (url, _) = fake_http(vec![(
+            "initialize",
+            "text/event-stream".into(),
+            endless,
+            String::new(),
+        )])
+        .await;
+        assert_eq!(
+            http_handshake(&url, &[], "k").await.unwrap_err(),
+            HandshakeError::TooLarge
+        );
     }
 
     #[tokio::test]
@@ -1219,7 +1464,9 @@ mod tests {
         assert_eq!(err, HandshakeError::Http(404));
         assert!(err.message(&[]).contains("SSE"));
         // A server that is not there.
-        let gone = http_handshake("http://127.0.0.1:1/mcp", &[], "k").await.unwrap_err();
+        let gone = http_handshake("http://127.0.0.1:1/mcp", &[], "k")
+            .await
+            .unwrap_err();
         assert_eq!(gone, HandshakeError::Unreachable);
     }
 
@@ -1228,7 +1475,10 @@ mod tests {
         let server = McpServer {
             key: "s".into(),
             label: "S".into(),
-            transport: McpTransport::Http { url: "http://127.0.0.1:1/mcp".into(), header_names: vec!["Authorization".into()] },
+            transport: McpTransport::Http {
+                url: "http://127.0.0.1:1/mcp".into(),
+                header_names: vec!["Authorization".into()],
+            },
             ..Default::default()
         };
         let err = list_tools(&server, &|_| None).await.unwrap_err();
@@ -1241,15 +1491,21 @@ mod tests {
         let server = McpServer {
             key: "s".into(),
             label: "S".into(),
-            transport: McpTransport::Http { url, header_names: vec!["Authorization".into()] },
+            transport: McpTransport::Http {
+                url,
+                header_names: vec!["Authorization".into()],
+            },
             ..Default::default()
         };
-        let err = list_tools(&server, &|_| Some("Bearer top-secret".into())).await.unwrap_err();
+        let err = list_tools(&server, &|_| Some("Bearer top-secret".into()))
+            .await
+            .unwrap_err();
         assert!(!err.contains("top-secret"), "{err}");
     }
 
     #[test]
-    fn hints_travel_with_their_own_list_keep_the_stricter_on_a_collision_and_only_for_listed_tools() {
+    fn hints_travel_with_their_own_list_keep_the_stricter_on_a_collision_and_only_for_listed_tools()
+    {
         let page = json!({ "tools": [
             { "name": "a", "annotations": { "readOnlyHint": true, "destructiveHint": false } },
             { "name": "dup", "annotations": { "readOnlyHint": true } },
@@ -1261,14 +1517,34 @@ mod tests {
         let (names, hints, _) = tools_page_hinted(&page, "k").unwrap();
         assert_eq!(names.len(), 6);
         let get = |n: &str| hints.get(&format!("mcp__k__{n}")).copied().unwrap();
-        assert_eq!((get("a").read_only, get("a").destructive), (Some(true), Some(false)));
-        assert_eq!(get("dup").read_only, Some(false), "one says not read-only: not read-only");
-        assert_eq!(get("dup2").destructive, Some(true), "one says destructive: destructive");
-        assert_eq!((get("silent").read_only, get("silent").destructive), (None, None));
+        assert_eq!(
+            (get("a").read_only, get("a").destructive),
+            (Some(true), Some(false))
+        );
+        assert_eq!(
+            get("dup").read_only,
+            Some(false),
+            "one says not read-only: not read-only"
+        );
+        assert_eq!(
+            get("dup2").destructive,
+            Some(true),
+            "one says destructive: destructive"
+        );
+        assert_eq!(
+            (get("silent").read_only, get("silent").destructive),
+            (None, None)
+        );
         // Over-long names and everything past the cap are not recorded at all.
         let long = "x".repeat(MAX_TOOL_NAME + 1);
-        let many: Vec<Value> = (0..MAX_TOOLS + 5).map(|i| json!({ "name": format!("t{i}"), "annotations": { "readOnlyHint": true } })).collect();
-        let (names, hints, _) = tools_page_hinted(&json!({ "tools": [{ "name": long, "annotations": { "readOnlyHint": true } }] }), "k").unwrap();
+        let many: Vec<Value> = (0..MAX_TOOLS + 5)
+            .map(|i| json!({ "name": format!("t{i}"), "annotations": { "readOnlyHint": true } }))
+            .collect();
+        let (names, hints, _) = tools_page_hinted(
+            &json!({ "tools": [{ "name": long, "annotations": { "readOnlyHint": true } }] }),
+            "k",
+        )
+        .unwrap();
         assert!(names.is_empty() && hints.is_empty());
         let (names, hints, _) = tools_page_hinted(&json!({ "tools": many }), "k").unwrap();
         assert_eq!((names.len(), hints.len()), (MAX_TOOLS, MAX_TOOLS));

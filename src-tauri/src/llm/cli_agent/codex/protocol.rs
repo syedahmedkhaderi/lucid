@@ -85,7 +85,10 @@ pub fn thread_start_request(id: u64, t: &ThreadStart) -> String {
         p.insert("baseInstructions".into(), json!(t.base_instructions));
     }
     if !t.developer_instructions.is_empty() {
-        p.insert("developerInstructions".into(), json!(t.developer_instructions));
+        p.insert(
+            "developerInstructions".into(),
+            json!(t.developer_instructions),
+        );
     }
     if let Some(config) = &t.config {
         p.insert("config".into(), config.clone());
@@ -102,7 +105,10 @@ pub fn turn_start_request(
 ) -> String {
     let mut p = Map::new();
     p.insert("threadId".into(), json!(thread_id));
-    p.insert("input".into(), json!([{ "type": "text", "text": text, "text_elements": [] }]));
+    p.insert(
+        "input".into(),
+        json!([{ "type": "text", "text": text, "text_elements": [] }]),
+    );
     if let Some(m) = model.filter(|m| !m.is_empty()) {
         p.insert("model".into(), json!(m));
     }
@@ -113,7 +119,11 @@ pub fn turn_start_request(
 }
 
 pub fn turn_interrupt_request(id: u64, thread_id: &str, turn_id: &str) -> String {
-    request(id, "turn/interrupt", json!({ "threadId": thread_id, "turnId": turn_id }))
+    request(
+        id,
+        "turn/interrupt",
+        json!({ "threadId": thread_id, "turnId": turn_id }),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -130,10 +140,16 @@ pub struct RpcError {
 /// One stdout line.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Incoming {
-    Response { id: u64, result: Result<Value, RpcError> },
+    Response {
+        id: u64,
+        result: Result<Value, RpcError>,
+    },
     Notification(Notification),
     /// A request the server makes of us (approvals, input); `id` is echoed back.
-    Request { id: Value, request: ServerRequest },
+    Request {
+        id: Value,
+        request: ServerRequest,
+    },
 }
 
 /// Parse one line of the server's stdout. `None` for anything that is not a
@@ -146,7 +162,10 @@ pub fn parse_line(line: &str) -> Option<Incoming> {
     match (method, id) {
         (Some(method), Some(id)) => {
             let params = obj.get("params").cloned().unwrap_or(Value::Null);
-            Some(Incoming::Request { id, request: parse_server_request(method, &params) })
+            Some(Incoming::Request {
+                id,
+                request: parse_server_request(method, &params),
+            })
         }
         (Some(method), None) => {
             let params = obj.get("params").cloned().unwrap_or(Value::Null);
@@ -235,7 +254,11 @@ fn parse_turn_error(v: &Value) -> Option<TurnError> {
     if v.is_null() {
         return None;
     }
-    let message = v.get("message").and_then(Value::as_str).unwrap_or("").to_string();
+    let message = v
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     let info = match v.get("codexErrorInfo") {
         Some(Value::String(s)) => Some(s.clone()),
         Some(Value::Object(o)) => o.keys().next().cloned(),
@@ -247,14 +270,23 @@ fn parse_turn_error(v: &Value) -> Option<TurnError> {
 /// A `commandActions` entry: Codex's own reading of what a shell command does.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CommandAction {
-    Read { path: String },
-    ListFiles { path: Option<String> },
-    Search { query: Option<String>, path: Option<String> },
+    Read {
+        path: String,
+    },
+    ListFiles {
+        path: Option<String>,
+    },
+    Search {
+        query: Option<String>,
+        path: Option<String>,
+    },
     Unknown,
 }
 
 fn parse_command_actions(v: Option<&Value>) -> Vec<CommandAction> {
-    let Some(items) = v.and_then(Value::as_array) else { return Vec::new() };
+    let Some(items) = v.and_then(Value::as_array) else {
+        return Vec::new();
+    };
     items
         .iter()
         .map(|a| {
@@ -264,8 +296,13 @@ fn parse_command_actions(v: Option<&Value>) -> Vec<CommandAction> {
                     Some(path) => CommandAction::Read { path },
                     None => CommandAction::Unknown,
                 },
-                Some("listFiles") | Some("list_files") => CommandAction::ListFiles { path: s("path") },
-                Some("search") => CommandAction::Search { query: s("query"), path: s("path") },
+                Some("listFiles") | Some("list_files") => {
+                    CommandAction::ListFiles { path: s("path") }
+                }
+                Some("search") => CommandAction::Search {
+                    query: s("query"),
+                    path: s("path"),
+                },
                 _ => CommandAction::Unknown,
             }
         })
@@ -275,8 +312,14 @@ fn parse_command_actions(v: Option<&Value>) -> Vec<CommandAction> {
 /// A thread item (`item/started`, `item/completed`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
-    AgentMessage { id: String, text: String, phase: Option<String> },
-    Reasoning { id: String },
+    AgentMessage {
+        id: String,
+        text: String,
+        phase: Option<String>,
+    },
+    Reasoning {
+        id: String,
+    },
     McpToolCall {
         id: String,
         server: String,
@@ -293,8 +336,12 @@ pub enum Item {
         /// `inProgress`, `completed`, `failed` or `declined`.
         status: String,
     },
-    FileChange { id: String },
-    Other { kind: String },
+    FileChange {
+        id: String,
+    },
+    Other {
+        kind: String,
+    },
 }
 
 fn parse_item(v: &Value) -> Item {
@@ -325,7 +372,9 @@ fn parse_item(v: &Value) -> Item {
             status: s("status"),
         },
         "fileChange" => Item::FileChange { id: s("id") },
-        other => Item::Other { kind: other.to_string() },
+        other => Item::Other {
+            kind: other.to_string(),
+        },
     }
 }
 
@@ -333,23 +382,49 @@ fn parse_item(v: &Value) -> Item {
 /// still counts as a sign of life).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Notification {
-    TurnStarted { turn_id: String },
+    TurnStarted {
+        turn_id: String,
+    },
     TurnCompleted {
         turn_id: String,
         status: TurnStatus,
         error: Option<TurnError>,
         duration_ms: u64,
     },
-    AgentMessageDelta { turn_id: String, item_id: String, delta: String },
+    AgentMessageDelta {
+        turn_id: String,
+        item_id: String,
+        delta: String,
+    },
     /// A reasoning (thinking) text or summary delta.
-    ReasoningDelta { turn_id: String },
-    ItemStarted { turn_id: String, item: Item },
-    ItemCompleted { turn_id: String, item: Item },
-    TokenUsage { turn_id: String, total: Usage, last: Usage },
+    ReasoningDelta {
+        turn_id: String,
+    },
+    ItemStarted {
+        turn_id: String,
+        item: Item,
+    },
+    ItemCompleted {
+        turn_id: String,
+        item: Item,
+    },
+    TokenUsage {
+        turn_id: String,
+        total: Usage,
+        last: Usage,
+    },
     /// An error mid-turn. `will_retry`: Codex tries again by itself.
-    Error { turn_id: String, error: TurnError, will_retry: bool },
+    Error {
+        turn_id: String,
+        error: TurnError,
+        will_retry: bool,
+    },
     /// `mcpServer/startupStatus/updated`: `starting`, `ready`, `failed`.
-    McpStartup { name: String, status: String, error: Option<String> },
+    McpStartup {
+        name: String,
+        status: String,
+        error: Option<String>,
+    },
     /// `account/rateLimits/updated`: only a window past 90% used, or one that
     /// says the limit was reached.
     PlanLimit(crate::llm::cli_agent::protocol::PlanLimit),
@@ -359,7 +434,9 @@ pub enum Notification {
 fn parse_notification(method: &str, p: &Value) -> Notification {
     let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     match method {
-        "turn/started" => Notification::TurnStarted { turn_id: s(&p["turn"], "id") },
+        "turn/started" => Notification::TurnStarted {
+            turn_id: s(&p["turn"], "id"),
+        },
         "turn/completed" => {
             let turn = &p["turn"];
             let status = match turn.get("status").and_then(Value::as_str) {
@@ -381,12 +458,18 @@ fn parse_notification(method: &str, p: &Value) -> Notification {
             delta: s(p, "delta"),
         },
         "item/reasoning/textDelta" | "item/reasoning/summaryTextDelta" => {
-            Notification::ReasoningDelta { turn_id: s(p, "turnId") }
+            Notification::ReasoningDelta {
+                turn_id: s(p, "turnId"),
+            }
         }
-        "item/started" => Notification::ItemStarted { turn_id: s(p, "turnId"), item: parse_item(&p["item"]) },
-        "item/completed" => {
-            Notification::ItemCompleted { turn_id: s(p, "turnId"), item: parse_item(&p["item"]) }
-        }
+        "item/started" => Notification::ItemStarted {
+            turn_id: s(p, "turnId"),
+            item: parse_item(&p["item"]),
+        },
+        "item/completed" => Notification::ItemCompleted {
+            turn_id: s(p, "turnId"),
+            item: parse_item(&p["item"]),
+        },
         "thread/tokenUsage/updated" => Notification::TokenUsage {
             turn_id: s(p, "turnId"),
             total: Usage::parse(&p["tokenUsage"]["total"]),
@@ -419,7 +502,9 @@ const NEAR_PERCENT: u64 = 90;
 /// `usedPercent`, `resetsAt`; `rateLimitReachedType` set once the limit is hit).
 fn parse_plan_limit(snapshot: &Value) -> Option<crate::llm::cli_agent::protocol::PlanLimit> {
     use crate::llm::cli_agent::protocol::{PlanLimit, PlanLimitLevel};
-    let reached = snapshot.get("rateLimitReachedType").is_some_and(|v| !v.is_null());
+    let reached = snapshot
+        .get("rateLimitReachedType")
+        .is_some_and(|v| !v.is_null());
     let worst = ["primary", "secondary"]
         .iter()
         .filter_map(|k| snapshot.get(*k).filter(|w| !w.is_null()))
@@ -435,7 +520,9 @@ fn parse_plan_limit(snapshot: &Value) -> Option<crate::llm::cli_agent::protocol:
     Some(PlanLimit {
         level,
         resets_at: worst["resetsAt"].as_u64(),
-        window: worst["windowDurationMins"].as_u64().map(|m| format!("{m}m")),
+        window: worst["windowDurationMins"]
+            .as_u64()
+            .map(|m| format!("{m}m")),
         used: Some(used as f64),
     })
 }
@@ -453,20 +540,28 @@ pub enum ServerRequest {
         actions: Vec<CommandAction>,
     },
     /// `item/fileChange/requestApproval` and the legacy `applyPatchApproval`.
-    FileChangeApproval { legacy: bool },
+    FileChangeApproval {
+        legacy: bool,
+    },
     /// `item/permissions/requestApproval`: more sandbox permissions.
     PermissionsApproval,
     /// `mcpServer/elicitation/request`: Codex asks before an MCP tool call
     /// (`_meta.codex_approval_kind == "mcp_tool_call"`) or the server asks the
     /// user for a form.
-    McpElicitation { server: String, message: String, meta: Value },
+    McpElicitation {
+        server: String,
+        message: String,
+        meta: Value,
+    },
     /// `item/tool/requestUserInput`.
     UserInput,
     /// `item/tool/call` (a client-implemented tool; Lucid has none).
     DynamicToolCall,
     /// `account/chatgptAuthTokens/refresh`: Lucid never supplies tokens.
     AuthTokensRefresh,
-    Unknown { method: String },
+    Unknown {
+        method: String,
+    },
 }
 
 fn parse_server_request(method: &str, p: &Value) -> ServerRequest {
@@ -484,7 +579,12 @@ fn parse_server_request(method: &str, p: &Value) -> ServerRequest {
             command: p
                 .get("command")
                 .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" "))
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
                 .unwrap_or_default(),
             cwd: s("cwd"),
             actions: parse_command_actions(p.get("parsedCmd")),
@@ -500,7 +600,9 @@ fn parse_server_request(method: &str, p: &Value) -> ServerRequest {
         "item/tool/requestUserInput" => ServerRequest::UserInput,
         "item/tool/call" => ServerRequest::DynamicToolCall,
         "account/chatgptAuthTokens/refresh" => ServerRequest::AuthTokensRefresh,
-        other => ServerRequest::Unknown { method: other.to_string() },
+        other => ServerRequest::Unknown {
+            method: other.to_string(),
+        },
     }
 }
 
@@ -518,20 +620,25 @@ pub fn reply_for(req: &ServerRequest, allow: bool) -> Reply {
         ServerRequest::CommandApproval { legacy: false, .. } => {
             Reply::Result(json!({ "decision": if allow { "accept" } else { "decline" } }))
         }
-        ServerRequest::CommandApproval { legacy: true, .. } | ServerRequest::FileChangeApproval { legacy: true } => {
+        ServerRequest::CommandApproval { legacy: true, .. }
+        | ServerRequest::FileChangeApproval { legacy: true } => {
             Reply::Result(json!({ "decision": if allow { "approved" } else { "denied" } }))
         }
         ServerRequest::FileChangeApproval { legacy: false } => {
             Reply::Result(json!({ "decision": if allow { "accept" } else { "decline" } }))
         }
         // An empty grant: no extra permissions.
-        ServerRequest::PermissionsApproval => Reply::Result(json!({ "permissions": {}, "scope": "turn" })),
+        ServerRequest::PermissionsApproval => {
+            Reply::Result(json!({ "permissions": {}, "scope": "turn" }))
+        }
         ServerRequest::McpElicitation { .. } => {
             Reply::Result(json!({ "action": if allow { "accept" } else { "decline" } }))
         }
         // No answers: the model carries on without.
         ServerRequest::UserInput => Reply::Result(json!({ "answers": {} })),
-        ServerRequest::DynamicToolCall => Reply::Result(json!({ "contentItems": [], "success": false })),
+        ServerRequest::DynamicToolCall => {
+            Reply::Result(json!({ "contentItems": [], "success": false }))
+        }
         ServerRequest::AuthTokensRefresh | ServerRequest::Unknown { .. } => Reply::Error {
             code: -32601,
             message: "not supported by this client".to_string(),
@@ -556,7 +663,10 @@ pub fn reply_line(id: &Value, reply: &Reply) -> String {
 /// `account/read` result: how Codex is signed in.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Account {
-    ChatGpt { email: Option<String>, plan: Option<String> },
+    ChatGpt {
+        email: Option<String>,
+        plan: Option<String>,
+    },
     ApiKey,
     /// Bedrock, GCP and anything newer: not a ChatGPT subscription.
     Other(String),
@@ -570,7 +680,10 @@ pub fn parse_account(result: &Value) -> Account {
     match acc.get("type").and_then(Value::as_str) {
         Some("chatgpt") => Account::ChatGpt {
             email: acc.get("email").and_then(Value::as_str).map(str::to_string),
-            plan: acc.get("planType").and_then(Value::as_str).map(str::to_string),
+            plan: acc
+                .get("planType")
+                .and_then(Value::as_str)
+                .map(str::to_string),
         },
         Some("apiKey") => Account::ApiKey,
         Some(other) => Account::Other(other.to_string()),
@@ -581,7 +694,11 @@ pub fn parse_account(result: &Value) -> Account {
 /// `thread/start` result: the thread id and the model it will use.
 pub fn parse_thread_start(result: &Value) -> Option<(String, String)> {
     let id = result.get("thread")?.get("id")?.as_str()?.to_string();
-    let model = result.get("model").and_then(Value::as_str).unwrap_or("").to_string();
+    let model = result
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     Some((id, model))
 }
 
@@ -666,21 +783,34 @@ mod tests {
         assert_eq!(p["config"]["mcp_servers"]["mira"]["command"], "x");
         assert_eq!(p["developerInstructions"], "Notes: D:\\notes");
         // No prompt, no model: the fields are left out, not sent empty.
-        let bare = ThreadStart { cwd: "C:\\sandbox".into(), ..Default::default() };
+        let bare = ThreadStart {
+            cwd: "C:\\sandbox".into(),
+            ..Default::default()
+        };
         let v: Value = serde_json::from_str(&thread_start_request(8, &bare)).unwrap();
-        for key in ["model", "baseInstructions", "developerInstructions", "config"] {
+        for key in [
+            "model",
+            "baseInstructions",
+            "developerInstructions",
+            "config",
+        ] {
             assert!(v["params"].get(key).is_none(), "{key}");
         }
     }
 
     #[test]
     fn turn_start_carries_text_and_optional_effort() {
-        let v: Value = serde_json::from_str(&turn_start_request(3, "th", "hi", None, Some("low"))).unwrap();
+        let v: Value =
+            serde_json::from_str(&turn_start_request(3, "th", "hi", None, Some("low"))).unwrap();
         assert_eq!(v["params"]["threadId"], "th");
-        assert_eq!(v["params"]["input"][0], json!({ "type": "text", "text": "hi", "text_elements": [] }));
+        assert_eq!(
+            v["params"]["input"][0],
+            json!({ "type": "text", "text": "hi", "text_elements": [] })
+        );
         assert_eq!(v["params"]["effort"], "low");
         assert!(v["params"].get("model").is_none());
-        let v: Value = serde_json::from_str(&turn_start_request(4, "th", "hi", Some("m"), None)).unwrap();
+        let v: Value =
+            serde_json::from_str(&turn_start_request(4, "th", "hi", Some("m"), None)).unwrap();
         assert_eq!(v["params"]["model"], "m");
         assert!(v["params"].get("effort").is_none());
     }
@@ -698,7 +828,10 @@ mod tests {
             panic!("not a response");
         };
         assert_eq!(id, 1);
-        assert!(result.unwrap()["userAgent"].as_str().unwrap().starts_with("nexq/"));
+        assert!(result.unwrap()["userAgent"]
+            .as_str()
+            .unwrap()
+            .starts_with("nexq/"));
     }
 
     #[test]
@@ -726,20 +859,32 @@ mod tests {
             parse_line(line),
             Some(Incoming::Response {
                 id: 9,
-                result: Err(RpcError { code: -32603, message: "exec failed".into() })
+                result: Err(RpcError {
+                    code: -32603,
+                    message: "exec failed".into()
+                })
             })
         );
     }
 
     #[test]
     fn the_real_usage_limit_error_is_a_rate_limit_with_the_reset_time() {
-        let Notification::Error { error, will_retry, turn_id } = notification(ERROR_USAGE) else {
+        let Notification::Error {
+            error,
+            will_retry,
+            turn_id,
+        } = notification(ERROR_USAGE)
+        else {
             panic!("not an error");
         };
         assert!(!will_retry);
         assert!(!turn_id.is_empty());
         assert_eq!(error.info.as_deref(), Some("usageLimitExceeded"));
-        assert!(error.message.contains("Nov 26th, 2026 9:15 AM"), "{}", error.message);
+        assert!(
+            error.message.contains("Nov 26th, 2026 9:15 AM"),
+            "{}",
+            error.message
+        );
         assert_eq!(classify_turn_error(&error), AgentErrorKind::RateLimited);
     }
 
@@ -760,13 +905,31 @@ mod tests {
             message: message.into(),
             info: info.map(str::to_string),
         };
-        assert_eq!(classify_turn_error(&e(Some("contextWindowExceeded"), "x")), AgentErrorKind::ContextOverflow);
-        assert_eq!(classify_turn_error(&e(Some("unauthorized"), "x")), AgentErrorKind::NotLoggedIn);
-        assert_eq!(classify_turn_error(&e(Some("rateLimitExceeded"), "x")), AgentErrorKind::RateLimited);
-        assert_eq!(classify_turn_error(&e(Some("internalServerError"), "boom")), AgentErrorKind::Other);
+        assert_eq!(
+            classify_turn_error(&e(Some("contextWindowExceeded"), "x")),
+            AgentErrorKind::ContextOverflow
+        );
+        assert_eq!(
+            classify_turn_error(&e(Some("unauthorized"), "x")),
+            AgentErrorKind::NotLoggedIn
+        );
+        assert_eq!(
+            classify_turn_error(&e(Some("rateLimitExceeded"), "x")),
+            AgentErrorKind::RateLimited
+        );
+        assert_eq!(
+            classify_turn_error(&e(Some("internalServerError"), "boom")),
+            AgentErrorKind::Other
+        );
         // No cause: the text decides.
-        assert_eq!(classify_turn_error(&e(None, "You've hit your usage limit.")), AgentErrorKind::RateLimited);
-        assert_eq!(classify_turn_error(&e(None, "Not logged in. Run codex login")), AgentErrorKind::NotLoggedIn);
+        assert_eq!(
+            classify_turn_error(&e(None, "You've hit your usage limit.")),
+            AgentErrorKind::RateLimited
+        );
+        assert_eq!(
+            classify_turn_error(&e(None, "Not logged in. Run codex login")),
+            AgentErrorKind::NotLoggedIn
+        );
     }
 
     #[test]
@@ -776,16 +939,33 @@ mod tests {
         };
         assert_eq!(
             parse_account(&result.unwrap()),
-            Account::ChatGpt { email: Some("user@example.com".into()), plan: Some("pro".into()) }
+            Account::ChatGpt {
+                email: Some("user@example.com".into()),
+                plan: Some("pro".into())
+            }
         );
-        assert_eq!(parse_account(&json!({ "account": null, "requiresOpenaiAuth": true })), Account::LoggedOut);
-        assert_eq!(parse_account(&json!({ "account": { "type": "apiKey" } })), Account::ApiKey);
-        assert_eq!(parse_account(&json!({ "account": { "type": "gcp" } })), Account::Other("gcp".into()));
+        assert_eq!(
+            parse_account(&json!({ "account": null, "requiresOpenaiAuth": true })),
+            Account::LoggedOut
+        );
+        assert_eq!(
+            parse_account(&json!({ "account": { "type": "apiKey" } })),
+            Account::ApiKey
+        );
+        assert_eq!(
+            parse_account(&json!({ "account": { "type": "gcp" } })),
+            Account::Other("gcp".into())
+        );
     }
 
     #[test]
     fn parses_the_real_mcp_startup_status() {
-        let Notification::McpStartup { name, status, error } = notification(MCP_STARTUP) else {
+        let Notification::McpStartup {
+            name,
+            status,
+            error,
+        } = notification(MCP_STARTUP)
+        else {
             panic!("not a startup status");
         };
         assert_eq!(name, "pencil");
@@ -798,7 +978,9 @@ mod tests {
         let line = r#"{"method":"account/updated","params":{"authMode":"chatgpt"}}"#;
         assert_eq!(
             parse_line(line),
-            Some(Incoming::Notification(Notification::Other("account/updated".into())))
+            Some(Incoming::Notification(Notification::Other(
+                "account/updated".into()
+            )))
         );
         assert_eq!(parse_line("not json"), None);
         assert_eq!(parse_line("{}"), None);
@@ -809,29 +991,55 @@ mod tests {
         let n = notification(include_str!("testdata/schema_agent_message_delta.json"));
         assert_eq!(
             n,
-            Notification::AgentMessageDelta { turn_id: "tu1".into(), item_id: "it1".into(), delta: "Hello".into() }
+            Notification::AgentMessageDelta {
+                turn_id: "tu1".into(),
+                item_id: "it1".into(),
+                delta: "Hello".into()
+            }
         );
         assert_eq!(
             notification(include_str!("testdata/schema_reasoning_summary_delta.json")),
-            Notification::ReasoningDelta { turn_id: "tu1".into() }
+            Notification::ReasoningDelta {
+                turn_id: "tu1".into()
+            }
         );
         assert_eq!(
             notification(include_str!("testdata/schema_reasoning_text_delta.json")),
-            Notification::ReasoningDelta { turn_id: "tu1".into() }
+            Notification::ReasoningDelta {
+                turn_id: "tu1".into()
+            }
         );
     }
 
     #[test]
     fn token_usage_gives_total_and_last() {
-        let Notification::TokenUsage { turn_id, total, last } =
-            notification(include_str!("testdata/schema_token_usage_updated.json"))
+        let Notification::TokenUsage {
+            turn_id,
+            total,
+            last,
+        } = notification(include_str!("testdata/schema_token_usage_updated.json"))
         else {
             panic!("not token usage");
         };
         assert_eq!(turn_id, "tu1");
-        assert_eq!(total, Usage { input: 1200, cached_input: 1000, cache_write: 0, output: 80, reasoning: 30 });
+        assert_eq!(
+            total,
+            Usage {
+                input: 1200,
+                cached_input: 1000,
+                cache_write: 0,
+                output: 80,
+                reasoning: 30
+            }
+        );
         assert_eq!(last.input, 700);
-        let earlier = Usage { input: 500, cached_input: 400, cache_write: 0, output: 20, reasoning: 5 };
+        let earlier = Usage {
+            input: 500,
+            cached_input: 400,
+            cache_write: 0,
+            output: 20,
+            reasoning: 5,
+        };
         assert_eq!(total.since(&earlier).output, 60);
         // Never negative.
         assert_eq!(earlier.since(&total).input, 0);
@@ -839,15 +1047,32 @@ mod tests {
 
     #[test]
     fn an_mcp_tool_call_item_names_server_tool_and_outcome() {
-        let Notification::ItemStarted { item, .. } = notification(include_str!("testdata/schema_item_started_mcp.json"))
+        let Notification::ItemStarted { item, .. } =
+            notification(include_str!("testdata/schema_item_started_mcp.json"))
         else {
             panic!("not item/started");
         };
-        let Item::McpToolCall { server, tool, arguments, status, .. } = item else { panic!("not an mcp call") };
-        assert_eq!((server.as_str(), tool.as_str(), status.as_str()), ("mira", "kb_search", "inProgress"));
+        let Item::McpToolCall {
+            server,
+            tool,
+            arguments,
+            status,
+            ..
+        } = item
+        else {
+            panic!("not an mcp call")
+        };
+        assert_eq!(
+            (server.as_str(), tool.as_str(), status.as_str()),
+            ("mira", "kb_search", "inProgress")
+        );
         assert_eq!(arguments["query"], "budget");
-        let Notification::ItemCompleted { item: Item::McpToolCall { status, error, .. }, .. } =
-            notification(include_str!("testdata/schema_item_completed_mcp_failed.json"))
+        let Notification::ItemCompleted {
+            item: Item::McpToolCall { status, error, .. },
+            ..
+        } = notification(include_str!(
+            "testdata/schema_item_completed_mcp_failed.json"
+        ))
         else {
             panic!("not a completed mcp call");
         };
@@ -857,20 +1082,35 @@ mod tests {
 
     #[test]
     fn a_command_item_keeps_codexs_reading_of_the_command() {
-        let Notification::ItemStarted { item: Item::CommandExecution { command, actions, status, .. }, .. } =
-            notification(include_str!("testdata/schema_item_started_command.json"))
+        let Notification::ItemStarted {
+            item:
+                Item::CommandExecution {
+                    command,
+                    actions,
+                    status,
+                    ..
+                },
+            ..
+        } = notification(include_str!("testdata/schema_item_started_command.json"))
         else {
             panic!("not a command item");
         };
         assert_eq!(status, "inProgress");
         assert!(command.contains("Get-Content"));
-        assert_eq!(actions, vec![CommandAction::Read { path: "D:\\notes\\a.md".into() }]);
+        assert_eq!(
+            actions,
+            vec![CommandAction::Read {
+                path: "D:\\notes\\a.md".into()
+            }]
+        );
     }
 
     #[test]
     fn the_agent_message_item_has_a_phase() {
-        let Notification::ItemStarted { item: Item::AgentMessage { phase, .. }, .. } =
-            notification(include_str!("testdata/schema_item_started_commentary.json"))
+        let Notification::ItemStarted {
+            item: Item::AgentMessage { phase, .. },
+            ..
+        } = notification(include_str!("testdata/schema_item_started_commentary.json"))
         else {
             panic!("not an agent message");
         };
@@ -879,8 +1119,12 @@ mod tests {
 
     #[test]
     fn a_completed_turn_has_status_and_duration() {
-        let Notification::TurnCompleted { status, error, duration_ms, .. } =
-            notification(include_str!("testdata/schema_turn_completed.json"))
+        let Notification::TurnCompleted {
+            status,
+            error,
+            duration_ms,
+            ..
+        } = notification(include_str!("testdata/schema_turn_completed.json"))
         else {
             panic!("not turn/completed");
         };
@@ -891,41 +1135,94 @@ mod tests {
 
     #[test]
     fn the_command_approval_request_is_parsed_and_declined_with_decline() {
-        let (id, req) = match parse_line(&one_line(include_str!("testdata/schema_command_approval_request.json"))) {
+        let (id, req) = match parse_line(&one_line(include_str!(
+            "testdata/schema_command_approval_request.json"
+        ))) {
             Some(Incoming::Request { id, request }) => (id, request),
             other => panic!("not a request: {other:?}"),
         };
         assert_eq!(id, json!(0));
-        let ServerRequest::CommandApproval { legacy, command, cwd, actions } = &req else { panic!("{req:?}") };
+        let ServerRequest::CommandApproval {
+            legacy,
+            command,
+            cwd,
+            actions,
+        } = &req
+        else {
+            panic!("{req:?}")
+        };
         assert!(!legacy);
         assert_eq!(command, "del C:\\x.txt");
         assert_eq!(cwd.as_deref(), Some("C:\\sandbox"));
         assert_eq!(actions, &vec![CommandAction::Unknown]);
         let line = reply_line(&id, &reply_for(&req, false));
-        assert_eq!(serde_json::from_str::<Value>(&line).unwrap(), json!({ "id": 0, "result": { "decision": "decline" } }));
+        assert_eq!(
+            serde_json::from_str::<Value>(&line).unwrap(),
+            json!({ "id": 0, "result": { "decision": "decline" } })
+        );
     }
 
     #[test]
     fn every_other_server_request_has_a_refusal() {
-        let file = request_of(include_str!("testdata/schema_file_change_approval_request.json"));
+        let file = request_of(include_str!(
+            "testdata/schema_file_change_approval_request.json"
+        ));
         assert_eq!(file, ServerRequest::FileChangeApproval { legacy: false });
-        assert_eq!(reply_for(&file, false), Reply::Result(json!({ "decision": "decline" })));
+        assert_eq!(
+            reply_for(&file, false),
+            Reply::Result(json!({ "decision": "decline" }))
+        );
         let perms = request_of(include_str!("testdata/schema_permissions_request.json"));
         assert_eq!(perms, ServerRequest::PermissionsApproval);
-        assert_eq!(reply_for(&perms, true), Reply::Result(json!({ "permissions": {}, "scope": "turn" })));
-        let legacy = request_of(include_str!("testdata/schema_legacy_exec_approval_request.json"));
-        let ServerRequest::CommandApproval { legacy: true, command, .. } = &legacy else { panic!("{legacy:?}") };
+        assert_eq!(
+            reply_for(&perms, true),
+            Reply::Result(json!({ "permissions": {}, "scope": "turn" }))
+        );
+        let legacy = request_of(include_str!(
+            "testdata/schema_legacy_exec_approval_request.json"
+        ));
+        let ServerRequest::CommandApproval {
+            legacy: true,
+            command,
+            ..
+        } = &legacy
+        else {
+            panic!("{legacy:?}")
+        };
         assert_eq!(command, "cmd /c dir");
-        assert_eq!(reply_for(&legacy, false), Reply::Result(json!({ "decision": "denied" })));
+        assert_eq!(
+            reply_for(&legacy, false),
+            Reply::Result(json!({ "decision": "denied" }))
+        );
         let patch = ServerRequest::FileChangeApproval { legacy: true };
-        assert_eq!(reply_for(&patch, false), Reply::Result(json!({ "decision": "denied" })));
-        assert_eq!(reply_for(&ServerRequest::UserInput, true), Reply::Result(json!({ "answers": {} })));
-        assert!(matches!(reply_for(&ServerRequest::AuthTokensRefresh, true), Reply::Error { .. }));
+        assert_eq!(
+            reply_for(&patch, false),
+            Reply::Result(json!({ "decision": "denied" }))
+        );
+        assert_eq!(
+            reply_for(&ServerRequest::UserInput, true),
+            Reply::Result(json!({ "answers": {} }))
+        );
         assert!(matches!(
-            reply_for(&ServerRequest::Unknown { method: "x/y".into() }, true),
+            reply_for(&ServerRequest::AuthTokensRefresh, true),
+            Reply::Error { .. }
+        ));
+        assert!(matches!(
+            reply_for(
+                &ServerRequest::Unknown {
+                    method: "x/y".into()
+                },
+                true
+            ),
             Reply::Error { code: -32601, .. }
         ));
-        let line = reply_line(&json!("r-1"), &Reply::Error { code: -32601, message: "no".into() });
+        let line = reply_line(
+            &json!("r-1"),
+            &Reply::Error {
+                code: -32601,
+                message: "no".into(),
+            },
+        );
         assert_eq!(
             serde_json::from_str::<Value>(&line).unwrap(),
             json!({ "id": "r-1", "error": { "code": -32601, "message": "no" } })
@@ -935,21 +1232,41 @@ mod tests {
     #[test]
     fn the_mcp_elicitation_is_parsed_with_server_message_and_meta() {
         let req = request_of(include_str!("testdata/schema_mcp_elicitation_request.json"));
-        let ServerRequest::McpElicitation { server, message, meta } = &req else { panic!("{req:?}") };
+        let ServerRequest::McpElicitation {
+            server,
+            message,
+            meta,
+        } = &req
+        else {
+            panic!("{req:?}")
+        };
         assert_eq!(server, "mira");
         assert!(message.contains("kb_search"));
         assert_eq!(meta["codex_approval_kind"], "mcp_tool_call");
-        assert_eq!(reply_for(&req, true), Reply::Result(json!({ "action": "accept" })));
-        assert_eq!(reply_for(&req, false), Reply::Result(json!({ "action": "decline" })));
+        assert_eq!(
+            reply_for(&req, true),
+            Reply::Result(json!({ "action": "accept" }))
+        );
+        assert_eq!(
+            reply_for(&req, false),
+            Reply::Result(json!({ "action": "decline" }))
+        );
     }
 
     #[test]
     fn codex_rate_limit_updates_surface_only_near_or_reached_windows() {
         use crate::llm::cli_agent::protocol::PlanLimitLevel;
         let note = |p: Value| parse_notification("account/rateLimits/updated", &p);
-        let calm = note(json!({"rateLimits": {"primary": {"usedPercent": 40, "resetsAt": 1900000000, "windowDurationMins": 300}, "secondary": null}}));
-        assert_eq!(calm, Notification::Other("account/rateLimits/updated".into()));
-        match note(json!({"rateLimits": {"primary": {"usedPercent": 40}, "secondary": {"usedPercent": 93, "resetsAt": 1900000000, "windowDurationMins": 10080}}})) {
+        let calm = note(
+            json!({"rateLimits": {"primary": {"usedPercent": 40, "resetsAt": 1900000000, "windowDurationMins": 300}, "secondary": null}}),
+        );
+        assert_eq!(
+            calm,
+            Notification::Other("account/rateLimits/updated".into())
+        );
+        match note(
+            json!({"rateLimits": {"primary": {"usedPercent": 40}, "secondary": {"usedPercent": 93, "resetsAt": 1900000000, "windowDurationMins": 10080}}}),
+        ) {
             Notification::PlanLimit(l) => {
                 assert_eq!(l.level, PlanLimitLevel::Near);
                 assert_eq!(l.resets_at, Some(1_900_000_000));
@@ -958,7 +1275,9 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        match note(json!({"rateLimits": {"primary": {"usedPercent": 50}, "rateLimitReachedType": "rate_limit_reached"}})) {
+        match note(
+            json!({"rateLimits": {"primary": {"usedPercent": 50}, "rateLimitReachedType": "rate_limit_reached"}}),
+        ) {
             Notification::PlanLimit(l) => assert_eq!(l.level, PlanLimitLevel::Hit),
             other => panic!("{other:?}"),
         }

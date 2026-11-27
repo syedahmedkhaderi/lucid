@@ -100,7 +100,9 @@ impl SideBuf {
         let mut off = 0;
         while off < acc.len() {
             let need = acc.len() - off;
-            let Some(front) = self.queue.front_mut() else { break };
+            let Some(front) = self.queue.front_mut() else {
+                break;
+            };
             let done = match front {
                 Seg::Real { data, pos } => {
                     let take = need.min(data.len() - *pos);
@@ -267,7 +269,9 @@ impl CaptureTimes {
     pub fn output(&mut self, mut len: usize) -> Vec<(usize, u64)> {
         let mut pieces = Vec::new();
         while len > 0 {
-            let Some((left, end_ms)) = self.queue.front_mut() else { break };
+            let Some((left, end_ms)) = self.queue.front_mut() else {
+                break;
+            };
             let take = len.min(*left);
             *left -= take;
             len -= take;
@@ -408,9 +412,18 @@ mod tests {
 
     fn assert_aligned(out: &[i16], idx: usize) {
         let (m, s) = marker_positions(out, idx);
-        assert!((m as i64 - s as i64).abs() <= TOL, "sides apart: mic {m} sys {s}");
-        assert!((m as i64 - idx as i64).abs() <= TOL, "mic {m} not at wall {idx}");
-        assert!((s as i64 - idx as i64).abs() <= TOL, "sys {s} not at wall {idx}");
+        assert!(
+            (m as i64 - s as i64).abs() <= TOL,
+            "sides apart: mic {m} sys {s}"
+        );
+        assert!(
+            (m as i64 - idx as i64).abs() <= TOL,
+            "mic {m} not at wall {idx}"
+        );
+        assert!(
+            (s as i64 - idx as i64).abs() <= TOL,
+            "sys {s} not at wall {idx}"
+        );
     }
 
     fn sample_at_ms(ms: u64) -> usize {
@@ -583,9 +596,19 @@ mod tests {
         let push = |mixer: &mut RecordingMixer, got: &mut Collect, t: u64, with_sys: bool| {
             let from = (t * SAMPLES_PER_MS) as usize;
             let now = t + CHUNK_MS;
-            mixer.push(MixSide::Mic, &chunk(&after, MIC_MARK, from), now, &mut got.sink());
+            mixer.push(
+                MixSide::Mic,
+                &chunk(&after, MIC_MARK, from),
+                now,
+                &mut got.sink(),
+            );
             if with_sys {
-                mixer.push(MixSide::System, &chunk(&after, SYS_MARK, from), now, &mut got.sink());
+                mixer.push(
+                    MixSide::System,
+                    &chunk(&after, SYS_MARK, from),
+                    now,
+                    &mut got.sink(),
+                );
             }
         };
         // 3 s of both sides, all delivered at once (no ticks between).

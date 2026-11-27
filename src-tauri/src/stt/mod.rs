@@ -14,9 +14,9 @@ pub mod gemini_live;
 pub mod groq_whisper;
 pub mod whisper_api;
 // STT Engine Overhaul: New streaming providers
-pub mod sherpa_sidecar;
-pub mod sherpa_offline;
 pub mod ort_streaming;
+pub mod sherpa_offline;
+pub mod sherpa_sidecar;
 // Pause-based segment merging for all STT providers
 pub mod segment_accumulator;
 
@@ -167,10 +167,7 @@ impl STTRouter {
 
     /// Set the active STT provider type.
     /// If currently processing, stops the current provider before switching.
-    pub async fn set_provider(
-        &mut self,
-        provider_type: STTProviderType,
-    ) -> Result<(), String> {
+    pub async fn set_provider(&mut self, provider_type: STTProviderType) -> Result<(), String> {
         // If same provider is already active, no-op
         if self.active_type.as_ref() == Some(&provider_type) {
             return Ok(());
@@ -218,9 +215,7 @@ impl STTRouter {
                 p.set_config(self.deepgram_config.clone());
                 Box::new(p)
             }
-            STTProviderType::WhisperApi => {
-                Box::new(self.build_whisper_api())
-            }
+            STTProviderType::WhisperApi => Box::new(self.build_whisper_api()),
             STTProviderType::AzureSpeech => {
                 let mut p = azure_speech::AzureSpeechSTT::new();
                 if let Some(ref key) = self.azure_speech_key {
@@ -266,10 +261,15 @@ impl STTRouter {
                 p.set_language(&self.language);
                 Box::new(p)
             }
-            STTProviderType::SherpaOnnx | STTProviderType::OrtStreaming | STTProviderType::ParakeetTdt => {
+            STTProviderType::SherpaOnnx
+            | STTProviderType::OrtStreaming
+            | STTProviderType::ParakeetTdt => {
                 // These are created per-party in start_capture_per_party, not via STTRouter.
                 self.active_provider = None;
-                log::info!("STTRouter: {:?} selected (provider created per-party)", provider_type);
+                log::info!(
+                    "STTRouter: {:?} selected (provider created per-party)",
+                    provider_type
+                );
                 self.active_type = Some(provider_type);
                 return Ok(());
             }
@@ -582,10 +582,7 @@ impl STTRouter {
                 // The provider requires a key unless a custom endpoint is set, and
                 // its messages are already user-readable (server down, key refused).
                 let provider = self.build_whisper_api();
-                provider
-                    .test_connection()
-                    .await
-                    .map_err(|e| e.to_string())
+                provider.test_connection().await.map_err(|e| e.to_string())
             }
             STTProviderType::AzureSpeech => {
                 let key = self
@@ -639,7 +636,9 @@ impl STTRouter {
                     .await
                     .map_err(|e| format!("Connection test failed: {}", e))
             }
-            STTProviderType::SherpaOnnx | STTProviderType::OrtStreaming | STTProviderType::ParakeetTdt => {
+            STTProviderType::SherpaOnnx
+            | STTProviderType::OrtStreaming
+            | STTProviderType::ParakeetTdt => {
                 // Local engines — always "available" if a model is downloaded.
                 // Model availability is checked at capture time in create_stt_provider_for_party.
                 Ok(true)
@@ -695,7 +694,10 @@ mod tests {
     #[tokio::test]
     async fn mai_is_selected_without_caching_its_credentials_in_the_legacy_router() {
         let mut router = STTRouter::new();
-        router.set_provider(STTProviderType::AzureMaiStreaming).await.unwrap();
+        router
+            .set_provider(STTProviderType::AzureMaiStreaming)
+            .await
+            .unwrap();
 
         assert_eq!(
             router.active_provider_type(),

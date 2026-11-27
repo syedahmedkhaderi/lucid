@@ -39,7 +39,10 @@ pub fn insert_chat_message(conn: &Connection, msg: &MeetingChatMessage) -> rusql
 }
 
 /// The meeting's chat, oldest first (insert order breaks ties).
-pub fn list_chat_messages(conn: &Connection, meeting_id: &str) -> rusqlite::Result<Vec<MeetingChatMessage>> {
+pub fn list_chat_messages(
+    conn: &Connection,
+    meeting_id: &str,
+) -> rusqlite::Result<Vec<MeetingChatMessage>> {
     let mut stmt = conn.prepare(
         "SELECT id, meeting_id, role, content, model, input_tokens, output_tokens, created_at
          FROM meeting_chat WHERE meeting_id = ?1 ORDER BY created_at, rowid",
@@ -61,7 +64,10 @@ pub fn list_chat_messages(conn: &Connection, meeting_id: &str) -> rusqlite::Resu
 
 /// Remove a meeting's chat (the meeting is being deleted).
 pub fn delete_chat_messages(conn: &Connection, meeting_id: &str) -> rusqlite::Result<usize> {
-    conn.execute("DELETE FROM meeting_chat WHERE meeting_id = ?1", params![meeting_id])
+    conn.execute(
+        "DELETE FROM meeting_chat WHERE meeting_id = ?1",
+        params![meeting_id],
+    )
 }
 
 #[cfg(test)]
@@ -75,7 +81,13 @@ mod tests {
         conn
     }
 
-    fn msg(id: &str, meeting_id: &str, role: &str, content: &str, created_at: i64) -> MeetingChatMessage {
+    fn msg(
+        id: &str,
+        meeting_id: &str,
+        role: &str,
+        content: &str,
+        created_at: i64,
+    ) -> MeetingChatMessage {
         MeetingChatMessage {
             id: id.into(),
             meeting_id: meeting_id.into(),
@@ -114,7 +126,11 @@ mod tests {
         let conn = db();
         insert_chat_message(&conn, &msg("q", "m1", "user", "Q", 5)).unwrap();
         insert_chat_message(&conn, &msg("a", "m1", "assistant", "A", 5)).unwrap();
-        let ids: Vec<String> = list_chat_messages(&conn, "m1").unwrap().into_iter().map(|m| m.id).collect();
+        let ids: Vec<String> = list_chat_messages(&conn, "m1")
+            .unwrap()
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
         assert_eq!(ids, vec!["q", "a"]);
     }
 

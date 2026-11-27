@@ -57,7 +57,9 @@ where
 
 /// f32 [-1.0, 1.0] to i16, clipped: the conversion capture has always used.
 pub fn f32_to_i16(data: &[f32]) -> Vec<i16> {
-    data.iter().map(|&s| (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16).collect()
+    data.iter()
+        .map(|&s| (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
+        .collect()
 }
 
 /// u16 [0, 65535] to i16 [-32768, 32767].
@@ -186,7 +188,10 @@ mod tests {
             vec![-32767, -32767, 0, 16383, 32767, 32767]
         );
         assert_eq!(u16_to_i16(&[0, 32768, 65535]), vec![i16::MIN, 0, i16::MAX]);
-        assert_eq!(samples_to_i16(&[0u16, 32768, 65535]), u16_to_i16(&[0, 32768, 65535]));
+        assert_eq!(
+            samples_to_i16(&[0u16, 32768, 65535]),
+            u16_to_i16(&[0, 32768, 65535])
+        );
     }
 
     #[test]
@@ -198,8 +203,14 @@ mod tests {
 
     #[test]
     fn i8_and_u8_span_the_i16_range() {
-        assert_eq!(samples_to_i16(&[i8::MIN, 0, i8::MAX]), vec![i16::MIN, 0, 32512]);
-        assert_eq!(samples_to_i16(&[u8::MIN, 128, u8::MAX]), vec![i16::MIN, 0, 32512]);
+        assert_eq!(
+            samples_to_i16(&[i8::MIN, 0, i8::MAX]),
+            vec![i16::MIN, 0, 32512]
+        );
+        assert_eq!(
+            samples_to_i16(&[u8::MIN, 128, u8::MAX]),
+            vec![i16::MIN, 0, 32512]
+        );
     }
 
     #[test]
@@ -213,18 +224,30 @@ mod tests {
     fn i32_and_u32_span_the_i16_range() {
         let out = samples_to_i16(&[i32::MIN, 0, 1 << 16, i32::MAX]);
         assert_eq!(out, vec![i16::MIN, 0, 1, i16::MAX]);
-        assert_eq!(samples_to_i16(&[u32::MIN, 1 << 31, u32::MAX]), vec![i16::MIN, 0, i16::MAX]);
+        assert_eq!(
+            samples_to_i16(&[u32::MIN, 1 << 31, u32::MAX]),
+            vec![i16::MIN, 0, i16::MAX]
+        );
     }
 
     #[test]
     fn i64_and_u64_span_the_i16_range() {
-        assert_eq!(samples_to_i16(&[i64::MIN, 0, i64::MAX]), vec![i16::MIN, 0, i16::MAX]);
-        assert_eq!(samples_to_i16(&[u64::MIN, 1 << 63, u64::MAX]), vec![i16::MIN, 0, i16::MAX]);
+        assert_eq!(
+            samples_to_i16(&[i64::MIN, 0, i64::MAX]),
+            vec![i16::MIN, 0, i16::MAX]
+        );
+        assert_eq!(
+            samples_to_i16(&[u64::MIN, 1 << 63, u64::MAX]),
+            vec![i16::MIN, 0, i16::MAX]
+        );
     }
 
     #[test]
     fn f64_spans_the_i16_range_and_clips() {
-        assert_eq!(samples_to_i16(&[-1.0f64, 0.0, 1.0]), vec![i16::MIN, 0, i16::MAX]);
+        assert_eq!(
+            samples_to_i16(&[-1.0f64, 0.0, 1.0]),
+            vec![i16::MIN, 0, i16::MAX]
+        );
         assert_eq!(samples_to_i16(&[-2.0f64, 2.0]), vec![i16::MIN, i16::MAX]);
     }
 }

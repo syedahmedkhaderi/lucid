@@ -6,7 +6,7 @@ import { useRagStore } from "../stores/ragStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { messageOf } from "../lib/plainError";
 
-export const SUPPORTED_EXTENSIONS = ["pdf", "txt", "md", "docx", "pptx"] as const;
+export const SUPPORTED_EXTENSIONS = ["pdf", "txt", "md", "docx", "pptx", "csv"] as const;
 
 export function extensionOf(path: string): string {
   const name = path.split(/[\\/]/).pop() ?? path;

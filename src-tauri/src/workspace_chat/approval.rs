@@ -8,7 +8,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
 use super::hub::{ChatCapabilities, ToolContext, ToolOff, ToolPolicy};
-use crate::llm::cli_agent::approval::{ApprovalBroker, ApprovalPolicy, ApprovalSupport, ChatApprovals};
+use crate::llm::cli_agent::approval::{
+    ApprovalBroker, ApprovalPolicy, ApprovalSupport, ChatApprovals,
+};
 use crate::llm::cli_agent::command::SourcesLaunch;
 use crate::llm::cli_agent::manager::AgentSessionManager;
 use crate::llm::cli_agent::CliAgentKind;
@@ -45,12 +47,21 @@ impl ApprovalToolPolicy {
         sources: Arc<RwLock<PersonalSourcesConfig>>,
         support: Arc<dyn Fn(CliAgentKind) -> ApprovalSupport + Send + Sync>,
     ) -> Self {
-        Self { registry, broker, sources, support, prepared: Mutex::new(HashMap::new()) }
+        Self {
+            registry,
+            broker,
+            sources,
+            support,
+            prepared: Mutex::new(HashMap::new()),
+        }
     }
 
     fn servers_of(&self, ids: &[String]) -> Vec<McpServer> {
         let cfg = self.sources.read().map(|c| c.clone()).unwrap_or_default();
-        cfg.mcp_servers.into_iter().filter(|s| ids.contains(&s.id)).collect()
+        cfg.mcp_servers
+            .into_iter()
+            .filter(|s| ids.contains(&s.id))
+            .collect()
     }
 
     fn policy_for(&self, ctx: &ToolContext, scope_dirs: &[std::path::PathBuf]) -> ApprovalPolicy {
@@ -69,12 +80,26 @@ impl ApprovalToolPolicy {
                 },
             },
             ApprovalSupport::Unsupported(reason) => {
-                let off: Vec<ToolOff> = policy.ask_tools().into_iter().map(|tool| ToolOff { tool, reason: reason.clone() }).collect();
+                let off: Vec<ToolOff> = policy
+                    .ask_tools()
+                    .into_iter()
+                    .map(|tool| ToolOff {
+                        tool,
+                        reason: reason.clone(),
+                    })
+                    .collect();
                 let mut notes = Vec::new();
                 if !off.is_empty() {
-                    notes.push(format!("{} tool(s) that could change things are off in this chat. {reason}", off.len()));
+                    notes.push(format!(
+                        "{} tool(s) that could change things are off in this chat. {reason}",
+                        off.len()
+                    ));
                 }
-                ChatCapabilities { can_ask: false, tools_off: off, notes }
+                ChatCapabilities {
+                    can_ask: false,
+                    tools_off: off,
+                    notes,
+                }
             }
         }
     }
@@ -86,7 +111,10 @@ impl ToolPolicy for ApprovalToolPolicy {
         let policy = Arc::new(self.policy_for(ctx, &launch.add_dirs));
         let support = (self.support)(kind);
         policy.adjust_launch(launch, &support);
-        self.prepared.lock().unwrap().insert(ctx.chat_id.to_string(), (policy, support));
+        self.prepared
+            .lock()
+            .unwrap()
+            .insert(ctx.chat_id.to_string(), (policy, support));
     }
 
     fn before_run(&self, ctx: &ToolContext) {
@@ -112,7 +140,9 @@ impl ToolPolicy for ApprovalToolPolicy {
     }
 
     fn describe(&self, ctx: &ToolContext, scope_dirs: &[std::path::PathBuf]) -> ChatCapabilities {
-        let Some(kind) = ctx.kind else { return ChatCapabilities::default() };
+        let Some(kind) = ctx.kind else {
+            return ChatCapabilities::default();
+        };
         let policy = self.policy_for(ctx, scope_dirs);
         Self::capabilities_of(&policy, &(self.support)(kind))
     }
@@ -157,7 +187,13 @@ mod tests {
     }
 
     fn tool(name: &str, key: &str, read_only: Option<bool>) -> McpTool {
-        McpTool { name: name.into(), full_name: format!("mcp__{key}__{name}"), allowed: true, read_only_hint: read_only, destructive_hint: None }
+        McpTool {
+            name: name.into(),
+            full_name: format!("mcp__{key}__{name}"),
+            allowed: true,
+            read_only_hint: read_only,
+            destructive_hint: None,
+        }
     }
 
     fn setup(support: ApprovalSupport) -> (ApprovalToolPolicy, Arc<Registry>, Arc<Broker>) {
@@ -165,19 +201,46 @@ mod tests {
         let broker = Arc::new(Broker::default());
         let cfg = PersonalSourcesConfig {
             mcp_servers: vec![
-                McpServer { id: "s1".into(), key: "kb".into(), label: "KB".into(), enabled: true, tools: vec![tool("search", "kb", Some(true)), tool("create_page", "kb", Some(false))], ..Default::default() },
-                McpServer { id: "s2".into(), key: "other".into(), label: "Other".into(), enabled: true, tools: vec![tool("delete_all", "other", None)], ..Default::default() },
+                McpServer {
+                    id: "s1".into(),
+                    key: "kb".into(),
+                    label: "KB".into(),
+                    enabled: true,
+                    tools: vec![
+                        tool("search", "kb", Some(true)),
+                        tool("create_page", "kb", Some(false)),
+                    ],
+                    ..Default::default()
+                },
+                McpServer {
+                    id: "s2".into(),
+                    key: "other".into(),
+                    label: "Other".into(),
+                    enabled: true,
+                    tools: vec![tool("delete_all", "other", None)],
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         };
         let sup = support.clone();
-        let policy = ApprovalToolPolicy::new(registry.clone(), broker.clone(), Arc::new(RwLock::new(cfg)), Arc::new(move |_| sup.clone()));
+        let policy = ApprovalToolPolicy::new(
+            registry.clone(),
+            broker.clone(),
+            Arc::new(RwLock::new(cfg)),
+            Arc::new(move |_| sup.clone()),
+        );
         (policy, registry, broker)
     }
 
     fn launch() -> SourcesLaunch {
         SourcesLaunch {
-            allowed_tools: vec!["mcp__kb__search".into(), "mcp__kb__create_page".into(), "mcp__other__delete_all".into(), "Read".into()],
+            allowed_tools: vec![
+                "mcp__kb__search".into(),
+                "mcp__kb__create_page".into(),
+                "mcp__other__delete_all".into(),
+                "Read".into(),
+            ],
             ..Default::default()
         }
     }
@@ -186,7 +249,11 @@ mod tests {
     fn a_cli_that_can_ask_keeps_its_tools_and_registers_approvals() {
         let (p, registry, _) = setup(ApprovalSupport::Supported);
         let ids = vec!["s1".to_string()];
-        let ctx = ToolContext { chat_id: "c1", kind: Some(CliAgentKind::Claude), server_ids: &ids };
+        let ctx = ToolContext {
+            chat_id: "c1",
+            kind: Some(CliAgentKind::Claude),
+            server_ids: &ids,
+        };
         let mut l = launch();
         p.adjust_launch(&ctx, &mut l);
         assert!(l.disallowed_tools.is_empty());
@@ -196,9 +263,18 @@ mod tests {
         assert!(reg[0].can_ask);
         assert_eq!(reg[0].chat_id, "c1");
         // only the chat's own servers are in its policy
-        assert_eq!(reg[0].policy.mcp("kb", "search"), crate::llm::cli_agent::approval::ToolVerdict::Allow);
-        assert_ne!(reg[0].policy.mcp("kb", "create_page"), crate::llm::cli_agent::approval::ToolVerdict::Allow);
-        assert!(!reg[0].policy.tools.contains_key(&("other".to_string(), "delete_all".to_string())));
+        assert_eq!(
+            reg[0].policy.mcp("kb", "search"),
+            crate::llm::cli_agent::approval::ToolVerdict::Allow
+        );
+        assert_ne!(
+            reg[0].policy.mcp("kb", "create_page"),
+            crate::llm::cli_agent::approval::ToolVerdict::Allow
+        );
+        assert!(!reg[0]
+            .policy
+            .tools
+            .contains_key(&("other".to_string(), "delete_all".to_string())));
         let caps = p.describe(&ctx, &[]);
         assert!(caps.can_ask && caps.tools_off.is_empty());
         assert!(caps.notes[0].contains("ask you first"));
@@ -208,19 +284,37 @@ mod tests {
     fn a_cli_that_cannot_ask_has_those_tools_off_and_says_why() {
         let (p, registry, _) = setup(ApprovalSupport::Unsupported("Codex can't ask yet.".into()));
         let ids = vec!["s1".to_string(), "s2".to_string()];
-        let ctx = ToolContext { chat_id: "c1", kind: Some(CliAgentKind::Codex), server_ids: &ids };
+        let ctx = ToolContext {
+            chat_id: "c1",
+            kind: Some(CliAgentKind::Codex),
+            server_ids: &ids,
+        };
         let mut l = launch();
         p.adjust_launch(&ctx, &mut l);
-        assert!(l.disallowed_tools.contains(&"mcp__kb__create_page".to_string()));
-        assert!(l.disallowed_tools.contains(&"mcp__other__delete_all".to_string()), "unknown tools ask, so they are off");
-        assert!(!l.allowed_tools.contains(&"mcp__kb__create_page".to_string()));
-        assert!(l.allowed_tools.contains(&"mcp__kb__search".to_string()) && l.allowed_tools.contains(&"Read".to_string()));
+        assert!(l
+            .disallowed_tools
+            .contains(&"mcp__kb__create_page".to_string()));
+        assert!(
+            l.disallowed_tools
+                .contains(&"mcp__other__delete_all".to_string()),
+            "unknown tools ask, so they are off"
+        );
+        assert!(!l
+            .allowed_tools
+            .contains(&"mcp__kb__create_page".to_string()));
+        assert!(
+            l.allowed_tools.contains(&"mcp__kb__search".to_string())
+                && l.allowed_tools.contains(&"Read".to_string())
+        );
         p.before_run(&ctx);
         assert!(!registry.registered.lock().unwrap()[0].can_ask);
         let caps = p.describe(&ctx, &[]);
         assert!(!caps.can_ask);
         assert_eq!(caps.tools_off.len(), 2);
-        assert!(caps.tools_off.iter().all(|t| t.reason.contains("Codex can't ask yet.")));
+        assert!(caps
+            .tools_off
+            .iter()
+            .all(|t| t.reason.contains("Codex can't ask yet.")));
         assert!(caps.notes[0].contains("off in this chat"));
     }
 
@@ -228,7 +322,11 @@ mod tests {
     fn cancel_refuses_open_questions_and_close_forgets_the_chat() {
         let (p, registry, broker) = setup(ApprovalSupport::Supported);
         let ids = vec!["s1".to_string()];
-        let ctx = ToolContext { chat_id: "c1", kind: Some(CliAgentKind::Claude), server_ids: &ids };
+        let ctx = ToolContext {
+            chat_id: "c1",
+            kind: Some(CliAgentKind::Claude),
+            server_ids: &ids,
+        };
         let mut l = launch();
         p.adjust_launch(&ctx, &mut l);
         p.on_cancel("c1");

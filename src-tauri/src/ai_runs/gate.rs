@@ -59,7 +59,10 @@ pub fn local_server_id(provider: &ProviderType, base_url: Option<&str>) -> Optio
         _ => return None,
     };
     let url = reqwest::Url::parse(base).ok()?;
-    let host = url.host_str()?.trim_matches(|c| c == '[' || c == ']').to_lowercase();
+    let host = url
+        .host_str()?
+        .trim_matches(|c| c == '[' || c == ']')
+        .to_lowercase();
     let loopback = matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1" | "0.0.0.0")
         || host.ends_with(".localhost")
         || host.starts_with("127.");
@@ -67,7 +70,11 @@ pub fn local_server_id(provider: &ProviderType, base_url: Option<&str>) -> Optio
         return None;
     }
     // A name for this machine is one server whichever way it is spelled.
-    let host = if loopback { "localhost".to_string() } else { host };
+    let host = if loopback {
+        "localhost".to_string()
+    } else {
+        host
+    };
     Some(format!("{host}:{}", url.port().unwrap_or(default_port)))
 }
 
@@ -182,14 +189,37 @@ mod tests {
     #[test]
     fn local_server_ids() {
         let id = |p: ProviderType, u: Option<&str>| local_server_id(&p, u);
-        assert_eq!(id(ProviderType::Ollama, None).as_deref(), Some("localhost:11434"));
-        assert_eq!(id(ProviderType::Ollama, Some("http://127.0.0.1:11434")).as_deref(), Some("localhost:11434"));
-        assert_eq!(id(ProviderType::LmStudio, None).as_deref(), Some("localhost:1234"));
-        assert_eq!(id(ProviderType::Ollama, Some("http://gpu-box:11434")).as_deref(), Some("gpu-box:11434"));
-        assert_eq!(id(ProviderType::Custom, Some("http://localhost:8080/v1")).as_deref(), Some("localhost:8080"));
-        assert_eq!(id(ProviderType::Custom, Some("https://api.example.com/v1")), None);
+        assert_eq!(
+            id(ProviderType::Ollama, None).as_deref(),
+            Some("localhost:11434")
+        );
+        assert_eq!(
+            id(ProviderType::Ollama, Some("http://127.0.0.1:11434")).as_deref(),
+            Some("localhost:11434")
+        );
+        assert_eq!(
+            id(ProviderType::LmStudio, None).as_deref(),
+            Some("localhost:1234")
+        );
+        assert_eq!(
+            id(ProviderType::Ollama, Some("http://gpu-box:11434")).as_deref(),
+            Some("gpu-box:11434")
+        );
+        assert_eq!(
+            id(ProviderType::Custom, Some("http://localhost:8080/v1")).as_deref(),
+            Some("localhost:8080")
+        );
+        assert_eq!(
+            id(ProviderType::Custom, Some("https://api.example.com/v1")),
+            None
+        );
         assert_eq!(id(ProviderType::Custom, None), None);
-        for p in [ProviderType::Openai, ProviderType::Anthropic, ProviderType::ClaudeCli, ProviderType::Gemini] {
+        for p in [
+            ProviderType::Openai,
+            ProviderType::Anthropic,
+            ProviderType::ClaudeCli,
+            ProviderType::Gemini,
+        ] {
             assert_eq!(id(p, None), None);
         }
     }
@@ -211,12 +241,18 @@ mod tests {
     async fn wait_idle_returns_at_once_when_free_and_after_the_drop_when_busy() {
         let gate = LiveGate::new();
         let cancel = CancelToken::new();
-        assert_eq!(gate.wait_idle(&cancel, Duration::from_secs(5)).await, GateWait::Idle);
+        assert_eq!(
+            gate.wait_idle(&cancel, Duration::from_secs(5)).await,
+            GateWait::Idle
+        );
 
         let busy = gate.enter();
         let waiter = {
             let gate = gate.clone();
-            tokio::spawn(async move { gate.wait_idle(&CancelToken::new(), Duration::from_secs(5)).await })
+            tokio::spawn(async move {
+                gate.wait_idle(&CancelToken::new(), Duration::from_secs(5))
+                    .await
+            })
         };
         tokio::time::sleep(Duration::from_millis(30)).await;
         assert!(!waiter.is_finished());
@@ -228,10 +264,17 @@ mod tests {
     async fn wait_idle_stops_on_cancel_and_on_the_limit() {
         let gate = LiveGate::new();
         let _busy = gate.enter();
-        assert_eq!(gate.wait_idle(&CancelToken::new(), Duration::from_millis(40)).await, GateWait::TimedOut);
+        assert_eq!(
+            gate.wait_idle(&CancelToken::new(), Duration::from_millis(40))
+                .await,
+            GateWait::TimedOut
+        );
         let cancel = CancelToken::new();
         cancel.cancel();
-        assert_eq!(gate.wait_idle(&cancel, Duration::from_secs(5)).await, GateWait::Cancelled);
+        assert_eq!(
+            gate.wait_idle(&cancel, Duration::from_secs(5)).await,
+            GateWait::Cancelled
+        );
     }
 
     #[tokio::test]
@@ -244,15 +287,23 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(30)).await;
         assert!(!watcher.is_finished());
         let _busy = gate.enter();
-        tokio::time::timeout(Duration::from_secs(2), watcher).await.unwrap().unwrap();
+        tokio::time::timeout(Duration::from_secs(2), watcher)
+            .await
+            .unwrap()
+            .unwrap();
         // Already busy: returns at once.
-        tokio::time::timeout(Duration::from_millis(200), gate.live_started()).await.unwrap();
+        tokio::time::timeout(Duration::from_millis(200), gate.live_started())
+            .await
+            .unwrap();
     }
 
     #[test]
     fn the_target_decides_which_server_competes() {
         let gate = LiveGate::new();
-        assert!(gate.shares_server("localhost:11434"), "unknown is the safe side");
+        assert!(
+            gate.shares_server("localhost:11434"),
+            "unknown is the safe side"
+        );
         gate.set_target(LiveTarget::NoLocalServer);
         assert!(!gate.shares_server("localhost:11434"));
         gate.set_target(LiveTarget::for_provider(&ProviderType::Ollama, None));

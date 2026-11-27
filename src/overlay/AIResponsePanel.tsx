@@ -1,4 +1,3 @@
-import { readingTextColor } from "../lib/themeText";
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useStreamStore } from "../stores/streamStore";
 import { useMeetingStore } from "../stores/meetingStore";
@@ -17,7 +16,6 @@ import { noRemoteImages } from "../lib/answerMarkdown";
 import { getModeLabel } from "../lib/utils";
 import type { AIResponse, StreamSource } from "../lib/types";
 import { useConfigStore } from "../stores/configStore";
-import { ColorPickerButton } from "../components/ColorPickerButton";
 import { ResponseProgress } from "./ResponseProgress";
 import { ResponseHistoryList } from "./ResponseHistoryList";
 import { formatDuration } from "./responseFormat";
@@ -48,25 +46,6 @@ export function AIResponsePanel({ short = false }: { short?: boolean } = {}) {
   const meetingStart = useMeetingStore((s) => s.meetingStartTime);
 
   const assistKey = useConfigStore((s) => s.hotkeys.mode_assist);
-  const aiResponseFontSize = useConfigStore((s) => s.aiResponseFontSize ?? 12);
-  const aiResponseTextColor = useConfigStore((s) => s.aiResponseTextColor ?? "#d4d4d8");
-  const aiResponseLineHeight = useConfigStore((s) => s.aiResponseLineHeight ?? 1.6);
-  const aiResponseHPad = useConfigStore((s) => s.aiResponseHPad ?? 0);
-  const aiResponseAlign = useConfigStore((s) => s.aiResponseAlign ?? "left");
-  const setAiResponseFontSize = useConfigStore((s) => s.setAiResponseFontSize);
-  const setAiResponseTextColor = useConfigStore((s) => s.setAiResponseTextColor);
-  const setAiResponseLineHeight = useConfigStore((s) => s.setAiResponseLineHeight);
-  const setAiResponseHPad = useConfigStore((s) => s.setAiResponseHPad);
-  const setAiResponseAlign = useConfigStore((s) => s.setAiResponseAlign);
-
-  const proseStyle = {
-    fontSize: `${aiResponseFontSize}px`,
-    color: readingTextColor(aiResponseTextColor),
-    lineHeight: aiResponseLineHeight,
-    paddingLeft: `${aiResponseHPad}px`,
-    paddingRight: `${aiResponseHPad}px`,
-    textAlign: aiResponseAlign as React.CSSProperties["textAlign"],
-  };
 
   const [activeTab, setActiveTab] = useState<TabId>("current");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -227,7 +206,7 @@ export function AIResponsePanel({ short = false }: { short?: boolean } = {}) {
             <SourceActivityLines lines={currentActivity.map((a) => a.label)} />
             <SourceNotices notices={currentNotices} />
             {currentContent && (
-              <div className="prose prose-sm prose-invert max-w-none leading-relaxed" style={proseStyle}>
+              <div className="prose max-w-none text-left text-foreground text-[clamp(0.8rem,1.1vw,1rem)] leading-[1.55] px-[clamp(0.5rem,1.4vw,1.25rem)]">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={noRemoteImages}>
                   {currentContent}
                 </ReactMarkdown>
@@ -251,7 +230,7 @@ export function AIResponsePanel({ short = false }: { short?: boolean } = {}) {
               />
             )}
             <SourceNotices notices={currentResponse?.source_notices ?? []} />
-            <div className="prose prose-sm prose-invert max-w-none leading-relaxed" style={proseStyle}>
+            <div className="prose max-w-none text-left text-foreground text-[clamp(0.8rem,1.1vw,1rem)] leading-[1.55] px-[clamp(0.5rem,1.4vw,1.25rem)]">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={noRemoteImages}>
                 {currentContent}
               </ReactMarkdown>
@@ -273,7 +252,7 @@ export function AIResponsePanel({ short = false }: { short?: boolean } = {}) {
               onPin={() => handlePin(displayResponse!.id)}
             />
             <SourceNotices notices={displayResponse.source_notices ?? []} />
-            <div className="prose prose-sm prose-invert max-w-none leading-relaxed" style={proseStyle}>
+            <div className="prose max-w-none text-left text-foreground text-[clamp(0.8rem,1.1vw,1rem)] leading-[1.55] px-[clamp(0.5rem,1.4vw,1.25rem)]">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={noRemoteImages}>
                 {displayContent}
               </ReactMarkdown>
@@ -295,49 +274,6 @@ export function AIResponsePanel({ short = false }: { short?: boolean } = {}) {
       </div>
       </div>
 
-      {/* Typeset controls */}
-      <div className={`flex shrink-0 flex-col gap-1 border-t border-border/10 px-1 pt-1.5 ${short ? "hidden" : ""}`}>
-        {/* Row 1: font size + color */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="text-[0.6rem] uppercase tracking-widest text-muted-foreground/40 font-medium">AI Text</span>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setAiResponseFontSize(Math.max(8, aiResponseFontSize - 1))} className="h-5 w-5 flex items-center justify-center rounded text-[0.6rem] text-muted-foreground/50 hover:bg-accent/40 hover:text-foreground/70 transition-colors" aria-label="Smaller AI text">A</button>
-            <span className="text-[0.6rem] tabular-nums text-muted-foreground/50 w-6 text-center">{aiResponseFontSize}</span>
-            <button onClick={() => setAiResponseFontSize(Math.min(32, aiResponseFontSize + 1))} className="h-5 w-5 flex items-center justify-center rounded text-[0.75rem] font-medium text-muted-foreground/50 hover:bg-accent/40 hover:text-foreground/70 transition-colors" aria-label="Larger AI text">A</button>
-          </div>
-          <ColorPickerButton value={aiResponseTextColor} onChange={setAiResponseTextColor} label="AI text color" />
-        </div>
-        {/* Row 2: line height + horizontal padding + text align */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {/* Line height */}
-          <div className="flex items-center gap-1">
-            <span className="text-[0.6rem] text-muted-foreground/40">LH</span>
-            <button onClick={() => setAiResponseLineHeight(Math.max(1.0, parseFloat((aiResponseLineHeight - 0.1).toFixed(1))))} className="h-5 w-5 flex items-center justify-center rounded text-[0.65rem] text-muted-foreground/50 hover:bg-accent/40 hover:text-foreground/70 transition-colors" aria-label="Decrease line height">−</button>
-            <span className="text-[0.6rem] tabular-nums text-muted-foreground/50 w-6 text-center">{aiResponseLineHeight.toFixed(1)}</span>
-            <button onClick={() => setAiResponseLineHeight(Math.min(3.0, parseFloat((aiResponseLineHeight + 0.1).toFixed(1))))} className="h-5 w-5 flex items-center justify-center rounded text-[0.65rem] text-muted-foreground/50 hover:bg-accent/40 hover:text-foreground/70 transition-colors" aria-label="Increase line height">+</button>
-          </div>
-          {/* Horizontal padding */}
-          <div className="flex items-center gap-1">
-            <span className="text-[0.6rem] text-muted-foreground/40">↔</span>
-            <button onClick={() => setAiResponseHPad(Math.max(0, aiResponseHPad - 4))} className="h-5 w-5 flex items-center justify-center rounded text-[0.65rem] text-muted-foreground/50 hover:bg-accent/40 hover:text-foreground/70 transition-colors" aria-label="Decrease margin">−</button>
-            <span className="text-[0.6rem] tabular-nums text-muted-foreground/50 w-6 text-center">{aiResponseHPad}</span>
-            <button onClick={() => setAiResponseHPad(Math.min(80, aiResponseHPad + 4))} className="h-5 w-5 flex items-center justify-center rounded text-[0.65rem] text-muted-foreground/50 hover:bg-accent/40 hover:text-foreground/70 transition-colors" aria-label="Increase margin">+</button>
-          </div>
-          {/* Text align */}
-          <div className="flex items-center gap-0.5 rounded border border-border/20 overflow-hidden">
-            {(["left", "center", "right"] as const).map((a) => (
-              <button
-                key={a}
-                onClick={() => setAiResponseAlign(a)}
-                className={`flex h-6 min-w-6 items-center justify-center px-1.5 text-[0.6rem] font-medium transition-colors ui-focus ${aiResponseAlign === a ? "bg-primary/20 text-primary" : "text-muted-foreground/40 hover:text-muted-foreground/70"}`}
-                aria-label={`Align ${a}`}
-              >
-                {a === "left" ? "L" : a === "center" ? "C" : "R"}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

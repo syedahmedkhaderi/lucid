@@ -14,6 +14,7 @@ pub fn run(conn: &Connection) -> Result<(), rusqlite::Error> {
     v6_translation_schema(conn)?;
     v7_meeting_chat(conn)?;
     v8_segment_speaker_tag(conn)?;
+    v9_meeting_context(conn)?;
 
     log::info!("Database migrations completed successfully");
     Ok(())
@@ -171,9 +172,7 @@ fn v2_rag_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
 
 /// Schema v4: Add segment_id to meeting_bookmarks for segment-anchored bookmarks.
 fn v4_bookmark_segment_id(conn: &Connection) -> Result<(), rusqlite::Error> {
-    if let Err(e) =
-        conn.execute_batch("ALTER TABLE meeting_bookmarks ADD COLUMN segment_id TEXT")
-    {
+    if let Err(e) = conn.execute_batch("ALTER TABLE meeting_bookmarks ADD COLUMN segment_id TEXT") {
         let msg = e.to_string();
         if !msg.contains("duplicate column") {
             log::warn!("ALTER TABLE meeting_bookmarks warning: {}", msg);
@@ -254,7 +253,22 @@ fn v7_meeting_chat(conn: &Connection) -> Result<(), rusqlite::Error> {
 /// Schema v8: diarization speaker tag ("S1", "S2"...) of remote-party
 /// transcript lines; NULL for untagged lines.
 fn v8_segment_speaker_tag(conn: &Connection) -> Result<(), rusqlite::Error> {
-    match conn.execute("ALTER TABLE transcript_segments ADD COLUMN speaker_tag TEXT", []) {
+    match conn.execute(
+        "ALTER TABLE transcript_segments ADD COLUMN speaker_tag TEXT",
+        [],
+    ) {
+        Ok(_) => Ok(()),
+        Err(e) if e.to_string().contains("duplicate column name") => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Schema v9: optional meeting-only guidance for the live assistant.
+fn v9_meeting_context(conn: &Connection) -> Result<(), rusqlite::Error> {
+    match conn.execute(
+        "ALTER TABLE meetings ADD COLUMN meeting_context TEXT NOT NULL DEFAULT ''",
+        [],
+    ) {
         Ok(_) => Ok(()),
         Err(e) if e.to_string().contains("duplicate column name") => Ok(()),
         Err(e) => Err(e),
@@ -279,8 +293,7 @@ fn v3_meeting_mode_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
     }
 
     // Add speaker_id column to transcript_segments
-    if let Err(e) =
-        conn.execute_batch("ALTER TABLE transcript_segments ADD COLUMN speaker_id TEXT")
+    if let Err(e) = conn.execute_batch("ALTER TABLE transcript_segments ADD COLUMN speaker_id TEXT")
     {
         let msg = e.to_string();
         if !msg.contains("duplicate column") {

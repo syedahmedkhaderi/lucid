@@ -103,11 +103,7 @@ pub fn credential_delete(provider: &str) -> Result<(), String> {
     let target_wide = to_wide(&target);
 
     unsafe {
-        let result = CredDeleteW(
-            PCWSTR(target_wide.as_ptr()),
-            CRED_TYPE_GENERIC,
-            None,
-        );
+        let result = CredDeleteW(PCWSTR(target_wide.as_ptr()), CRED_TYPE_GENERIC, None);
 
         match result {
             Ok(()) => Ok(()),

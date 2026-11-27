@@ -1759,6 +1759,45 @@ mod tests {
     }
 
     #[test]
+    fn a_question_about_one_of_five_hundred_csv_records_retrieves_that_exact_row() {
+        let mut conn = mem_db();
+        let mut csv = String::from("Account ID,Region,Status,Owner,Amount\n");
+        for i in 1..=500 {
+            csv.push_str(&format!(
+                "ACCT-{i:04},Region {},{},Owner {},{}\n",
+                i % 7,
+                if i == 427 { "Escalated" } else { "Open" },
+                i % 11,
+                i + 6000
+            ));
+        }
+        let text = crate::context::extract_csv_text(csv.as_bytes()).unwrap();
+        let prov = Prov::new();
+        prov.docs.lock().unwrap().push(DocInput {
+            id: "renewals.csv".into(),
+            name: "Renewals.csv".into(),
+            text,
+            pages: None,
+        });
+        let indexed = run(&mut conn, prov.as_ref());
+        assert_eq!(indexed.documents_indexed, 1);
+
+        let scope = SearchScope {
+            document_ids: vec!["renewals.csv".into()],
+            ..Default::default()
+        };
+        let hits = search(&conn, &scope, "ACCT-0427", &[], 5).unwrap();
+        assert!(
+            !hits.is_empty(),
+            "the exact account identifier should retrieve a source row"
+        );
+        assert!(hits[0].text.contains("Row 428"));
+        assert!(hits[0].text.contains("Account ID: ACCT-0427"));
+        assert!(hits[0].text.contains("Status: Escalated"));
+        assert!(hits[0].text.contains("Amount: 6427"));
+    }
+
+    #[test]
     fn pdf_document_passages_keep_their_original_page_numbers() {
         let mut conn = mem_db();
         let prov = Prov::new();

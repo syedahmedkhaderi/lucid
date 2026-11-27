@@ -6,7 +6,9 @@ use crate::ai_runs::AiPurpose;
 use crate::live_common::{Clock, LlmCall};
 use crate::live_notes::db::StoredNotes;
 use crate::live_notes::doc::{BlockKind, NoteDoc};
-use crate::live_notes::engine::{NotesConfig, NotesEngine, NotesSink, NotesSnapshot, NotesStatus, NotesStore, TranscriptLine};
+use crate::live_notes::engine::{
+    NotesConfig, NotesEngine, NotesSink, NotesSnapshot, NotesStatus, NotesStore, TranscriptLine,
+};
 use crate::live_notes::prompts::{Detail, NotesPromptOptions, OutputLanguage};
 use crate::live_notes::reducer::ReduceReport;
 use crate::live_notes::trigger::{Decision, RunReason};
@@ -26,9 +28,22 @@ use tokio::sync::{mpsc, oneshot};
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum NoteEdit {
-    Update { id: String, text: Option<String>, r#type: Option<String>, pinned: Option<bool> },
-    Add { id: String, r#type: String, parent: Option<String>, text: String, after: Option<String> },
-    Delete { id: String },
+    Update {
+        id: String,
+        text: Option<String>,
+        r#type: Option<String>,
+        pinned: Option<bool>,
+    },
+    Add {
+        id: String,
+        r#type: String,
+        parent: Option<String>,
+        text: String,
+        after: Option<String>,
+    },
+    Delete {
+        id: String,
+    },
 }
 
 pub enum NotesCmd {
@@ -109,7 +124,12 @@ pub fn doc_to_contract(doc: &NoteDoc) -> Value {
 /// Applies a user edit to a document. Returns false when nothing matched.
 pub fn apply_edit(doc: &mut NoteDoc, edit: &NoteEdit) -> Result<(), String> {
     match edit {
-        NoteEdit::Update { id, text, r#type, pinned } => {
+        NoteEdit::Update {
+            id,
+            text,
+            r#type,
+            pinned,
+        } => {
             if doc.get(id).is_none() {
                 return Err(format!("There is no note {id}"));
             }
@@ -133,10 +153,20 @@ pub fn apply_edit(doc: &mut NoteDoc, edit: &NoteEdit) -> Result<(), String> {
             }
             Ok(())
         }
-        NoteEdit::Add { id, r#type, parent, text, after } => {
-            let kind = BlockKind::from_loose(r#type).ok_or_else(|| format!("Unknown type: {}", r#type))?;
-            let newid = doc.user_add_with_id(Some(id), kind, parent.as_deref(), text, after.as_deref(), 0);
-            newid.map(|_| ()).ok_or_else(|| "The text is empty".to_string())
+        NoteEdit::Add {
+            id,
+            r#type,
+            parent,
+            text,
+            after,
+        } => {
+            let kind =
+                BlockKind::from_loose(r#type).ok_or_else(|| format!("Unknown type: {}", r#type))?;
+            let newid =
+                doc.user_add_with_id(Some(id), kind, parent.as_deref(), text, after.as_deref(), 0);
+            newid
+                .map(|_| ())
+                .ok_or_else(|| "The text is empty".to_string())
         }
         NoteEdit::Delete { id } => {
             if doc.user_delete(id) {
@@ -173,7 +203,8 @@ impl NotesStore for DbStore {
         if self.discarded.load(Ordering::SeqCst) {
             return Ok(());
         }
-        self.db.save_notes(&self.meeting_id, &s.doc, &s.status, s.tokens_used, s.cap)
+        self.db
+            .save_notes(&self.meeting_id, &s.doc, &s.status, s.tokens_used, s.cap)
     }
 }
 
@@ -190,7 +221,11 @@ fn prompt_of(s: &NotetakerSettings) -> NotesPromptOptions {
 }
 
 pub fn selection_of(s: &NotetakerSettings) -> Selection {
-    Selection { provider: s.provider.clone(), model: s.model.clone(), effort: s.effort.clone() }
+    Selection {
+        provider: s.provider.clone(),
+        model: s.model.clone(),
+        effort: s.effort.clone(),
+    }
 }
 
 fn cfg_from(s: &NotetakerSettings) -> NotesConfig {
@@ -201,7 +236,12 @@ fn cfg_from(s: &NotetakerSettings) -> NotesConfig {
 }
 
 pub fn spawn(p: NotesParams) -> Result<NotesHandle, String> {
-    let swap = SwapLlm::new(p.factory.clone(), AiPurpose::Notes, &p.meeting_id, selection_of(&p.settings))?;
+    let swap = SwapLlm::new(
+        p.factory.clone(),
+        AiPurpose::Notes,
+        &p.meeting_id,
+        selection_of(&p.settings),
+    )?;
     let (tx, rx) = mpsc::unbounded_channel();
     let handle = NotesHandle {
         tx,
@@ -225,7 +265,10 @@ mod tests {
     fn old_saved_language_preferences_still_produce_english_notes() {
         let mut settings = NotetakerSettings::default();
         settings.language = "meeting".into();
-        assert_eq!(prompt_of(&settings).language, OutputLanguage::Fixed("en".into()));
+        assert_eq!(
+            prompt_of(&settings).language,
+            OutputLanguage::Fixed("en".into())
+        );
     }
 }
 
@@ -265,11 +308,21 @@ impl Actor {
     fn new(mut p: NotesParams, swap: Arc<SwapLlm>, handle: &NotesHandle) -> Self {
         let dirty = Arc::new(AtomicBool::new(false));
         let discarded = Arc::new(AtomicBool::new(false));
-        let sink = Arc::new(ActorSink { dirty: dirty.clone() });
-        let store = Arc::new(DbStore { db: p.db.clone(), meeting_id: p.meeting_id.clone(), discarded: discarded.clone() });
+        let sink = Arc::new(ActorSink {
+            dirty: dirty.clone(),
+        });
+        let store = Arc::new(DbStore {
+            db: p.db.clone(),
+            meeting_id: p.meeting_id.clone(),
+            discarded: discarded.clone(),
+        });
         let mut cfg = cfg_from(&p.settings);
         // the update of an ended meeting may take several passes: it is not held to the live end's bound
-        cfg.final_timeout = if p.one_shot { p.final_timeout.saturating_mul(30) } else { p.final_timeout };
+        cfg.final_timeout = if p.one_shot {
+            p.final_timeout.saturating_mul(30)
+        } else {
+            p.final_timeout
+        };
         let mut engine = NotesEngine::new(swap.clone(), p.clock.clone(), cfg, sink, store);
         if let Some(r) = p.resume.take() {
             engine.resume_from(r.doc, r.tokens_used, r.cap);
@@ -306,7 +359,11 @@ impl Actor {
             quitting: false,
             interrupted: false,
             one_shot,
-            finish_deadline: if one_shot { Some(tokio::time::Instant::now() + final_timeout.saturating_mul(30)) } else { None },
+            finish_deadline: if one_shot {
+                Some(tokio::time::Instant::now() + final_timeout.saturating_mul(30))
+            } else {
+                None
+            },
             closing_begun: None,
             yielded: false,
         }
@@ -334,10 +391,25 @@ impl Actor {
             user_stopped: self.user_stopped,
             manual_mode: !self.auto(),
             started: st.tokens_used > 0 || st.pending_words > 0,
-            not_covered: if self.done { self.engine.uncovered() } else { None },
-            ended: if self.done { self.engine.doc().ended.clone() } else { None },
-            moved_online: self.swap.moved_online().map(|(from, to)| crate::live_runtime::state::MovedOnline { from, to }),
-            next_in_ms: if self.auto() { self.engine.next_run_in_ms() } else { None },
+            not_covered: if self.done {
+                self.engine.uncovered()
+            } else {
+                None
+            },
+            ended: if self.done {
+                self.engine.doc().ended.clone()
+            } else {
+                None
+            },
+            moved_online: self
+                .swap
+                .moved_online()
+                .map(|(from, to)| crate::live_runtime::state::MovedOnline { from, to }),
+            next_in_ms: if self.auto() {
+                self.engine.next_run_in_ms()
+            } else {
+                None
+            },
             final_note: self.engine.final_note.clone(),
             stop_reason: None,
             model: self.swap.label(),
@@ -363,17 +435,25 @@ impl Actor {
             _ => true,
         };
         if same.as_ref() != Some(&snap) || deadline_moved {
-            self.p.emitter.emit("notetaker_state", serde_json::to_value(&snap).unwrap_or(Value::Null));
+            self.p.emitter.emit(
+                "notetaker_state",
+                serde_json::to_value(&snap).unwrap_or(Value::Null),
+            );
             self.last = Some(snap);
             self.last_deadline = deadline;
         }
-        self.dropped.store(self.engine.dropped_lines, Ordering::SeqCst);
-        self.has_new.store(self.engine.has_pending(), Ordering::SeqCst);
-        self.sent.store(self.engine.sent_tokens_total, Ordering::SeqCst);
+        self.dropped
+            .store(self.engine.dropped_lines, Ordering::SeqCst);
+        self.has_new
+            .store(self.engine.has_pending(), Ordering::SeqCst);
+        self.sent
+            .store(self.engine.sent_tokens_total, Ordering::SeqCst);
     }
 
     fn flush_doc(&mut self, force: bool) {
-        if self.dirty.load(Ordering::SeqCst) && (force || self.last_doc_emit.elapsed() >= Duration::from_millis(250)) {
+        if self.dirty.load(Ordering::SeqCst)
+            && (force || self.last_doc_emit.elapsed() >= Duration::from_millis(250))
+        {
             self.dirty.store(false, Ordering::SeqCst);
             self.last_doc_emit = Instant::now();
             self.p.emitter.emit(
@@ -436,7 +516,13 @@ impl Actor {
                 // what was never sent stays known: the range is saved with the notes
                 self.engine.mark_uncovered();
                 let st = self.engine.status();
-                let _ = self.p.db.save_notes(&self.p.meeting_id, self.engine.doc(), "interrupted", st.tokens_used, st.cap);
+                let _ = self.p.db.save_notes(
+                    &self.p.meeting_id,
+                    self.engine.doc(),
+                    "interrupted",
+                    st.tokens_used,
+                    st.cap,
+                );
                 self.interrupted = true;
                 self.quitting = true;
             }
@@ -461,7 +547,9 @@ impl Actor {
     /// One run when the trigger says so, taking commands while the call is in flight.
     /// Returns whether a pass was made.
     async fn maybe_run(&mut self, rx: &mut mpsc::UnboundedReceiver<NotesCmd>) -> bool {
-        let Decision::Run(reason) = self.engine.poll() else { return false };
+        let Decision::Run(reason) = self.engine.poll() else {
+            return false;
+        };
         let allowed = self.auto() || matches!(reason, RunReason::Manual | RunReason::Final);
         if !allowed {
             return false;
@@ -484,7 +572,11 @@ impl Actor {
         let result = loop {
             // a run still going when the meeting ended is given `final_timeout` and then cancelled:
             // its lines go back and the end says which minutes are not covered
-            let deadline = if timed_out { None } else { self.finish_deadline };
+            let deadline = if timed_out {
+                None
+            } else {
+                self.finish_deadline
+            };
             tokio::select! {
                 r = &mut fut => break r,
                 cmd = rx.recv() => match cmd {
@@ -509,7 +601,9 @@ impl Actor {
                 }
             }
         };
-        if self.discarded.load(Ordering::SeqCst) || (self.p.generation)(&self.p.meeting_id, false) != gen0 {
+        if self.discarded.load(Ordering::SeqCst)
+            || (self.p.generation)(&self.p.meeting_id, false) != gen0
+        {
             // the scope generation moved or the meeting is going: nothing is applied, the lines go back
             self.engine.abort(prep);
         } else {
@@ -525,7 +619,11 @@ impl Actor {
 
     fn conclude(&mut self, forced: Option<(&str, String)>) {
         let (retried, why) = self.closing_begun.clone().unwrap_or((false, None));
-        let outcome = self.engine.last_outcome().filter(|o| o.reason == RunReason::Final).cloned();
+        let outcome = self
+            .engine
+            .last_outcome()
+            .filter(|o| o.reason == RunReason::Final)
+            .cloned();
         self.engine.conclude(true, retried, why, outcome, forced);
         self.done = true;
     }
@@ -539,10 +637,16 @@ impl Actor {
             self.closing_begun = Some(self.engine.begin_final(true));
         }
         if self.should_yield() {
-            self.conclude(Some(("other_meeting", "Update notes again when it ends".into())));
+            self.conclude(Some((
+                "other_meeting",
+                "Update notes again when it ends".into(),
+            )));
             return true;
         }
-        if self.finish_deadline.is_some_and(|d| tokio::time::Instant::now() >= d) {
+        if self
+            .finish_deadline
+            .is_some_and(|d| tokio::time::Instant::now() >= d)
+        {
             self.conclude(None);
             return true;
         }
@@ -555,7 +659,10 @@ impl Actor {
             return true;
         }
         if self.yielded {
-            self.conclude(Some(("other_meeting", "Update notes again when it ends".into())));
+            self.conclude(Some((
+                "other_meeting",
+                "Update notes again when it ends".into(),
+            )));
             return true;
         }
         let failed = ran && self.engine.last_outcome().is_some_and(|o| !o.ok);
@@ -607,14 +714,21 @@ impl Actor {
             (self.p.on_exit)(&self.p.meeting_id);
             return;
         }
-        if (self.finishing || self.one_shot) && !self.done && !self.interrupted && self.user_stopped {
+        if (self.finishing || self.one_shot) && !self.done && !self.interrupted && self.user_stopped
+        {
             // the person stopped the notes during the passes at the end: what is left is marked, not lost
             self.conclude(Some(("stopped", String::new())));
         }
         if self.interrupted {
             // a run that was in flight finished after the quit saved: save as interrupted once more
             let st = self.engine.status();
-            let _ = self.p.db.save_notes(&self.p.meeting_id, self.engine.doc(), "interrupted", st.tokens_used, st.cap);
+            let _ = self.p.db.save_notes(
+                &self.p.meeting_id,
+                self.engine.doc(),
+                "interrupted",
+                st.tokens_used,
+                st.cap,
+            );
         }
         self.emit_state();
         self.flush_doc(true);

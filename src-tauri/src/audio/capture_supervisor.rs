@@ -131,7 +131,10 @@ pub fn device_choices(kind: CaptureKind, device_id: &str) -> Vec<DeviceChoice> {
     if is_default_id(device_id) {
         vec![DeviceChoice::Default]
     } else if kind.falls_back() {
-        vec![DeviceChoice::Chosen(device_id.to_string()), DeviceChoice::Default]
+        vec![
+            DeviceChoice::Chosen(device_id.to_string()),
+            DeviceChoice::Default,
+        ]
     } else {
         vec![DeviceChoice::Chosen(device_id.to_string())]
     }
@@ -147,7 +150,11 @@ pub struct Opened<S> {
 /// so the side can tell its current stream's errors from an older one's.
 pub trait CaptureOpener {
     type Stream;
-    fn open(&mut self, choice: &DeviceChoice, generation: u64) -> Result<Opened<Self::Stream>, String>;
+    fn open(
+        &mut self,
+        choice: &DeviceChoice,
+        generation: u64,
+    ) -> Result<Opened<Self::Stream>, String>;
 }
 
 pub trait Clock {
@@ -208,7 +215,11 @@ pub fn error_callback(
     generation: u64,
 ) -> impl FnMut(cpal::Error) + Send + 'static {
     move |error| {
-        let _ = errors.try_send(SideMessage::StreamError { side, generation, error });
+        let _ = errors.try_send(SideMessage::StreamError {
+            side,
+            generation,
+            error,
+        });
     }
 }
 
@@ -230,7 +241,9 @@ enum Phase {
         attempt: usize,
     },
     /// Reported lost. Probe for the device at `probe_due`, then every `STEADY_RETRY`.
-    Lost { probe_due: Instant },
+    Lost {
+        probe_due: Instant,
+    },
     Stopped,
 }
 
@@ -329,7 +342,10 @@ impl<O: CaptureOpener, C: Clock> Supervisor<O, C> {
         let device = opened.1.device.clone();
         self.adopt(opened);
         log::info!("{}: capturing '{}'", self.kind.label(), device);
-        Ok(Started { device, replaced: errors.into_iter().next() })
+        Ok(Started {
+            device,
+            replaced: errors.into_iter().next(),
+        })
     }
 
     /// Open one device. A stop request refuses it, and a panic inside a
@@ -340,9 +356,11 @@ impl<O: CaptureOpener, C: Clock> Supervisor<O, C> {
         }
         self.last_generation += 1;
         let generation = self.last_generation;
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.opener.open(choice, generation)))
-            .unwrap_or_else(|_| Err("opening the device panicked".to_string()))
-            .map(|opened| (generation, opened))
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.opener.open(choice, generation)
+        }))
+        .unwrap_or_else(|_| Err("opening the device panicked".to_string()))
+        .map(|opened| (generation, opened))
     }
 
     /// The chosen device, then the default one where that is safe.
@@ -367,7 +385,11 @@ impl<O: CaptureOpener, C: Clock> Supervisor<O, C> {
                 self.stop();
                 false
             }
-            SideMessage::StreamError { side, generation, error } => {
+            SideMessage::StreamError {
+                side,
+                generation,
+                error,
+            } => {
                 self.on_stream_error(side, generation, &error);
                 true
             }
@@ -394,7 +416,11 @@ impl<O: CaptureOpener, C: Clock> Supervisor<O, C> {
                     );
                     return;
                 }
-                log::warn!("{label}: {:?}: {error}. Reconnecting '{}'", error.kind(), self.device);
+                log::warn!(
+                    "{label}: {:?}: {error}. Reconnecting '{}'",
+                    error.kind(),
+                    self.device
+                );
                 self.permission_denied = error.kind() == cpal::ErrorKind::PermissionDenied;
                 self.stand_in_probe_due = None;
                 let now = self.clock.now();
@@ -411,11 +437,19 @@ impl<O: CaptureOpener, C: Clock> Supervisor<O, C> {
                     }
                     Some((start, attempts)) => {
                         let due = (now + backoff(attempts)).min(start + GIVE_UP_AFTER);
-                        self.phase = Phase::Pending { due, outage_start: start, attempt: attempts };
+                        self.phase = Phase::Pending {
+                            due,
+                            outage_start: start,
+                            attempt: attempts,
+                        };
                         self.emit(CaptureState::Recovering, self.device.clone(), String::new());
                     }
                     None => {
-                        self.phase = Phase::Pending { due: now + REBUILD_DEBOUNCE, outage_start: now, attempt: 0 };
+                        self.phase = Phase::Pending {
+                            due: now + REBUILD_DEBOUNCE,
+                            outage_start: now,
+                            attempt: 0,
+                        };
                         self.emit(CaptureState::Recovering, self.device.clone(), String::new());
                     }
                 }
@@ -427,8 +461,14 @@ impl<O: CaptureOpener, C: Clock> Supervisor<O, C> {
     fn go_lost(&mut self, now: Instant) {
         self.stream = None;
         self.stand_in_probe_due = None;
-        self.phase = Phase::Lost { probe_due: now + STEADY_RETRY };
-        self.emit(CaptureState::Lost, self.device.clone(), lost_message(self.kind, self.permission_denied));
+        self.phase = Phase::Lost {
+            probe_due: now + STEADY_RETRY,
+        };
+        self.emit(
+            CaptureState::Lost,
+            self.device.clone(),
+            lost_message(self.kind, self.permission_denied),
+        );
     }
 
     /// Start returned before the first open finished, and it later failed on
@@ -451,14 +491,23 @@ impl<O: CaptureOpener, C: Clock> Supervisor<O, C> {
     /// stand-in, or a probe after "lost". Returns when to call again, if ever.
     pub fn poll(&mut self) -> Option<Instant> {
         match self.phase {
-            Phase::Pending { due, outage_start, attempt } => self.poll_pending(due, outage_start, attempt),
+            Phase::Pending {
+                due,
+                outage_start,
+                attempt,
+            } => self.poll_pending(due, outage_start, attempt),
             Phase::Running => self.poll_stand_in(),
             Phase::Lost { probe_due } => self.poll_lost(probe_due),
             Phase::Stopped => None,
         }
     }
 
-    fn poll_pending(&mut self, due: Instant, outage_start: Instant, attempt: usize) -> Option<Instant> {
+    fn poll_pending(
+        &mut self,
+        due: Instant,
+        outage_start: Instant,
+        attempt: usize,
+    ) -> Option<Instant> {
         let now = self.clock.now();
         if now < due {
             return Some(due);
@@ -489,7 +538,11 @@ impl<O: CaptureOpener, C: Clock> Supervisor<O, C> {
                 self.poll_stand_in()
             }
             None => {
-                log::warn!("{label}: reconnect attempt {} failed: {}", attempt + 1, errors.join("; "));
+                log::warn!(
+                    "{label}: reconnect attempt {} failed: {}",
+                    attempt + 1,
+                    errors.join("; ")
+                );
                 let give_up_at = outage_start + GIVE_UP_AFTER;
                 if now >= give_up_at {
                     log::error!("{label}: '{}' didn't come back; still probing", self.device);
@@ -497,7 +550,11 @@ impl<O: CaptureOpener, C: Clock> Supervisor<O, C> {
                     return self.poll();
                 }
                 let next = (now + backoff(attempt)).min(give_up_at);
-                self.phase = Phase::Pending { due: next, outage_start, attempt: attempt + 1 };
+                self.phase = Phase::Pending {
+                    due: next,
+                    outage_start,
+                    attempt: attempt + 1,
+                };
                 Some(next)
             }
         }
@@ -589,7 +646,12 @@ impl<O: CaptureOpener, C: Clock> Supervisor<O, C> {
         if self.stopping() {
             return;
         }
-        (self.sink)(CaptureStatus { side: self.kind.side(), state, device, message });
+        (self.sink)(CaptureStatus {
+            side: self.kind.side(),
+            state,
+            device,
+            message,
+        });
     }
 }
 
@@ -628,7 +690,11 @@ fn back_message(kind: CaptureKind, device: &str) -> String {
 }
 
 fn lost_message(kind: CaptureKind, permission_denied: bool) -> String {
-    let system = if cfg!(target_os = "macos") { "macOS" } else { "Windows" };
+    let system = if cfg!(target_os = "macos") {
+        "macOS"
+    } else {
+        "Windows"
+    };
     if permission_denied {
         return match kind {
             CaptureKind::Output => format!(
@@ -737,7 +803,15 @@ where
     O: CaptureOpener + Send + 'static,
     C: Clock + Send + 'static,
 {
-    let SideSpec { kind, device_id, opener, clock, counters, sink, start_timeout } = spec;
+    let SideSpec {
+        kind,
+        device_id,
+        opener,
+        clock,
+        counters,
+        sink,
+        start_timeout,
+    } = spec;
     let (tx, rx) = messages;
     let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<Started, Vec<String>>>();
     let handoff = Arc::new(AtomicU8::new(WAITING));
@@ -751,12 +825,13 @@ where
     let thread = std::thread::Builder::new()
         .name(thread_name.into())
         .spawn(move || {
-            let mut supervisor =
-                Supervisor::new(kind, &device_id, opener, clock, counters, sink).with_stop_flag(thread_stop);
+            let mut supervisor = Supervisor::new(kind, &device_id, opener, clock, counters, sink)
+                .with_stop_flag(thread_stop);
             let result = supervisor.start();
             // Claim the outcome for start, or find that start has gone on.
-            let claimed =
-                thread_handoff.compare_exchange(WAITING, DONE, Ordering::SeqCst, Ordering::SeqCst).is_ok();
+            let claimed = thread_handoff
+                .compare_exchange(WAITING, DONE, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok();
             match result {
                 Ok(started) => {
                     if claimed {
@@ -777,15 +852,26 @@ where
             }
         })
         .map_err(|e| vec![format!("Failed to start the capture thread: {e}")])?;
-    let handle = SideHandle { kind, messages: tx, stop_requested, thread: Some(thread) };
+    let handle = SideHandle {
+        kind,
+        messages: tx,
+        stop_requested,
+        thread: Some(thread),
+    };
 
     let outcome = match ready_rx.recv_timeout(start_timeout) {
         Err(RecvTimeoutError::Timeout) => {
             if let Some(hook) = before_abandon {
                 hook(&handoff);
             }
-            if handoff.compare_exchange(WAITING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-                log::warn!("{} is slow to start; it keeps opening in the background", kind.label());
+            if handoff
+                .compare_exchange(WAITING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                log::warn!(
+                    "{} is slow to start; it keeps opening in the background",
+                    kind.label()
+                );
                 return Ok((handle, None));
             }
             // The thread claimed the outcome just now: it is sending it.
@@ -802,7 +888,10 @@ where
 
 /// A side's thread after its first open: wait for an error, something due
 /// or Stop.
-fn run_side<O: CaptureOpener, C: Clock>(supervisor: &mut Supervisor<O, C>, rx: &Receiver<SideMessage>) {
+fn run_side<O: CaptureOpener, C: Clock>(
+    supervisor: &mut Supervisor<O, C>,
+    rx: &Receiver<SideMessage>,
+) {
     loop {
         if supervisor.stopping() {
             break;
@@ -890,9 +979,14 @@ pub(crate) mod tests {
 
     impl CaptureOpener for FakeOpener {
         type Stream = FakeStream;
-        fn open(&mut self, choice: &DeviceChoice, _generation: u64) -> Result<Opened<FakeStream>, String> {
+        fn open(
+            &mut self,
+            choice: &DeviceChoice,
+            _generation: u64,
+        ) -> Result<Opened<FakeStream>, String> {
             let mut log = self.log.lock().unwrap();
-            log.attempts.push((self.side, choice.clone(), self.clock.now()));
+            log.attempts
+                .push((self.side, choice.clone(), self.clock.now()));
             let name = match choice {
                 DeviceChoice::Chosen(name) => name.clone(),
                 DeviceChoice::Default => self.default_device.clone(),
@@ -901,7 +995,13 @@ pub(crate) mod tests {
                 return Err(format!("'{name}' not found"));
             }
             log.live[slot(self.side)] += 1;
-            Ok(Opened { stream: FakeStream { side: self.side, log: Arc::clone(&self.log) }, device: name })
+            Ok(Opened {
+                stream: FakeStream {
+                    side: self.side,
+                    log: Arc::clone(&self.log),
+                },
+                device: name,
+            })
         }
     }
 
@@ -939,7 +1039,12 @@ pub(crate) mod tests {
             Arc::new(move |status| statuses.lock().unwrap().push(status))
         }
 
-        fn supervisor(&self, kind: CaptureKind, device_id: &str, default_device: &str) -> Supervisor<FakeOpener, FakeClock> {
+        fn supervisor(
+            &self,
+            kind: CaptureKind,
+            device_id: &str,
+            default_device: &str,
+        ) -> Supervisor<FakeOpener, FakeClock> {
             Supervisor::new(
                 kind,
                 device_id,
@@ -955,7 +1060,13 @@ pub(crate) mod tests {
         }
 
         pub fn attempts(&self, side: CaptureSide) -> usize {
-            self.log.lock().unwrap().attempts.iter().filter(|a| a.0 == side).count()
+            self.log
+                .lock()
+                .unwrap()
+                .attempts
+                .iter()
+                .filter(|a| a.0 == side)
+                .count()
         }
 
         pub fn live(&self, side: CaptureSide) -> usize {
@@ -963,7 +1074,12 @@ pub(crate) mod tests {
         }
 
         pub fn states(&self) -> Vec<CaptureState> {
-            self.statuses.lock().unwrap().iter().map(|s| s.state).collect()
+            self.statuses
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|s| s.state)
+                .collect()
         }
 
         /// Advance in steps, polling like the side thread would.
@@ -991,10 +1107,22 @@ pub(crate) mod tests {
     fn choices_fall_back_to_the_default_only_where_safe() {
         use DeviceChoice::*;
         let headset = || Chosen("Headset".to_string());
-        assert_eq!(device_choices(CaptureKind::Mic, "Headset"), vec![headset(), Default]);
-        assert_eq!(device_choices(CaptureKind::Output, "Headset"), vec![headset(), Default]);
-        assert_eq!(device_choices(CaptureKind::InputThem, "Headset"), vec![headset()]);
-        assert_eq!(device_choices(CaptureKind::Dual, "Headset"), vec![headset()]);
+        assert_eq!(
+            device_choices(CaptureKind::Mic, "Headset"),
+            vec![headset(), Default]
+        );
+        assert_eq!(
+            device_choices(CaptureKind::Output, "Headset"),
+            vec![headset(), Default]
+        );
+        assert_eq!(
+            device_choices(CaptureKind::InputThem, "Headset"),
+            vec![headset()]
+        );
+        assert_eq!(
+            device_choices(CaptureKind::Dual, "Headset"),
+            vec![headset()]
+        );
         assert_eq!(device_choices(CaptureKind::Mic, "default"), vec![Default]);
         assert_eq!(device_choices(CaptureKind::Output, ""), vec![Default]);
     }
@@ -1010,10 +1138,16 @@ pub(crate) mod tests {
 
         assert_eq!(rig.attempts(CaptureSide::You), 2, "start + one reopen");
         assert_eq!(rig.live(CaptureSide::You), 1);
-        assert_eq!(rig.states(), vec![CaptureState::Recovering, CaptureState::Recovered]);
+        assert_eq!(
+            rig.states(),
+            vec![CaptureState::Recovering, CaptureState::Recovered]
+        );
         let statuses = rig.statuses.lock().unwrap();
         assert_eq!(statuses[1].device, "Realtek");
-        assert_eq!(statuses[1].message, "", "same device: nothing to tell the user");
+        assert_eq!(
+            statuses[1].message, "",
+            "same device: nothing to tell the user"
+        );
         assert_eq!(rig.counters.rebuilds(), 1);
     }
 
@@ -1022,14 +1156,27 @@ pub(crate) mod tests {
     fn a_missing_named_mic_falls_back_to_the_default_and_says_so_once() {
         let rig = Rig::new(&["Headset", "Microphone (Realtek)"]);
         let mut sup = rig.supervisor(CaptureKind::Mic, "Headset", "Microphone (Realtek)");
-        assert_eq!(sup.start().unwrap(), Started { device: "Headset".into(), replaced: None });
+        assert_eq!(
+            sup.start().unwrap(),
+            Started {
+                device: "Headset".into(),
+                replaced: None
+            }
+        );
         rig.unplug("Headset");
         let generation = sup.generation;
-        sup.on_stream_error(CaptureSide::You, generation, &err(cpal::ErrorKind::DeviceNotAvailable));
+        sup.on_stream_error(
+            CaptureSide::You,
+            generation,
+            &err(cpal::ErrorKind::DeviceNotAvailable),
+        );
         rig.run_for(&mut sup, Duration::from_secs(2));
 
         let statuses = rig.statuses.lock().unwrap();
-        let recovered: Vec<_> = statuses.iter().filter(|s| s.state == CaptureState::Recovered).collect();
+        let recovered: Vec<_> = statuses
+            .iter()
+            .filter(|s| s.state == CaptureState::Recovered)
+            .collect();
         assert_eq!(recovered.len(), 1);
         assert_eq!(recovered[0].side, CaptureSide::You);
         assert_eq!(recovered[0].device, "Microphone (Realtek)");
@@ -1039,7 +1186,13 @@ pub(crate) mod tests {
         );
         let log = rig.log.lock().unwrap();
         let reopen: Vec<_> = log.attempts[1..].iter().map(|a| a.1.clone()).collect();
-        assert_eq!(reopen, vec![DeviceChoice::Chosen("Headset".into()), DeviceChoice::Default]);
+        assert_eq!(
+            reopen,
+            vec![
+                DeviceChoice::Chosen("Headset".into()),
+                DeviceChoice::Default
+            ]
+        );
         assert_eq!(log.live[0], 1);
     }
 
@@ -1054,10 +1207,17 @@ pub(crate) mod tests {
             rig.clock.advance(Duration::from_millis(50));
             sup.poll();
         }
-        assert_eq!(rig.attempts(CaptureSide::You), 1, "nothing reopened inside the debounce");
+        assert_eq!(
+            rig.attempts(CaptureSide::You),
+            1,
+            "nothing reopened inside the debounce"
+        );
         rig.run_for(&mut sup, Duration::from_secs(5));
         assert_eq!(rig.attempts(CaptureSide::You), 2);
-        assert_eq!(rig.states(), vec![CaptureState::Recovering, CaptureState::Recovered]);
+        assert_eq!(
+            rig.states(),
+            vec![CaptureState::Recovering, CaptureState::Recovered]
+        );
     }
 
     /// (d)
@@ -1072,10 +1232,17 @@ pub(crate) mod tests {
         assert_ne!(sup.generation, first);
 
         // A late error from the stream that was replaced.
-        sup.on_stream_error(CaptureSide::You, first, &err(cpal::ErrorKind::DeviceNotAvailable));
+        sup.on_stream_error(
+            CaptureSide::You,
+            first,
+            &err(cpal::ErrorKind::DeviceNotAvailable),
+        );
         rig.run_for(&mut sup, Duration::from_secs(5));
         assert_eq!(rig.attempts(CaptureSide::You), 2);
-        assert_eq!(rig.states(), vec![CaptureState::Recovering, CaptureState::Recovered]);
+        assert_eq!(
+            rig.states(),
+            vec![CaptureState::Recovering, CaptureState::Recovered]
+        );
     }
 
     /// (e)
@@ -1110,7 +1277,10 @@ pub(crate) mod tests {
         drop(log);
 
         let statuses = rig.statuses.lock().unwrap();
-        let lost: Vec<_> = statuses.iter().filter(|s| s.state == CaptureState::Lost).collect();
+        let lost: Vec<_> = statuses
+            .iter()
+            .filter(|s| s.state == CaptureState::Lost)
+            .collect();
         assert_eq!(lost.len(), 1, "lost is reported once");
         assert_eq!(lost[0].device, "Headset");
         assert!(lost[0].message.contains("microphone"));
@@ -1131,7 +1301,11 @@ pub(crate) mod tests {
         assert!(!sup.on_message(SideMessage::Stop));
         rig.present.lock().unwrap().push("Realtek".into());
         rig.run_for(&mut sup, Duration::from_secs(70));
-        assert_eq!(rig.attempts(CaptureSide::You), 2, "nothing opened after Stop");
+        assert_eq!(
+            rig.attempts(CaptureSide::You),
+            2,
+            "nothing opened after Stop"
+        );
         assert_eq!(rig.live(CaptureSide::You), 0);
         assert!(!rig.states().contains(&CaptureState::Lost));
     }
@@ -1147,17 +1321,37 @@ pub(crate) mod tests {
 
         // The same generation number on both sides: only the side tag tells them apart.
         let generation = you.generation;
-        them.on_stream_error(CaptureSide::You, generation, &err(cpal::ErrorKind::StreamInvalidated));
-        you.on_stream_error(CaptureSide::You, generation, &err(cpal::ErrorKind::StreamInvalidated));
+        them.on_stream_error(
+            CaptureSide::You,
+            generation,
+            &err(cpal::ErrorKind::StreamInvalidated),
+        );
+        you.on_stream_error(
+            CaptureSide::You,
+            generation,
+            &err(cpal::ErrorKind::StreamInvalidated),
+        );
         for _ in 0..100 {
             rig.clock.advance(Duration::from_millis(50));
             you.poll();
             them.poll();
         }
         assert_eq!(rig.attempts(CaptureSide::You), 2);
-        assert_eq!(rig.attempts(CaptureSide::Them), 1, "Them only opened at start");
-        assert_eq!((rig.live(CaptureSide::You), rig.live(CaptureSide::Them)), (1, 1));
-        assert!(rig.statuses.lock().unwrap().iter().all(|s| s.side == CaptureSide::You));
+        assert_eq!(
+            rig.attempts(CaptureSide::Them),
+            1,
+            "Them only opened at start"
+        );
+        assert_eq!(
+            (rig.live(CaptureSide::You), rig.live(CaptureSide::Them)),
+            (1, 1)
+        );
+        assert!(rig
+            .statuses
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|s| s.side == CaptureSide::You));
     }
 
     /// A stream that dies right after every reconnect is one outage: backoff
@@ -1185,10 +1379,17 @@ pub(crate) mod tests {
                 invalidated(&mut sup, CaptureSide::You);
             }
         }
-        let lost = rig.states().iter().filter(|s| **s == CaptureState::Lost).count();
+        let lost = rig
+            .states()
+            .iter()
+            .filter(|s| **s == CaptureState::Lost)
+            .count();
         assert_eq!(lost, 1, "one lost");
         let attempts = rig.attempts(CaptureSide::You);
-        assert!((10..=25).contains(&attempts), "a reopen every few seconds, not several a second: {attempts}");
+        assert!(
+            (10..=25).contains(&attempts),
+            "a reopen every few seconds, not several a second: {attempts}"
+        );
         assert_eq!(rig.live(CaptureSide::You), 0);
     }
 
@@ -1203,9 +1404,17 @@ pub(crate) mod tests {
         rig.clock.advance(REBUILD_DEBOUNCE);
         sup.stop_requested.store(true, Ordering::SeqCst);
         sup.poll();
-        assert_eq!(rig.states(), vec![CaptureState::Recovering], "no recovered after Stop");
+        assert_eq!(
+            rig.states(),
+            vec![CaptureState::Recovering],
+            "no recovered after Stop"
+        );
         assert_eq!(rig.live(CaptureSide::You), 0);
-        assert_eq!(rig.attempts(CaptureSide::You), 1, "Stop before the first device was tried");
+        assert_eq!(
+            rig.attempts(CaptureSide::You),
+            1,
+            "Stop before the first device was tried"
+        );
     }
 
     /// A panic inside a driver call is a failed attempt, not a dead side.
@@ -1218,7 +1427,10 @@ pub(crate) mod tests {
                 if std::mem::replace(&mut self.0, true) {
                     panic!("driver bug");
                 }
-                Ok(Opened { stream: (), device: "Mic".into() })
+                Ok(Opened {
+                    stream: (),
+                    device: "Mic".into(),
+                })
             }
         }
         let rig = Rig::new(&[]);
@@ -1231,7 +1443,11 @@ pub(crate) mod tests {
             rig.sink(),
         );
         sup.start().unwrap();
-        sup.on_stream_error(CaptureSide::You, sup.generation, &err(cpal::ErrorKind::StreamInvalidated));
+        sup.on_stream_error(
+            CaptureSide::You,
+            sup.generation,
+            &err(cpal::ErrorKind::StreamInvalidated),
+        );
         rig.run_for(&mut sup, Duration::from_secs(2));
         assert!(rig.states().contains(&CaptureState::Recovering));
         assert!(matches!(sup.phase, Phase::Pending { .. }), "still trying");
@@ -1265,7 +1481,10 @@ pub(crate) mod tests {
             SideSpec {
                 kind,
                 device_id: device_id.to_string(),
-                opener: Gated { gate: Some(gate_rx), outcome },
+                opener: Gated {
+                    gate: Some(gate_rx),
+                    outcome,
+                },
                 clock: SystemClock,
                 counters: Arc::clone(&rig.counters),
                 sink: rig.sink(),
@@ -1274,7 +1493,10 @@ pub(crate) mod tests {
             side_channel(),
         )
         .unwrap();
-        assert!(started.is_none(), "still opening when start stopped waiting");
+        assert!(
+            started.is_none(),
+            "still opening when start stopped waiting"
+        );
         (handle, gate_tx)
     }
 
@@ -1289,8 +1511,9 @@ pub(crate) mod tests {
     #[test]
     fn a_late_start_failure_is_reported_lost_once() {
         let rig = Rig::new(&[]);
-        let (handle, release) =
-            spawn_gated(&rig, CaptureKind::InputThem, "Mic", |_| Err("busy".to_string()));
+        let (handle, release) = spawn_gated(&rig, CaptureKind::InputThem, "Mic", |_| {
+            Err("busy".to_string())
+        });
         release.send(()).unwrap();
         wait_for(|| rig.states().contains(&CaptureState::Lost));
         assert_eq!(rig.states(), vec![CaptureState::Lost]);
@@ -1313,7 +1536,10 @@ pub(crate) mod tests {
         let statuses = rig.statuses.lock().unwrap();
         assert_eq!(statuses.len(), 2);
         assert_eq!(statuses[1].state, CaptureState::Recovered);
-        assert_eq!(statuses[1].message, "Mic is back. Capturing the other side again.");
+        assert_eq!(
+            statuses[1].message,
+            "Mic is back. Capturing the other side again."
+        );
         drop(statuses);
         assert_eq!(rig.live(CaptureSide::Them), 1);
     }
@@ -1323,16 +1549,23 @@ pub(crate) mod tests {
     #[test]
     fn a_late_start_on_the_default_device_is_announced() {
         let rig = Rig::new(&[]);
-        let (handle, release) = spawn_gated(&rig, CaptureKind::Mic, "Headset", |choice| match choice {
-            DeviceChoice::Chosen(_) => Err("not found".to_string()),
-            DeviceChoice::Default => Ok(Opened { stream: (), device: "Microphone (Realtek)".into() }),
-        });
+        let (handle, release) =
+            spawn_gated(&rig, CaptureKind::Mic, "Headset", |choice| match choice {
+                DeviceChoice::Chosen(_) => Err("not found".to_string()),
+                DeviceChoice::Default => Ok(Opened {
+                    stream: (),
+                    device: "Microphone (Realtek)".into(),
+                }),
+            });
         release.send(()).unwrap();
         wait_for(|| rig.states().contains(&CaptureState::Recovered));
         let statuses = rig.statuses.lock().unwrap();
         assert_eq!(statuses.len(), 1);
         assert_eq!(statuses[0].state, CaptureState::Recovered);
-        assert_eq!(statuses[0].message, "Your microphone disconnected. Using Microphone (Realtek) for now.");
+        assert_eq!(
+            statuses[0].message,
+            "Your microphone disconnected. Using Microphone (Realtek) for now."
+        );
         drop(statuses);
         handle.join();
     }
@@ -1342,9 +1575,15 @@ pub(crate) mod tests {
     fn a_late_start_on_the_chosen_device_says_nothing() {
         let rig = Rig::new(&[]);
         let mut sup = rig.supervisor(CaptureKind::Mic, "Headset", "Realtek");
-        sup.announce_late_start(&Started { device: "Headset".into(), replaced: None });
+        sup.announce_late_start(&Started {
+            device: "Headset".into(),
+            replaced: None,
+        });
         assert!(rig.statuses.lock().unwrap().is_empty());
-        sup.announce_late_start(&Started { device: "Realtek".into(), replaced: Some("gone".into()) });
+        sup.announce_late_start(&Started {
+            device: "Realtek".into(),
+            replaced: Some("gone".into()),
+        });
         assert_eq!(rig.states(), vec![CaptureState::Recovered]);
     }
 
@@ -1372,7 +1611,10 @@ pub(crate) mod tests {
             type Stream = ();
             fn open(&mut self, _: &DeviceChoice, _: u64) -> Result<Opened<()>, String> {
                 let _ = self.0.try_send(1);
-                Ok(Opened { stream: (), device: "Mic".into() })
+                Ok(Opened {
+                    stream: (),
+                    device: "Mic".into(),
+                })
             }
         }
         let rig = Rig::new(&[]);
@@ -1393,7 +1635,10 @@ pub(crate) mod tests {
         .unwrap();
         assert_eq!(audio_rx.blocking_recv(), Some(1));
         handle.join();
-        assert_eq!(audio_rx.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Disconnected));
+        assert_eq!(
+            audio_rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected)
+        );
     }
 
     /// (j) On a stand-in, the chosen device reappearing, without any stream
@@ -1404,7 +1649,10 @@ pub(crate) mod tests {
         let mut sup = rig.supervisor(CaptureKind::Mic, "Headset", "Microphone (Realtek)");
         assert_eq!(sup.start().unwrap().device, "Microphone (Realtek)");
         rig.run_for(&mut sup, Duration::from_secs(12)); // probes fail quietly
-        assert!(rig.statuses.lock().unwrap().is_empty(), "failed probes say nothing");
+        assert!(
+            rig.statuses.lock().unwrap().is_empty(),
+            "failed probes say nothing"
+        );
         assert_eq!(rig.counters.rebuilds(), 0);
 
         rig.present.lock().unwrap().push("Headset".into());
@@ -1419,7 +1667,11 @@ pub(crate) mod tests {
         assert_eq!(rig.counters.rebuilds(), 1);
         let attempts = rig.attempts(CaptureSide::You);
         rig.run_for(&mut sup, Duration::from_secs(30));
-        assert_eq!(rig.attempts(CaptureSide::You), attempts, "no more probing once back on the chosen device");
+        assert_eq!(
+            rig.attempts(CaptureSide::You),
+            attempts,
+            "no more probing once back on the chosen device"
+        );
     }
 
     /// (j) A failed probe leaves the stand-in's own errors counting: the
@@ -1432,7 +1684,10 @@ pub(crate) mod tests {
         rig.run_for(&mut sup, Duration::from_secs(6)); // one failed probe
         invalidated(&mut sup, CaptureSide::You);
         rig.run_for(&mut sup, Duration::from_secs(2));
-        assert_eq!(rig.states(), vec![CaptureState::Recovering, CaptureState::Recovered]);
+        assert_eq!(
+            rig.states(),
+            vec![CaptureState::Recovering, CaptureState::Recovered]
+        );
     }
 
     /// (k) After "lost" the device coming back reconnects, with a message even
@@ -1450,7 +1705,10 @@ pub(crate) mod tests {
         rig.present.lock().unwrap().push("Headset".into());
         rig.run_for(&mut sup, Duration::from_secs(6));
         let statuses = rig.statuses.lock().unwrap();
-        let lost = statuses.iter().filter(|s| s.state == CaptureState::Lost).count();
+        let lost = statuses
+            .iter()
+            .filter(|s| s.state == CaptureState::Lost)
+            .count();
         assert_eq!(lost, 1, "lost once");
         let last = statuses.last().unwrap();
         assert_eq!(last.state, CaptureState::Recovered);
@@ -1488,7 +1746,11 @@ pub(crate) mod tests {
         assert!(!sup.on_message(SideMessage::Stop));
         rig.present.lock().unwrap().push("Headset".into());
         rig.run_for(&mut sup, Duration::from_secs(30));
-        assert_eq!(rig.attempts(CaptureSide::You), 2, "the two start attempts only");
+        assert_eq!(
+            rig.attempts(CaptureSide::You),
+            2,
+            "the two start attempts only"
+        );
         assert_eq!(rig.live(CaptureSide::You), 0);
     }
 
@@ -1500,21 +1762,38 @@ pub(crate) mod tests {
             let mut sup = rig.supervisor(kind, "Cable", "Realtek");
             sup.start().unwrap();
             rig.run_for(&mut sup, Duration::from_secs(30)); // running: no probing at all
-            assert_eq!(rig.attempts(kind.side()), 1, "{kind:?} doesn't probe while running");
+            assert_eq!(
+                rig.attempts(kind.side()),
+                1,
+                "{kind:?} doesn't probe while running"
+            );
             rig.unplug("Cable");
             let generation = sup.generation;
-            sup.on_stream_error(kind.side(), generation, &err(cpal::ErrorKind::DeviceNotAvailable));
+            sup.on_stream_error(
+                kind.side(),
+                generation,
+                &err(cpal::ErrorKind::DeviceNotAvailable),
+            );
             rig.run_for(&mut sup, Duration::from_secs(120));
             let log = rig.log.lock().unwrap();
             assert!(
-                log.attempts.iter().all(|a| a.1 == DeviceChoice::Chosen("Cable".into())),
+                log.attempts
+                    .iter()
+                    .all(|a| a.1 == DeviceChoice::Chosen("Cable".into())),
                 "{kind:?} opened something other than its chosen device"
             );
             drop(log);
             rig.present.lock().unwrap().push("Cable".into());
             rig.run_for(&mut sup, Duration::from_secs(6));
             assert_eq!(rig.live(kind.side()), 1, "{kind:?} is back");
-            assert!(rig.statuses.lock().unwrap().last().unwrap().message.contains("Cable is back"));
+            assert!(rig
+                .statuses
+                .lock()
+                .unwrap()
+                .last()
+                .unwrap()
+                .message
+                .contains("Cable is back"));
         }
     }
 
@@ -1537,9 +1816,18 @@ pub(crate) mod tests {
             lost(CaptureKind::Dual),
             "Your shared input device disconnected. Lucid reconnects it when it's back, or pick another device in Audio & Devices."
         );
-        assert_eq!(back_message(CaptureKind::Output, "Speakers"), "Speakers is back. Listening for the other side again.");
-        assert_eq!(back_message(CaptureKind::InputThem, "Cable"), "Cable is back. Capturing the other side again.");
-        assert_eq!(back_message(CaptureKind::Dual, "Cable"), "Cable is back for you and the other side.");
+        assert_eq!(
+            back_message(CaptureKind::Output, "Speakers"),
+            "Speakers is back. Listening for the other side again."
+        );
+        assert_eq!(
+            back_message(CaptureKind::InputThem, "Cable"),
+            "Cable is back. Capturing the other side again."
+        );
+        assert_eq!(
+            back_message(CaptureKind::Dual, "Cable"),
+            "Cable is back for you and the other side."
+        );
         assert_eq!(
             recovered_message(CaptureKind::Output, "Speakers", "Speakers", "Headphones"),
             "The speakers or headphones you hear the call on disconnected. Listening on Headphones instead."
@@ -1561,11 +1849,23 @@ pub(crate) mod tests {
         let mut sup = rig.supervisor(CaptureKind::Mic, "Mic", "Mic");
         sup.start().unwrap();
         rig.unplug("Mic");
-        sup.on_stream_error(CaptureSide::You, sup.generation, &err(cpal::ErrorKind::PermissionDenied));
+        sup.on_stream_error(
+            CaptureSide::You,
+            sup.generation,
+            &err(cpal::ErrorKind::PermissionDenied),
+        );
         rig.run_for(&mut sup, Duration::from_secs(70));
         let statuses = rig.statuses.lock().unwrap();
-        let lost = statuses.iter().find(|s| s.state == CaptureState::Lost).unwrap();
-        assert!(lost.message.contains("privacy settings are blocking your microphone"), "{}", lost.message);
+        let lost = statuses
+            .iter()
+            .find(|s| s.state == CaptureState::Lost)
+            .unwrap();
+        assert!(
+            lost.message
+                .contains("privacy settings are blocking your microphone"),
+            "{}",
+            lost.message
+        );
         assert!(!lost.message.contains("disconnected"));
     }
 
@@ -1575,7 +1875,12 @@ pub(crate) mod tests {
         let mut sup = rig.supervisor(CaptureKind::Mic, "default", "Realtek");
         sup.start().unwrap();
         let generation = sup.generation;
-        for kind in [cpal::ErrorKind::Xrun, cpal::ErrorKind::Xrun, cpal::ErrorKind::DeviceChanged, cpal::ErrorKind::RealtimeDenied] {
+        for kind in [
+            cpal::ErrorKind::Xrun,
+            cpal::ErrorKind::Xrun,
+            cpal::ErrorKind::DeviceChanged,
+            cpal::ErrorKind::RealtimeDenied,
+        ] {
             sup.on_stream_error(CaptureSide::You, generation, &err(kind));
         }
         rig.run_for(&mut sup, Duration::from_secs(5));
@@ -1593,7 +1898,10 @@ pub(crate) mod tests {
         invalidated(&mut sup, CaptureSide::Them);
         rig.run_for(&mut sup, Duration::from_secs(90));
         let log = rig.log.lock().unwrap();
-        assert!(log.attempts.iter().all(|a| a.1 == DeviceChoice::Chosen("Cable".into())));
+        assert!(log
+            .attempts
+            .iter()
+            .all(|a| a.1 == DeviceChoice::Chosen("Cable".into())));
         drop(log);
         assert_eq!(rig.states().last(), Some(&CaptureState::Lost));
     }
@@ -1610,7 +1918,10 @@ pub(crate) mod tests {
         invalidated(&mut sup, CaptureSide::You); // the default changed
         rig.run_for(&mut sup, Duration::from_secs(1));
         let statuses = rig.statuses.lock().unwrap();
-        assert_eq!(statuses.last().unwrap().message, "Now using Headset as your microphone.");
+        assert_eq!(
+            statuses.last().unwrap().message,
+            "Now using Headset as your microphone."
+        );
     }
 
     #[test]
@@ -1634,7 +1945,10 @@ pub(crate) mod tests {
         let rig = Rig::new(&["Realtek"]);
         let (tx, rx) = side_channel();
         let mut callback = error_callback(tx.clone(), CaptureSide::You, 1);
-        let opener = FakeOpener { clock: FakeClock::new(), ..rig.opener(CaptureSide::You, "Realtek") };
+        let opener = FakeOpener {
+            clock: FakeClock::new(),
+            ..rig.opener(CaptureSide::You, "Realtek")
+        };
         let (handle, started) = spawn_side(
             SideSpec {
                 kind: CaptureKind::Mic,
@@ -1664,7 +1978,10 @@ pub(crate) mod tests {
     fn stand_in_outcome(choice: &DeviceChoice) -> Result<Opened<()>, String> {
         match choice {
             DeviceChoice::Chosen(_) => Err("not found".to_string()),
-            DeviceChoice::Default => Ok(Opened { stream: (), device: "Realtek".to_string() }),
+            DeviceChoice::Default => Ok(Opened {
+                stream: (),
+                device: "Realtek".to_string(),
+            }),
         }
     }
 
@@ -1679,13 +1996,20 @@ pub(crate) mod tests {
         let hook: BeforeAbandon = Box::new(move |handoff| {
             gate_tx.send(()).unwrap();
             wait_for(|| handoff.load(Ordering::SeqCst) == DONE);
-            assert_eq!(handoff.load(Ordering::SeqCst), DONE, "the thread claimed the outcome");
+            assert_eq!(
+                handoff.load(Ordering::SeqCst),
+                DONE,
+                "the thread claimed the outcome"
+            );
         });
         spawn_side_with(
             SideSpec {
                 kind: CaptureKind::Mic,
                 device_id: "Headset".to_string(),
-                opener: Gated { gate: Some(gate_rx), outcome },
+                opener: Gated {
+                    gate: Some(gate_rx),
+                    outcome,
+                },
                 clock: SystemClock,
                 counters: Arc::clone(&rig.counters),
                 sink: rig.sink(),
@@ -1717,7 +2041,10 @@ pub(crate) mod tests {
         assert_eq!(started.device, "Realtek");
         assert!(started.replaced.is_some());
         handle.join();
-        assert!(rig.states().is_empty(), "the caller announces it, not the thread");
+        assert!(
+            rig.states().is_empty(),
+            "the caller announces it, not the thread"
+        );
     }
 
     /// Late failure, but the thread claimed the outcome before start gave up:
@@ -1746,6 +2073,9 @@ pub(crate) mod tests {
             },
             (tx, rx),
         );
-        assert_eq!(result.err().unwrap(), vec!["'Headset' not found", "'Realtek' not found"]);
+        assert_eq!(
+            result.err().unwrap(),
+            vec!["'Headset' not found", "'Realtek' not found"]
+        );
     }
 }

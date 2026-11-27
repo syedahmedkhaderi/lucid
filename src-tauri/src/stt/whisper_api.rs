@@ -687,7 +687,10 @@ impl STTProvider for WhisperApiSTT {
                 .map(|v| v.get("text").map(|t| t.is_string()).unwrap_or(false))
                 .unwrap_or(false);
             if !has_text {
-                log::warn!("WhisperApiSTT: Probe answered {} without a transcription body", status);
+                log::warn!(
+                    "WhisperApiSTT: Probe answered {} without a transcription body",
+                    status
+                );
                 return Err("The server answered but didn't return a transcription. Is this an OpenAI-compatible /audio/transcriptions endpoint?".into());
             }
             log::info!("WhisperApiSTT: Connection test passed (transcription probe)");
@@ -702,7 +705,10 @@ impl STTProvider for WhisperApiSTT {
             return Err(msg.into());
         }
         let body = probe.text().await.unwrap_or_default();
-        log::warn!("WhisperApiSTT: Transcription probe failed with status {}", status);
+        log::warn!(
+            "WhisperApiSTT: Transcription probe failed with status {}",
+            status
+        );
         Err(describe_http_failure(status, &body).into())
     }
 
@@ -774,7 +780,10 @@ mod tests {
             transcriptions_url(DEFAULT_BASE_URL),
             "https://api.openai.com/v1/audio/transcriptions"
         );
-        assert_eq!(models_url("http://127.0.0.1:8000/v1"), "http://127.0.0.1:8000/v1/models");
+        assert_eq!(
+            models_url("http://127.0.0.1:8000/v1"),
+            "http://127.0.0.1:8000/v1/models"
+        );
     }
 
     #[test]
@@ -853,7 +862,8 @@ mod tests {
                     let mut header_end = None;
                     loop {
                         if header_end.is_none() {
-                            header_end = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4);
+                            header_end =
+                                buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4);
                         }
                         if let Some(h) = header_end {
                             let head = String::from_utf8_lossy(&buf[..h]).to_ascii_lowercase();
@@ -900,7 +910,13 @@ mod tests {
 
     /// Provider pointed at the mock, using the shared factory.
     fn mock_provider(base: &str, openai: Option<&str>, custom: Option<&str>) -> WhisperApiSTT {
-        WhisperApiSTT::from_settings(openai, custom, Some(base), Some("faster-whisper-small"), "en")
+        WhisperApiSTT::from_settings(
+            openai,
+            custom,
+            Some(base),
+            Some("faster-whisper-small"),
+            "en",
+        )
     }
 
     fn lower(raw: &str) -> String {
@@ -930,7 +946,10 @@ mod tests {
             None,
             "en",
         );
-        assert_eq!(p.api_key, "", "OpenAI key must never reach a custom endpoint");
+        assert_eq!(
+            p.api_key, "",
+            "OpenAI key must never reach a custom endpoint"
+        );
 
         let p = WhisperApiSTT::from_settings(
             Some("sk-openai"),
@@ -942,7 +961,8 @@ mod tests {
         assert_eq!(p.api_key, "custom");
 
         // Invalid endpoint: no key at all, and an error on start/test.
-        let p = WhisperApiSTT::from_settings(Some("sk-openai"), Some("c"), Some("bogus"), None, "en");
+        let p =
+            WhisperApiSTT::from_settings(Some("sk-openai"), Some("c"), Some("bogus"), None, "en");
         assert_eq!(p.api_key, "");
         assert!(p.endpoint_error.is_some());
     }
@@ -1015,7 +1035,9 @@ mod tests {
         assert!(err.contains("404"), "{}", err);
         assert!(err.contains("page not found"), "{}", err);
         let reqs = rec.lock().unwrap();
-        assert!(reqs.iter().all(|r| r.starts_with("POST /v1/audio/transcriptions ")));
+        assert!(reqs
+            .iter()
+            .all(|r| r.starts_with("POST /v1/audio/transcriptions ")));
     }
 
     #[tokio::test]
@@ -1063,7 +1085,11 @@ mod tests {
             ("200 OK", r#"{"text":42}"#),
         ] {
             let (base, _rec) = mock_server(move |_, _| (status, body.to_string())).await;
-            let err = mock_provider(&base, None, None).test_connection().await.unwrap_err().to_string();
+            let err = mock_provider(&base, None, None)
+                .test_connection()
+                .await
+                .unwrap_err()
+                .to_string();
             assert!(err.contains(MSG), "{} {:?}: {}", status, body, err);
         }
     }
@@ -1071,7 +1097,10 @@ mod tests {
     #[tokio::test]
     async fn mock_probe_empty_text_is_success() {
         let (base, _rec) = mock_server(|_, _| ("200 OK", r#"{"text":""}"#.to_string())).await;
-        assert!(mock_provider(&base, None, None).test_connection().await.unwrap());
+        assert!(mock_provider(&base, None, None)
+            .test_connection()
+            .await
+            .unwrap());
     }
 
     #[tokio::test]
@@ -1083,7 +1112,10 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(4);
 
         WhisperApiSTT::send_segment(&p.target(), &p.reporter, vec![1; 160], 0, tx.clone()).await;
-        assert!(p.reporter.failing.load(Ordering::SeqCst), "200 without text must fail");
+        assert!(
+            p.reporter.failing.load(Ordering::SeqCst),
+            "200 without text must fail"
+        );
         assert!(rx.try_recv().is_err());
 
         // A reply with no text must not clear an existing failure either.
@@ -1117,14 +1149,27 @@ mod tests {
     #[tokio::test]
     async fn mock_probe_405_and_500_report_status_and_trimmed_body() {
         let (base, _rec) = mock_server(|_, _| ("405 Method Not Allowed", "{}".to_string())).await;
-        let err = mock_provider(&base, None, None).test_connection().await.unwrap_err().to_string();
+        let err = mock_provider(&base, None, None)
+            .test_connection()
+            .await
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("405"), "{}", err);
 
         let long_body = "boom ".repeat(100);
-        let (base, _rec) = mock_server(move |_, _| ("500 Internal Server Error", long_body.clone())).await;
-        let err = mock_provider(&base, None, None).test_connection().await.unwrap_err().to_string();
+        let (base, _rec) =
+            mock_server(move |_, _| ("500 Internal Server Error", long_body.clone())).await;
+        let err = mock_provider(&base, None, None)
+            .test_connection()
+            .await
+            .unwrap_err()
+            .to_string();
         assert!(err.starts_with("The server answered 500: boom"), "{}", err);
-        assert!(err.chars().count() < 260, "body must be trimmed: {}", err.len());
+        assert!(
+            err.chars().count() < 260,
+            "body must be trimmed: {}",
+            err.len()
+        );
     }
 
     #[tokio::test]
@@ -1133,14 +1178,20 @@ mod tests {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}/v1", l.local_addr().unwrap());
         drop(l);
-        let err = mock_provider(&base, None, None).test_connection().await.unwrap_err().to_string();
-        assert_eq!(err, format!("Couldn't reach {}. Is the server running?", base));
+        let err = mock_provider(&base, None, None)
+            .test_connection()
+            .await
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            format!("Couldn't reach {}. Is the server running?", base)
+        );
     }
 
     #[tokio::test]
     async fn mock_send_segment_emits_transcript() {
-        let (base, rec) =
-            mock_server(|_, _| ("200 OK", r#"{"text":" hello "}"#.to_string())).await;
+        let (base, rec) = mock_server(|_, _| ("200 OK", r#"{"text":" hello "}"#.to_string())).await;
         let (tx, mut rx) = mpsc::channel(4);
         let p = mock_provider(&base, None, None);
         WhisperApiSTT::send_segment(&p.target(), &p.reporter, vec![100i16; 1600], 42, tx).await;

@@ -841,6 +841,7 @@ pub async fn start_meeting(
     workspace_id: Option<String>,
     borrowed_workspace_ids: Option<Vec<String>>,
     document_ids: Option<Vec<String>>,
+    meeting_context: Option<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<String, String> {
@@ -875,6 +876,21 @@ pub async fn start_meeting(
         document_ids.as_deref(),
         crate::workspace::available(),
     )?;
+    let meeting_context: String = meeting_context
+        .unwrap_or_default()
+        .chars()
+        .take(2000)
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if !meeting_context.is_empty() {
+        db.connection()
+            .execute(
+                "UPDATE meetings SET meeting_context = ?1 WHERE id = ?2",
+                rusqlite::params![meeting_context, meeting.id],
+            )
+            .map_err(|e| format!("Couldn't save this meeting's context: {e}"))?;
+    }
     state.meeting_active.store(true, Ordering::SeqCst);
     state.workspace_chat.cancel_recaps(); // recaps never run in a meeting
 

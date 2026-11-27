@@ -16,7 +16,9 @@
 //! What each kind turns off of the user's own setup is documented in
 //! `acp/launch.rs`, `codex/launch.rs` and `command.rs`.
 
-use super::acp::{antigravity_args, find_agy, session::default_timeouts as acp_timeouts, AcpLaunch, AcpSession};
+use super::acp::{
+    antigravity_args, find_agy, session::default_timeouts as acp_timeouts, AcpLaunch, AcpSession,
+};
 use super::codex::{find_codex, CodexLaunch, CodexSession};
 use super::command::{sandbox_dir, SessionConfig};
 use super::detect::{find_current_claude, ClaudeBinaryError};
@@ -44,22 +46,29 @@ impl SessionSpawner for CliSpawner {
 async fn spawn_claude(cfg: SessionConfig) -> Result<Arc<dyn SessionHandle>, AgentError> {
     let bin = claude_binary_for_spawn(tokio::task::spawn_blocking(find_current_claude).await.ok())?;
     let timeouts = if cfg.sources.is_some() {
-        SessionTimeouts { init: SOURCES_INIT_TIMEOUT, ..SessionTimeouts::default() }
+        SessionTimeouts {
+            init: SOURCES_INIT_TIMEOUT,
+            ..SessionTimeouts::default()
+        }
     } else {
         SessionTimeouts::default()
     };
-    Ok(Arc::new(ClaudeSession::spawn_with_timeouts(bin, cfg, timeouts).await?))
+    Ok(Arc::new(
+        ClaudeSession::spawn_with_timeouts(bin, cfg, timeouts).await?,
+    ))
 }
 
 /// The binary of a Claude session, or why none is started: missing, or too old
 /// (no process is launched for it, see `detect::MIN_CLAUDE_VERSION`).
-fn claude_binary_for_spawn(found: Option<Result<std::path::PathBuf, ClaudeBinaryError>>) -> Result<std::path::PathBuf, AgentError> {
+fn claude_binary_for_spawn(
+    found: Option<Result<std::path::PathBuf, ClaudeBinaryError>>,
+) -> Result<std::path::PathBuf, AgentError> {
     match found {
         Some(Ok(bin)) => Ok(bin),
         Some(Err(ClaudeBinaryError::TooOld(message))) => Err(AgentError::Spawn(message)),
-        Some(Err(ClaudeBinaryError::NotFound)) | None => {
-            Err(AgentError::Spawn("Claude CLI not installed: claude.exe not found".into()))
-        }
+        Some(Err(ClaudeBinaryError::NotFound)) | None => Err(AgentError::Spawn(
+            "Claude CLI not installed: claude.exe not found".into(),
+        )),
     }
 }
 
@@ -72,11 +81,17 @@ pub fn session_dir() -> std::path::PathBuf {
 
 /// Delete session folders a crash left behind (older than a day).
 pub fn remove_stale_session_dirs() {
-    let Ok(entries) = std::fs::read_dir(sandbox_dir()) else { return };
+    let Ok(entries) = std::fs::read_dir(sandbox_dir()) else {
+        return;
+    };
     let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(24 * 3600);
     for entry in entries.flatten() {
         let is_ours = entry.file_name().to_string_lossy().starts_with("acp-");
-        let old = entry.metadata().and_then(|m| m.modified()).map(|t| t < cutoff).unwrap_or(false);
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .map(|t| t < cutoff)
+            .unwrap_or(false);
         if is_ours && old {
             let _ = std::fs::remove_dir_all(entry.path());
         }
@@ -85,7 +100,8 @@ pub fn remove_stale_session_dirs() {
 
 /// The launch of an Antigravity session (everything but the binary).
 pub fn antigravity_launch(program: std::path::PathBuf, cfg: &SessionConfig) -> AcpLaunch {
-    let effective = super::approval::launch_sources(cfg.kind, cfg.sources.as_ref(), cfg.approvals.as_ref());
+    let effective =
+        super::approval::launch_sources(cfg.kind, cfg.sources.as_ref(), cfg.approvals.as_ref());
     let sources = acp_sources(effective.as_ref());
     let has_notes = effective.as_ref().is_some_and(|s| !s.add_dirs.is_empty());
     let mut launch = AcpLaunch::new(program, antigravity_args(), session_dir());
@@ -102,7 +118,9 @@ async fn spawn_antigravity(cfg: SessionConfig) -> Result<Arc<dyn SessionHandle>,
         .await
         .ok()
         .flatten()
-        .ok_or_else(|| AgentError::Spawn("Antigravity CLI not installed: agy.exe not found".into()))?;
+        .ok_or_else(|| {
+            AgentError::Spawn("Antigravity CLI not installed: agy.exe not found".into())
+        })?;
     let launch = antigravity_launch(program, &cfg);
     // The folder is created here: agy takes it as its working directory.
     let cwd = launch.cwd.clone();
@@ -117,12 +135,19 @@ async fn spawn_antigravity(cfg: SessionConfig) -> Result<Arc<dyn SessionHandle>,
     if cfg.sources.is_some() {
         timeouts.init = SOURCES_INIT_TIMEOUT;
     }
-    Ok(Arc::new(AcpSession::spawn_with_timeouts(launch, timeouts).await?))
+    Ok(Arc::new(
+        AcpSession::spawn_with_timeouts(launch, timeouts).await?,
+    ))
 }
 
 /// The launch of a Codex session (everything but the binary).
-pub fn codex_launch(program: std::path::PathBuf, prefix_args: Vec<String>, cfg: &SessionConfig) -> CodexLaunch {
-    let effective = super::approval::launch_sources(cfg.kind, cfg.sources.as_ref(), cfg.approvals.as_ref());
+pub fn codex_launch(
+    program: std::path::PathBuf,
+    prefix_args: Vec<String>,
+    cfg: &SessionConfig,
+) -> CodexLaunch {
+    let effective =
+        super::approval::launch_sources(cfg.kind, cfg.sources.as_ref(), cfg.approvals.as_ref());
     let sources = codex_sources(effective.as_ref());
     let mut launch = CodexLaunch::new(program, prefix_args, sandbox_dir(), cfg.model.clone());
     launch.effort = cfg.effort.clone();
@@ -139,7 +164,9 @@ async fn spawn_codex(cfg: SessionConfig) -> Result<Arc<dyn SessionHandle>, Agent
         .ok()
         .flatten()
         .ok_or_else(|| AgentError::Spawn("Codex CLI not installed: codex not found".into()))?;
-    Ok(Arc::new(CodexSession::spawn(codex_launch(program, prefix_args, &cfg)).await?))
+    Ok(Arc::new(
+        CodexSession::spawn(codex_launch(program, prefix_args, &cfg)).await?,
+    ))
 }
 
 #[cfg(test)]
@@ -174,48 +201,97 @@ mod tests {
 
     #[test]
     fn an_antigravity_session_gets_the_acp_form_of_its_sources() {
-        let launch = antigravity_launch(PathBuf::from("C:\\agy\\agy.exe"), &cfg(CliAgentKind::Antigravity, Some(sources())));
+        let launch = antigravity_launch(
+            PathBuf::from("C:\\agy\\agy.exe"),
+            &cfg(CliAgentKind::Antigravity, Some(sources())),
+        );
         assert_eq!(launch.args, antigravity_args());
-        assert!(launch.args.contains(&"--gemini-dir".to_string()), "its own data folder, not the user's");
+        assert!(
+            launch.args.contains(&"--gemini-dir".to_string()),
+            "its own data folder, not the user's"
+        );
         assert_eq!(launch.model, "some-model");
         assert!(launch.system_prompt.starts_with("sp"));
         // An empty folder of its own, not the shared sandbox, and none of the user's folders.
-        assert!(launch.cwd.starts_with(sandbox_dir()) && launch.cwd != sandbox_dir(), "{:?}", launch.cwd);
-        assert!(launch.cwd.file_name().unwrap().to_string_lossy().starts_with("acp-"));
+        assert!(
+            launch.cwd.starts_with(sandbox_dir()) && launch.cwd != sandbox_dir(),
+            "{:?}",
+            launch.cwd
+        );
+        assert!(launch
+            .cwd
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("acp-"));
         assert!(launch.remove_cwd_on_close);
         assert_ne!(launch.cwd, session_dir(), "a new folder per session");
-        let names: Vec<&str> = launch.mcp_servers.iter().map(|s| s["name"].as_str().unwrap()).collect();
+        let names: Vec<&str> = launch
+            .mcp_servers
+            .iter()
+            .map(|s| s["name"].as_str().unwrap())
+            .collect();
         assert_eq!(names, ["mira", "nexq_notes"]);
         assert_eq!(launch.mcp_servers[0]["env"][0]["value"], "s3cret");
         assert_eq!(launch.mcp_servers[1]["args"], json!(["--notes-mcp"]));
         assert!(!format!("{launch:?}").contains("s3cret"));
         // A plain session has no servers and a policy that allows nothing.
-        let plain = antigravity_launch(PathBuf::from("agy.exe"), &cfg(CliAgentKind::Antigravity, None));
+        let plain = antigravity_launch(
+            PathBuf::from("agy.exe"),
+            &cfg(CliAgentKind::Antigravity, None),
+        );
         assert!(plain.mcp_servers.is_empty());
-        assert_eq!(plain.policy, crate::llm::cli_agent::acp::PermissionPolicy::deny_all());
+        assert_eq!(
+            plain.policy,
+            crate::llm::cli_agent::acp::PermissionPolicy::deny_all()
+        );
     }
 
     #[test]
     fn a_codex_session_gets_the_codex_form_of_its_sources() {
-        let launch = codex_launch(PathBuf::from("codex.exe"), vec!["x.js".into()], &cfg(CliAgentKind::Codex, Some(sources())));
+        let launch = codex_launch(
+            PathBuf::from("codex.exe"),
+            vec!["x.js".into()],
+            &cfg(CliAgentKind::Codex, Some(sources())),
+        );
         assert_eq!(launch.prefix_args, vec!["x.js"]);
-        assert_eq!((launch.model.as_str(), launch.effort.as_deref()), ("some-model", Some("medium")));
+        assert_eq!(
+            (launch.model.as_str(), launch.effort.as_deref()),
+            ("some-model", Some("medium"))
+        );
         assert_eq!(launch.cwd, sandbox_dir());
         assert!(launch.has_notes);
         assert_eq!(launch.mcp_servers["mira"]["env"]["K"], "s3cret");
-        assert_eq!(launch.mcp_servers["mira"]["enabled_tools"], json!(["kb_search"]));
-        assert_eq!(launch.mcp_servers["nexq_notes"]["args"], json!(["--notes-mcp"]));
+        assert_eq!(
+            launch.mcp_servers["mira"]["enabled_tools"],
+            json!(["kb_search"])
+        );
+        assert_eq!(
+            launch.mcp_servers["nexq_notes"]["args"],
+            json!(["--notes-mcp"])
+        );
         assert!(launch.policy.allowed_tools.contains("mcp__mira__kb_search"));
-        assert!(launch.policy.allowed_tools.contains("mcp__nexq_notes__read_note"));
+        assert!(launch
+            .policy
+            .allowed_tools
+            .contains("mcp__nexq_notes__read_note"));
         // Nothing of a secret is on the command line, and the shell is off.
         let args = crate::llm::cli_agent::codex::launch::build_args(&launch, &[]);
         assert!(args.iter().all(|a| !a.contains("s3cret")));
-        assert!(args.windows(2).any(|w| w[0] == "--disable" && w[1] == "shell_tool"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--disable" && w[1] == "shell_tool"));
         // A plain session: no notes and no servers; the shell is still off.
-        let plain = codex_launch(PathBuf::from("codex.exe"), vec![], &cfg(CliAgentKind::Codex, None));
+        let plain = codex_launch(
+            PathBuf::from("codex.exe"),
+            vec![],
+            &cfg(CliAgentKind::Codex, None),
+        );
         assert!(!plain.has_notes && plain.mcp_servers.is_empty());
         let args = crate::llm::cli_agent::codex::launch::build_args(&plain, &[]);
-        assert!(args.windows(2).any(|w| w[0] == "--disable" && w[1] == "shell_tool"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--disable" && w[1] == "shell_tool"));
     }
 
     #[test]
@@ -223,14 +299,26 @@ mod tests {
         use crate::llm::cli_agent::detect::outdated_message;
         use crate::llm::cli_agent::protocol::AgentErrorKind;
         let refusal = outdated_message((2, 1, 206));
-        let err = claude_binary_for_spawn(Some(Err(ClaudeBinaryError::TooOld(refusal.clone())))).unwrap_err();
+        let err = claude_binary_for_spawn(Some(Err(ClaudeBinaryError::TooOld(refusal.clone()))))
+            .unwrap_err();
         assert_eq!(err.kind(), AgentErrorKind::Outdated);
-        assert!(err.to_string().contains("Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer."), "{err}");
+        assert!(
+            err.to_string().contains(
+                "Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer."
+            ),
+            "{err}"
+        );
         // Missing stays not installed; a usable binary passes.
         let missing = claude_binary_for_spawn(Some(Err(ClaudeBinaryError::NotFound))).unwrap_err();
         assert_eq!(missing.kind(), AgentErrorKind::NotInstalled);
-        assert_eq!(claude_binary_for_spawn(None).unwrap_err().kind(), AgentErrorKind::NotInstalled);
-        assert_eq!(claude_binary_for_spawn(Some(Ok(PathBuf::from("claude.exe")))), Ok(PathBuf::from("claude.exe")));
+        assert_eq!(
+            claude_binary_for_spawn(None).unwrap_err().kind(),
+            AgentErrorKind::NotInstalled
+        );
+        assert_eq!(
+            claude_binary_for_spawn(Some(Ok(PathBuf::from("claude.exe")))),
+            Ok(PathBuf::from("claude.exe"))
+        );
     }
 
     #[test]

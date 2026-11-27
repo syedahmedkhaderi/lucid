@@ -6,8 +6,8 @@ use serde_json::json;
 use std::time::Instant;
 
 use super::provider::{
-    CompletionStats, GenerationParams, LLMError, LLMMessage, LLMProvider, ModelInfo,
-    cancellable, check_cancelled, is_cancelled, emit_end_with_stats, emit_error, emit_token, TokenSink,
+    cancellable, check_cancelled, emit_end_with_stats, emit_error, emit_token, is_cancelled,
+    CompletionStats, GenerationParams, LLMError, LLMMessage, LLMProvider, ModelInfo, TokenSink,
 };
 use super::stream_parser::{LineBuffer, SSEParser};
 use super::thinking::{self, RequestOptions, Sent, ThinkingSetting};
@@ -119,9 +119,7 @@ impl AnthropicClient {
     pub fn new(api_key: &str, base_url: Option<&str>) -> Self {
         Self {
             api_key: api_key.to_string(),
-            base_url: base_url
-                .unwrap_or("https://api.anthropic.com")
-                .to_string(),
+            base_url: base_url.unwrap_or("https://api.anthropic.com").to_string(),
             client: reqwest::Client::new(),
             options: RequestOptions::default(),
         }
@@ -170,7 +168,10 @@ impl AnthropicClient {
         let mut models = Vec::new();
         let mut after_id: Option<String> = None;
         loop {
-            let response = self.models_request(1000, after_id.as_deref()).send().await?;
+            let response = self
+                .models_request(1000, after_id.as_deref())
+                .send()
+                .await?;
             let status = response.status();
             if status.as_u16() == 404 {
                 return Ok(None);
@@ -219,7 +220,11 @@ impl AnthropicClient {
                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
                     let event_type = current_event_type
                         .clone()
-                        .or_else(|| val.get("type").and_then(|t| t.as_str()).map(|s| s.to_string()))
+                        .or_else(|| {
+                            val.get("type")
+                                .and_then(|t| t.as_str())
+                                .map(|s| s.to_string())
+                        })
                         .unwrap_or_default();
 
                     events.push(AnthropicEvent {
@@ -247,7 +252,10 @@ impl LLMProvider for AnthropicClient {
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, LLMError> {
-        Ok(self.fetch_models().await?.unwrap_or_else(Self::fallback_models))
+        Ok(self
+            .fetch_models()
+            .await?
+            .unwrap_or_else(Self::fallback_models))
     }
 
     async fn test_connection(&self) -> Result<bool, LLMError> {
@@ -273,28 +281,37 @@ impl LLMProvider for AnthropicClient {
         // with the correct mode. Do NOT emit it here — it would overwrite the mode.
 
         let (_, would_send) = build_messages_body(&messages, model, &params, setting, true);
-        let send_thinking = would_send && thinking::should_send("anthropic", &self.base_url, model, setting);
-        let sent = thinking::send_with_fallback("anthropic", &self.base_url, model, send_thinking, &params, |with_thinking| {
-            let (body, _) = build_messages_body(&messages, model, &params, setting, with_thinking);
-            let request = self
-                .client
-                .post(&url)
-                .header("x-api-key", &self.api_key)
-                .header("anthropic-version", API_VERSION)
-                .header("Content-Type", "application/json")
-                .json(&body)
-                .send();
-            let (params, app_handle) = (&params, &app_handle);
-            async move {
-                cancellable(params, request).await?.map_err(|e| {
-                    if is_cancelled(params) {
-                        return LLMError::Cancelled;
-                    }
-                    emit_error(app_handle, params, &super::provider::error_text(&e));
-                    LLMError::HttpError(e)
-                })
-            }
-        })
+        let send_thinking =
+            would_send && thinking::should_send("anthropic", &self.base_url, model, setting);
+        let sent = thinking::send_with_fallback(
+            "anthropic",
+            &self.base_url,
+            model,
+            send_thinking,
+            &params,
+            |with_thinking| {
+                let (body, _) =
+                    build_messages_body(&messages, model, &params, setting, with_thinking);
+                let request = self
+                    .client
+                    .post(&url)
+                    .header("x-api-key", &self.api_key)
+                    .header("anthropic-version", API_VERSION)
+                    .header("Content-Type", "application/json")
+                    .json(&body)
+                    .send();
+                let (params, app_handle) = (&params, &app_handle);
+                async move {
+                    cancellable(params, request).await?.map_err(|e| {
+                        if is_cancelled(params) {
+                            return LLMError::Cancelled;
+                        }
+                        emit_error(app_handle, params, &super::provider::error_text(&e));
+                        LLMError::HttpError(e)
+                    })
+                }
+            },
+        )
         .await?;
 
         let response = match sent {
@@ -338,8 +355,11 @@ impl LLMProvider for AnthropicClient {
                     match event.event_type.as_str() {
                         "message_start" => {
                             // Extract input token count from usage
-                            if let Some(usage) = event.data.get("message").and_then(|m| m.get("usage")) {
-                                if let Some(it) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
+                            if let Some(usage) =
+                                event.data.get("message").and_then(|m| m.get("usage"))
+                            {
+                                if let Some(it) = usage.get("input_tokens").and_then(|v| v.as_u64())
+                                {
                                     input_tokens = it;
                                 }
                                 cache_read_tokens = usage
@@ -364,7 +384,9 @@ impl LLMProvider for AnthropicClient {
                         "message_delta" => {
                             // Extract output token count
                             if let Some(usage) = event.data.get("usage") {
-                                if let Some(ot) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
+                                if let Some(ot) =
+                                    usage.get("output_tokens").and_then(|v| v.as_u64())
+                                {
                                     output_tokens = ot;
                                 }
                             }
@@ -458,7 +480,10 @@ mod tests {
 
     #[test]
     fn fallback_lists_only_current_models() {
-        let ids: Vec<String> = AnthropicClient::fallback_models().into_iter().map(|m| m.id).collect();
+        let ids: Vec<String> = AnthropicClient::fallback_models()
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
         assert!(ids.contains(&"claude-opus-5-5".to_string()));
         assert!(ids.iter().all(|id| !id.starts_with("claude-3")));
     }
@@ -471,10 +496,22 @@ mod thinking_tests {
 
     fn body(model: &str, setting: ThinkingSetting, with: bool) -> (serde_json::Value, bool) {
         let messages = vec![
-            LLMMessage { role: "system".into(), content: "sys".into() },
-            LLMMessage { role: "user".into(), content: "hi".into() },
+            LLMMessage {
+                role: "system".into(),
+                content: "sys".into(),
+            },
+            LLMMessage {
+                role: "user".into(),
+                content: "hi".into(),
+            },
         ];
-        build_messages_body(&messages, model, &GenerationParams::default(), setting, with)
+        build_messages_body(
+            &messages,
+            model,
+            &GenerationParams::default(),
+            setting,
+            with,
+        )
     }
 
     #[test]
@@ -490,14 +527,26 @@ mod thinking_tests {
 
     #[test]
     fn off_low_high_use_documented_thinking_and_effort() {
-        assert_eq!(body("claude-sonnet-5-5", Off, true).0["thinking"]["type"], "between_tools");
-        assert_eq!(body("claude-opus-5-5", Off, true).0["output_config"]["effort"], "low");
-        assert_eq!(body("claude-opus-4-8", Off, true).0["thinking"]["type"], "disabled");
+        assert_eq!(
+            body("claude-sonnet-5-5", Off, true).0["thinking"]["type"],
+            "between_tools"
+        );
+        assert_eq!(
+            body("claude-opus-5-5", Off, true).0["output_config"]["effort"],
+            "low"
+        );
+        assert_eq!(
+            body("claude-opus-4-8", Off, true).0["thinking"]["type"],
+            "disabled"
+        );
         let (low, sent) = body("claude-sonnet-5-5", Low, true);
         assert!(sent);
         assert_eq!(low["thinking"]["type"], "adaptive");
         assert_eq!(low["output_config"]["effort"], "low");
-        assert_eq!(body("claude-opus-5-5", High, true).0["output_config"]["effort"], "high");
+        assert_eq!(
+            body("claude-opus-5-5", High, true).0["output_config"]["effort"],
+            "high"
+        );
     }
 
     #[test]
@@ -511,16 +560,37 @@ mod thinking_tests {
     #[test]
     fn cache_system_marks_the_stable_system_block_for_the_prompt_cache() {
         let messages = vec![
-            LLMMessage { role: "system".into(), content: "stable".into() },
-            LLMMessage { role: "user".into(), content: "hi".into() },
+            LLMMessage {
+                role: "system".into(),
+                content: "stable".into(),
+            },
+            LLMMessage {
+                role: "user".into(),
+                content: "hi".into(),
+            },
         ];
-        let params = GenerationParams { cache_system: true, ..Default::default() };
-        let (b, _) = build_messages_body(&messages, "claude-sonnet-5-5", &params, ThinkingSetting::Auto, true);
+        let params = GenerationParams {
+            cache_system: true,
+            ..Default::default()
+        };
+        let (b, _) = build_messages_body(
+            &messages,
+            "claude-sonnet-5-5",
+            &params,
+            ThinkingSetting::Auto,
+            true,
+        );
         assert_eq!(b["system"][0]["text"], "stable");
         assert_eq!(b["system"][0]["type"], "text");
         assert_eq!(b["system"][0]["cache_control"]["type"], "ephemeral");
         // Live answers (the default) keep the exact old body: a plain string.
-        let (live, _) = build_messages_body(&messages, "claude-sonnet-5-5", &GenerationParams::default(), ThinkingSetting::Auto, true);
+        let (live, _) = build_messages_body(
+            &messages,
+            "claude-sonnet-5-5",
+            &GenerationParams::default(),
+            ThinkingSetting::Auto,
+            true,
+        );
         assert_eq!(live["system"], "stable");
         assert!(!live.to_string().contains("cache_control"));
     }

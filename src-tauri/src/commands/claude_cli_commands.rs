@@ -5,7 +5,8 @@
 use tauri::{command, State};
 
 use crate::commands::cli_agent_commands::{
-    cli_agent_models_impl, cli_agent_status_impl, open_cli_login_terminal, set_cli_agent_config_impl,
+    cli_agent_models_impl, cli_agent_status_impl, open_cli_login_terminal,
+    set_cli_agent_config_impl,
 };
 use crate::llm::cli_agent::manager::{AgentSessionStatus, ClaudeCliConfig};
 use crate::llm::cli_agent::models::ClaudeModelInfo;
@@ -37,7 +38,10 @@ pub async fn seed_claude_cli_models(
     models: Vec<ClaudeModelInfo>,
     state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    Ok(state.cli_settings.catalog(CliAgentKind::Claude).seed(models))
+    Ok(state
+        .cli_settings
+        .catalog(CliAgentKind::Claude)
+        .seed(models))
 }
 
 /// Replace the Claude CLI model settings (`set_cli_agent_config("claude_cli", ..)`).
@@ -70,7 +74,8 @@ pub async fn open_claude_login_terminal() -> Result<(), String> {
 #[command]
 pub fn answer_workspace_approval(approval_id: String, allow: bool) -> bool {
     let args = crate::llm::cli_agent::approval::AnswerApprovalArgs { approval_id, allow };
-    crate::llm::cli_agent::approval::WorkspaceApprovals::global().answer(&args.approval_id, args.allow)
+    crate::llm::cli_agent::approval::WorkspaceApprovals::global()
+        .answer(&args.approval_id, args.allow)
 }
 
 #[cfg(test)]
@@ -103,7 +108,13 @@ mod tests {
         assert_eq!(json["auth"]["login"], "subscription");
         assert_eq!(json["npm_only"], false);
         assert!(json["required_version"].is_null());
-        let outdated = ClaudeCliStatus { required_version: Some("2.1.259".into()), ..status };
-        assert_eq!(serde_json::to_value(&outdated).unwrap()["required_version"], "2.1.259");
+        let outdated = ClaudeCliStatus {
+            required_version: Some("2.1.259".into()),
+            ..status
+        };
+        assert_eq!(
+            serde_json::to_value(&outdated).unwrap()["required_version"],
+            "2.1.259"
+        );
     }
 }

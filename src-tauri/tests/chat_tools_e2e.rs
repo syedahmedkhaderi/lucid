@@ -10,16 +10,20 @@
 
 use async_trait::async_trait;
 use lucid_lib::ai_runs::{
-    chat_events, AiPurpose, AiRunError, AiRunRequest, AiRuns, ApiBackend, ConfigSource, LiveGate, ModelSelection,
+    chat_events, AiPurpose, AiRunError, AiRunRequest, AiRuns, ApiBackend, ConfigSource, LiveGate,
+    ModelSelection,
 };
 use lucid_lib::llm::cli_agent::approval::{ApprovalPolicy, ChatApprovals, WorkspaceApprovals};
 use lucid_lib::llm::cli_agent::command::{SessionConfig, SourcesLaunch};
 use lucid_lib::llm::cli_agent::manager::{
-    AgentSessionManager, NoopStatusSink, SessionHandle, SessionKey, SessionScope, SessionSpawner, Tier,
+    AgentSessionManager, NoopStatusSink, SessionHandle, SessionKey, SessionScope, SessionSpawner,
+    Tier,
 };
 use lucid_lib::llm::cli_agent::session::{AgentError, ClaudeSession};
 use lucid_lib::llm::cli_agent::settings::CliSettings;
-use lucid_lib::llm::provider::{CancelToken, CompletionStats, GenerationParams, LLMError, LLMMessage, ModelInfo, TokenSink};
+use lucid_lib::llm::provider::{
+    CancelToken, CompletionStats, GenerationParams, LLMError, LLMMessage, ModelInfo, TokenSink,
+};
 use lucid_lib::llm::ProviderConfig;
 use lucid_lib::sources::config::{McpServer, McpTool};
 use serde_json::{json, Value};
@@ -32,11 +36,19 @@ fn fake_bin() -> PathBuf {
     static BIN: OnceLock<PathBuf> = OnceLock::new();
     BIN.get_or_init(|| {
         let mut cmd = std::process::Command::new(env!("CARGO"));
-        cmd.args(["build", "--example", "fake_claude"]).current_dir(env!("CARGO_MANIFEST_DIR"));
+        cmd.args(["build", "--example", "fake_claude"])
+            .current_dir(env!("CARGO_MANIFEST_DIR"));
         for (key, _) in std::env::vars() {
-            let injected = ["CARGO_MANIFEST_", "CARGO_PKG_", "CARGO_CRATE_", "CARGO_PRIMARY_PACKAGE", "CARGO_BIN_", "OUT_DIR"]
-                .iter()
-                .any(|p| key.starts_with(p));
+            let injected = [
+                "CARGO_MANIFEST_",
+                "CARGO_PKG_",
+                "CARGO_CRATE_",
+                "CARGO_PRIMARY_PACKAGE",
+                "CARGO_BIN_",
+                "OUT_DIR",
+            ]
+            .iter()
+            .any(|p| key.starts_with(p));
             if injected {
                 cmd.env_remove(key);
             }
@@ -45,9 +57,15 @@ fn fake_bin() -> PathBuf {
             cmd.arg("--release");
         }
         let out = cmd.output().expect("run cargo build --example fake_claude");
-        assert!(out.status.success(), "building fake_claude failed:\n{}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "building fake_claude failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         let profile_dir = cargo_profile_dir();
-        let bin = profile_dir.join("examples").join(format!("fake_claude{}", std::env::consts::EXE_SUFFIX));
+        let bin = profile_dir
+            .join("examples")
+            .join(format!("fake_claude{}", std::env::consts::EXE_SUFFIX));
         assert!(bin.is_file(), "missing {}", bin.display());
         bin
     })
@@ -58,7 +76,12 @@ fn cargo_profile_dir() -> PathBuf {
     std::env::current_exe()
         .unwrap()
         .ancestors()
-        .find(|path| matches!(path.file_name().and_then(|name| name.to_str()), Some("debug" | "release")))
+        .find(|path| {
+            matches!(
+                path.file_name().and_then(|name| name.to_str()),
+                Some("debug" | "release")
+            )
+        })
         .expect("Cargo profile directory in test executable path")
         .to_path_buf()
 }
@@ -76,7 +99,14 @@ struct NoApi;
 
 #[async_trait]
 impl ApiBackend for NoApi {
-    async fn stream(&self, _: ProviderConfig, _: Vec<LLMMessage>, _: String, _: GenerationParams, _: Option<TokenSink>) -> Result<CompletionStats, LLMError> {
+    async fn stream(
+        &self,
+        _: ProviderConfig,
+        _: Vec<LLMMessage>,
+        _: String,
+        _: GenerationParams,
+        _: Option<TokenSink>,
+    ) -> Result<CompletionStats, LLMError> {
         Err(LLMError::NotConfigured("no API in this test".into()))
     }
     async fn list_models(&self, _: ProviderConfig) -> Result<Vec<ModelInfo>, LLMError> {
@@ -91,7 +121,9 @@ struct NoConfigs;
 
 impl ConfigSource for NoConfigs {
     fn config_for(&self, _: &ModelSelection) -> Result<ProviderConfig, AiRunError> {
-        Err(AiRunError::Other { message: "no API in this test".into() })
+        Err(AiRunError::Other {
+            message: "no API in this test".into(),
+        })
     }
 }
 
@@ -117,8 +149,17 @@ impl Rig {
         let dir = std::env::temp_dir().join(format!("nexq-chat-e2e-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("notes")).unwrap();
-        let cli = Arc::new(AgentSessionManager::new(Arc::new(FakeCli), Arc::new(NoopStatusSink), Arc::new(CliSettings::isolated())));
-        let runs = Arc::new(AiRuns::with_parts(Arc::new(NoApi), cli.clone(), LiveGate::new(), Arc::new(NoConfigs)));
+        let cli = Arc::new(AgentSessionManager::new(
+            Arc::new(FakeCli),
+            Arc::new(NoopStatusSink),
+            Arc::new(CliSettings::isolated()),
+        ));
+        let runs = Arc::new(AiRuns::with_parts(
+            Arc::new(NoApi),
+            cli.clone(),
+            LiveGate::new(),
+            Arc::new(NoConfigs),
+        ));
         let broker = Arc::new(WorkspaceApprovals::new().with_timeout(approval_timeout));
         let events: Events = Arc::default();
         let sink = events.clone();
@@ -133,7 +174,9 @@ impl Rig {
             &runs,
             &broker,
             Arc::new(move |chat| resolve.lock().unwrap().get(chat).cloned()),
-            Arc::new(move |event, payload| sink2.lock().unwrap().push((event.to_string(), payload))),
+            Arc::new(move |event, payload| {
+                sink2.lock().unwrap().push((event.to_string(), payload))
+            }),
         );
         let tool = |n: &str, ro: Option<bool>| McpTool {
             name: n.into(),
@@ -143,24 +186,57 @@ impl Rig {
             destructive_hint: None,
         };
         let policy = Arc::new(ApprovalPolicy::from_servers(
-            &[McpServer { key: "fake".into(), tools: vec![tool("read_note", Some(true)), tool("set_flag", None)], ..Default::default() }],
+            &[McpServer {
+                key: "fake".into(),
+                tools: vec![tool("read_note", Some(true)), tool("set_flag", None)],
+                ..Default::default()
+            }],
             vec![dir.join("notes")],
         ));
         for chat in chats {
-            cli.set_chat_approvals(ChatApprovals { can_ask: true, chat_id: chat.to_string(), broker: broker.clone(), policy: policy.clone() });
+            cli.set_chat_approvals(ChatApprovals {
+                can_ask: true,
+                chat_id: chat.to_string(),
+                broker: broker.clone(),
+                policy: policy.clone(),
+            });
         }
-        Rig { runs, broker, events, asks, dir }
+        Rig {
+            runs,
+            broker,
+            events,
+            asks,
+            dir,
+        }
     }
 
     fn log(&self) -> Vec<String> {
-        std::fs::read_to_string(self.dir.join("tool.log")).unwrap_or_default().lines().map(str::to_string).collect()
+        std::fs::read_to_string(self.dir.join("tool.log"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
     }
 
     fn request(&self, chat: &str, ask_id: &str, query: &str) -> AiRunRequest {
-        self.asks.lock().unwrap().insert(chat.to_string(), ask_id.to_string());
-        let system = format!("fake_tool_log={}\nYou are a test.", self.dir.join("tool.log").display());
-        let mut req = AiRunRequest::new(AiPurpose::Chat, ModelSelection::new("claude_cli", "haiku", None), &system, query);
-        req.session_key = Some(SessionKey::sources(SessionScope::Workspace(chat.to_string()), Tier::Deep));
+        self.asks
+            .lock()
+            .unwrap()
+            .insert(chat.to_string(), ask_id.to_string());
+        let system = format!(
+            "fake_tool_log={}\nYou are a test.",
+            self.dir.join("tool.log").display()
+        );
+        let mut req = AiRunRequest::new(
+            AiPurpose::Chat,
+            ModelSelection::new("claude_cli", "haiku", None),
+            &system,
+            query,
+        );
+        req.session_key = Some(SessionKey::sources(
+            SessionScope::Workspace(chat.to_string()),
+            Tier::Deep,
+        ));
         req.sources = Some(SourcesLaunch {
             add_dirs: vec![self.dir.join("notes")],
             mcp_config_json: Some(r#"{"mcpServers":{}}"#.into()),
@@ -172,7 +248,13 @@ impl Rig {
     }
 
     fn of(&self, event: &str, chat: &str) -> Vec<Value> {
-        self.events.lock().unwrap().iter().filter(|(e, p)| e == event && p["chat_id"] == chat).map(|(_, p)| p.clone()).collect()
+        self.events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(e, p)| e == event && p["chat_id"] == chat)
+            .map(|(_, p)| p.clone())
+            .collect()
     }
 
     async fn question(&self, chat: &str) -> Value {
@@ -183,7 +265,10 @@ impl Rig {
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        panic!("no tool question for {chat}: {:?}", self.events.lock().unwrap());
+        panic!(
+            "no tool question for {chat}: {:?}",
+            self.events.lock().unwrap()
+        );
     }
 
     fn clean(&self) {
@@ -200,7 +285,10 @@ const SET_FLAG: &str = r#"tool:mcp__fake__set_flag {"value":"on"}"#;
 
 fn no_cli_ids(events: &Events) {
     let all = serde_json::to_string(&*events.lock().unwrap()).unwrap();
-    assert!(!all.contains("req-"), "the CLI's own permission id leaked into an event: {all}");
+    assert!(
+        !all.contains("req-"),
+        "the CLI's own permission id leaked into an event: {all}"
+    );
 }
 
 #[tokio::test]
@@ -210,19 +298,30 @@ async fn a_tool_that_asks_shows_a_card_for_the_running_answer_and_allow_runs_it_
     let q = rig.question("c1").await;
     // The card belongs to the answer the chat is writing, with the call's own arguments.
     assert_eq!(q["request_id"], "ask-1");
-    assert_eq!((q["server"].as_str(), q["tool"].as_str()), (Some("fake"), Some("set_flag")));
+    assert_eq!(
+        (q["server"].as_str(), q["tool"].as_str()),
+        (Some("fake"), Some("set_flag"))
+    );
     assert!(q["args"].as_str().unwrap().contains("\"value\": \"on\""));
     assert!(rig.log().is_empty(), "nothing ran before the click");
     assert!(rig.broker.answer(q["approval_id"].as_str().unwrap(), true));
     assert_eq!(run.await.unwrap().unwrap(), "tool:ran");
     // It ran once, with exactly the arguments that were shown.
-    assert_eq!(rig.log(), vec![r#"ran mcp__fake__set_flag {"value":"on"}"#.to_string()]);
+    assert_eq!(
+        rig.log(),
+        vec![r#"ran mcp__fake__set_flag {"value":"on"}"#.to_string()]
+    );
     // The activity of the answer: the tool, then its chip once it ended well.
     let activity = rig.of("workspace_chat_activity", "c1");
     assert!(activity.iter().all(|a| a["request_id"] == "ask-1"));
-    assert!(activity.iter().any(|a| a["activity"]["label"] == "Fake: set_flag" && a["activity"]["chip"].is_null()));
+    assert!(activity
+        .iter()
+        .any(|a| a["activity"]["label"] == "Fake: set_flag" && a["activity"]["chip"].is_null()));
     assert!(activity.iter().any(|a| a["activity"]["chip_only"] == true));
-    assert!(rig.of("workspace_chat_approval_closed", "c1").iter().any(|c| c["reason"] == "answered"));
+    assert!(rig
+        .of("workspace_chat_approval_closed", "c1")
+        .iter()
+        .any(|c| c["reason"] == "answered"));
     no_cli_ids(&rig.events);
     rig.clean();
 }
@@ -237,7 +336,11 @@ async fn deny_means_the_tool_did_not_run_and_the_chat_is_told() {
     assert!(rig.log().is_empty());
     let activity = rig.of("workspace_chat_activity", "c1");
     assert!(
-        activity.iter().any(|a| a["activity"]["kind"] == "notice" && a["activity"]["label"].as_str().unwrap().contains("was not run")),
+        activity.iter().any(|a| a["activity"]["kind"] == "notice"
+            && a["activity"]["label"]
+                .as_str()
+                .unwrap()
+                .contains("was not run")),
         "{activity:?}"
     );
     no_cli_ids(&rig.events);
@@ -247,7 +350,13 @@ async fn deny_means_the_tool_did_not_run_and_the_chat_is_told() {
 #[tokio::test]
 async fn a_read_only_tool_runs_without_a_card() {
     let rig = Rig::new("readonly", Duration::from_secs(60), &["c1"]);
-    let text = spawn_run(&rig, rig.request("c1", "ask-1", r#"tool:mcp__fake__read_note {"name":"a"}"#)).await.unwrap().unwrap();
+    let text = spawn_run(
+        &rig,
+        rig.request("c1", "ask-1", r#"tool:mcp__fake__read_note {"name":"a"}"#),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(text, "tool:ran");
     assert!(rig.of("workspace_chat_approval", "c1").is_empty());
     assert_eq!(rig.log().len(), 1);
@@ -257,11 +366,17 @@ async fn a_read_only_tool_runs_without_a_card() {
 #[tokio::test]
 async fn nobody_answering_denies_after_the_timeout_and_the_card_is_closed_with_the_same_word() {
     let rig = Rig::new("timeout", Duration::from_millis(400), &["c1"]);
-    let text = spawn_run(&rig, rig.request("c1", "ask-1", SET_FLAG)).await.unwrap().unwrap();
+    let text = spawn_run(&rig, rig.request("c1", "ask-1", SET_FLAG))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(text, "tool:refused");
     assert!(rig.log().is_empty());
     let closed = rig.of("workspace_chat_approval_closed", "c1");
-    assert!(closed.iter().any(|c| c["reason"] == "timed_out"), "{closed:?}");
+    assert!(
+        closed.iter().any(|c| c["reason"] == "timed_out"),
+        "{closed:?}"
+    );
     rig.clean();
 }
 
@@ -275,10 +390,16 @@ async fn stopping_the_answer_while_a_question_is_open_denies_it_and_closes_the_c
     let q = rig.question("c1").await;
     cancel.cancel();
     assert_eq!(run.await.unwrap().unwrap_err(), AiRunError::Cancelled);
-    assert!(!rig.broker.answer(q["approval_id"].as_str().unwrap(), true), "a late click finds nothing");
+    assert!(
+        !rig.broker.answer(q["approval_id"].as_str().unwrap(), true),
+        "a late click finds nothing"
+    );
     assert!(rig.log().is_empty(), "the tool never ran");
     let closed = rig.of("workspace_chat_approval_closed", "c1");
-    assert!(closed.iter().any(|c| c["reason"] == "cancelled"), "{closed:?}");
+    assert!(
+        closed.iter().any(|c| c["reason"] == "cancelled"),
+        "{closed:?}"
+    );
     rig.clean();
 }
 
@@ -286,20 +407,34 @@ async fn stopping_the_answer_while_a_question_is_open_denies_it_and_closes_the_c
 async fn two_chats_ask_at_once_and_each_card_is_for_its_own_answer() {
     let rig = Rig::new("two", Duration::from_secs(60), &["c1", "c2"]);
     let r1 = spawn_run(&rig, rig.request("c1", "ask-1", SET_FLAG));
-    let r2 = spawn_run(&rig, rig.request("c2", "ask-2", r#"tool:mcp__fake__set_flag {"value":"two"}"#));
+    let r2 = spawn_run(
+        &rig,
+        rig.request("c2", "ask-2", r#"tool:mcp__fake__set_flag {"value":"two"}"#),
+    );
     let (q1, q2) = (rig.question("c1").await, rig.question("c2").await);
-    assert_eq!((q1["request_id"].as_str(), q2["request_id"].as_str()), (Some("ask-1"), Some("ask-2")));
+    assert_eq!(
+        (q1["request_id"].as_str(), q2["request_id"].as_str()),
+        (Some("ask-1"), Some("ask-2"))
+    );
     assert_ne!(q1["approval_id"], q2["approval_id"]);
     // Answer them the other way round: c2 allowed, c1 denied.
     assert!(rig.broker.answer(q2["approval_id"].as_str().unwrap(), true));
-    assert!(rig.broker.answer(q1["approval_id"].as_str().unwrap(), false));
+    assert!(rig
+        .broker
+        .answer(q1["approval_id"].as_str().unwrap(), false));
     assert_eq!(r2.await.unwrap().unwrap(), "tool:ran");
     assert_eq!(r1.await.unwrap().unwrap(), "tool:refused");
-    assert_eq!(rig.log(), vec![r#"ran mcp__fake__set_flag {"value":"two"}"#.to_string()]);
+    assert_eq!(
+        rig.log(),
+        vec![r#"ran mcp__fake__set_flag {"value":"two"}"#.to_string()]
+    );
     // Each chat's events carry only its own answer's id.
     for (chat, ask) in [("c1", "ask-1"), ("c2", "ask-2")] {
         for event in ["workspace_chat_approval", "workspace_chat_activity"] {
-            assert!(rig.of(event, chat).iter().all(|p| p["request_id"] == ask), "{chat} {event}");
+            assert!(
+                rig.of(event, chat).iter().all(|p| p["request_id"] == ask),
+                "{chat} {event}"
+            );
         }
     }
     no_cli_ids(&rig.events);
@@ -315,7 +450,10 @@ async fn a_question_with_no_answer_running_is_refused_and_says_so() {
     let text = spawn_run(&rig, req).await.unwrap().unwrap();
     assert_eq!(text, "tool:refused");
     assert!(rig.of("workspace_chat_approval", "c1").is_empty());
-    assert!(rig.of("workspace_chat_approval_refused", "c1").iter().any(|r| r["reason"].as_str().unwrap().contains("no answer")));
+    assert!(rig
+        .of("workspace_chat_approval_refused", "c1")
+        .iter()
+        .any(|r| r["reason"].as_str().unwrap().contains("no answer")));
     assert!(rig.log().is_empty());
     rig.clean();
     let _ = json!(null);

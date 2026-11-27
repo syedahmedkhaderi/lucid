@@ -30,13 +30,29 @@ fn chunk(conn: &Connection, id: &str, file: &str, text: &str, vector: &[f32]) {
 /// Two documents: the other one ranks first for the query on every measure.
 fn two_documents() -> Connection {
     let conn = index();
-    chunk(&conn, "allowed", "doc-a", "budget notes CANARY_ALLOWED", &[0.6, 0.8, 0.0]);
-    chunk(&conn, "other", "doc-b", "budget budget budget budget CANARY_OTHER", &[1.0, 0.0, 0.0]);
+    chunk(
+        &conn,
+        "allowed",
+        "doc-a",
+        "budget notes CANARY_ALLOWED",
+        &[0.6, 0.8, 0.0],
+    );
+    chunk(
+        &conn,
+        "other",
+        "doc-b",
+        "budget budget budget budget CANARY_OTHER",
+        &[1.0, 0.0, 0.0],
+    );
     conn
 }
 
 fn config(top_k: usize) -> RagConfig {
-    RagConfig { top_k, similarity_threshold: 0.0, ..RagConfig::default() }
+    RagConfig {
+        top_k,
+        similarity_threshold: 0.0,
+        ..RagConfig::default()
+    }
 }
 
 fn files(ids: &[&str]) -> Vec<String> {
@@ -47,12 +63,17 @@ fn files(ids: &[&str]) -> Vec<String> {
 fn keyword_search_is_filtered_before_the_top_candidates() {
     let conn = two_documents();
     let all = fts_store::search_keywords(&conn, "budget", 1, None).unwrap();
-    assert_eq!(all[0].0, "other", "the other document ranks first unfiltered");
+    assert_eq!(
+        all[0].0, "other",
+        "the other document ranks first unfiltered"
+    );
     let allowed = files(&["doc-a"]);
     let found = fts_store::search_keywords(&conn, "budget", 1, Some(&allowed)).unwrap();
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, "allowed");
-    assert!(fts_store::search_keywords(&conn, "budget", 5, Some(&[])).unwrap().is_empty());
+    assert!(fts_store::search_keywords(&conn, "budget", 5, Some(&[]))
+        .unwrap()
+        .is_empty());
 }
 
 #[test]
@@ -77,18 +98,24 @@ fn hybrid_search_uses_the_filter_in_both_halves() {
     let query = [1.0, 0.0, 0.0];
     let allowed = files(&["doc-a"]);
     let stored = load_embeddings(&conn, Some(&allowed)).unwrap();
-    let found = search::hybrid_search(&conn, &query, "budget", &config(5), &stored, Some(&allowed)).unwrap();
+    let found = search::hybrid_search(&conn, &query, "budget", &config(5), &stored, Some(&allowed))
+        .unwrap();
     assert!(!found.is_empty());
     assert!(found.iter().all(|c| c.text.contains("CANARY_ALLOWED")));
     // With both documents allowed, both can be found.
     let both = files(&["doc-a", "doc-b"]);
     let stored = load_embeddings(&conn, Some(&both)).unwrap();
-    let found = search::hybrid_search(&conn, &query, "budget", &config(5), &stored, Some(&both)).unwrap();
+    let found =
+        search::hybrid_search(&conn, &query, "budget", &config(5), &stored, Some(&both)).unwrap();
     assert_eq!(found.len(), 2);
     // A document that is in no scope is never found.
     let none: Vec<String> = Vec::new();
     let stored = load_embeddings(&conn, Some(&none)).unwrap();
-    assert!(search::hybrid_search(&conn, &query, "budget", &config(5), &stored, Some(&none)).unwrap().is_empty());
+    assert!(
+        search::hybrid_search(&conn, &query, "budget", &config(5), &stored, Some(&none))
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -101,21 +128,39 @@ fn live_transcript_chunks_pass_only_when_their_file_is_allowed() {
     )
     .unwrap();
     let docs = files(&["doc-a"]);
-    assert!(fts_store::search_keywords(&conn, "budget", 5, Some(&docs)).unwrap().is_empty());
+    assert!(fts_store::search_keywords(&conn, "budget", 5, Some(&docs))
+        .unwrap()
+        .is_empty());
     let with_transcript = files(&["doc-a", "transcript_abc"]);
-    assert_eq!(fts_store::search_keywords(&conn, "budget", 5, Some(&with_transcript)).unwrap().len(), 1);
+    assert_eq!(
+        fts_store::search_keywords(&conn, "budget", 5, Some(&with_transcript))
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 #[test]
 fn the_live_transcript_is_found_only_by_the_meeting_that_owns_it() {
     use super::RagManager;
-    let mut rag = RagManager::new(RagConfig { include_transcript: true, ..RagConfig::default() });
+    let mut rag = RagManager::new(RagConfig {
+        include_transcript: true,
+        ..RagConfig::default()
+    });
     // Nobody owns it yet: no meeting finds it.
     assert_eq!(rag.transcript_file_id_for("m1"), None);
-    rag.transcript_indexer_mut().unwrap().set_owner(Some("m1".to_string()));
-    let id = rag.transcript_file_id_for("m1").expect("the owner finds it");
+    rag.transcript_indexer_mut()
+        .unwrap()
+        .set_owner(Some("m1".to_string()));
+    let id = rag
+        .transcript_file_id_for("m1")
+        .expect("the owner finds it");
     assert!(id.starts_with("transcript_m1_"), "{id}");
-    assert_eq!(rag.transcript_file_id_for("m2"), None, "another meeting never does");
+    assert_eq!(
+        rag.transcript_file_id_for("m2"),
+        None,
+        "another meeting never does"
+    );
     assert_eq!(rag.transcript_file_id_for(""), None);
     // The meeting ends: nobody does.
     rag.transcript_indexer_mut().unwrap().set_owner(None);

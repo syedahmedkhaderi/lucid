@@ -41,8 +41,12 @@ pub struct Reuse {
 
 impl Reuse {
     pub fn new(conn: &Connection, chat_id: &str) -> Result<Reuse, String> {
-        let (_, universe) = universe_now(conn, chat_id).ok_or_else(|| "Couldn't read what this chat may use".to_string())?;
-        Ok(Reuse { universe, prov: store::provenance_of_chat(conn, chat_id)? })
+        let (_, universe) = universe_now(conn, chat_id)
+            .ok_or_else(|| "Couldn't read what this chat may use".to_string())?;
+        Ok(Reuse {
+            universe,
+            prov: store::provenance_of_chat(conn, chat_id)?,
+        })
     }
 
     /// An assistant answer may be sent again (or saved) only with a record
@@ -51,7 +55,9 @@ impl Reuse {
         if m.role != "assistant" {
             return true;
         }
-        self.prov.get(&m.id).map_or(false, |p| allowed(p, &self.universe))
+        self.prov
+            .get(&m.id)
+            .map_or(false, |p| allowed(p, &self.universe))
     }
 
     pub fn provenance(&self, id: i64) -> Option<&Provenance> {
@@ -80,7 +86,8 @@ pub struct AccessGuard {
 }
 
 fn data_version(conn: &Connection) -> Option<i64> {
-    conn.query_row("PRAGMA data_version", [], |r| r.get::<_, i64>(0)).ok()
+    conn.query_row("PRAGMA data_version", [], |r| r.get::<_, i64>(0))
+        .ok()
 }
 
 /// Why a guarded write did not happen.
@@ -99,7 +106,8 @@ pub fn atomically<T>(
     check: impl FnOnce(&Connection) -> bool,
     write: impl FnOnce(&Connection) -> Result<T, String>,
 ) -> Result<T, WriteError> {
-    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| WriteError::Failed(format!("Couldn't save: {e}")))?;
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| WriteError::Failed(format!("Couldn't save: {e}")))?;
     if !check(conn) {
         let _ = conn.execute_batch("ROLLBACK");
         return Err(WriteError::Revoked);
@@ -133,16 +141,29 @@ impl AccessGuard {
         AccessGuard {
             chat_id: chat_id.to_string(),
             prov,
-            inner: Mutex::new(Inner { conn, last_version: None }),
+            inner: Mutex::new(Inner {
+                conn,
+                last_version: None,
+            }),
             revoked: AtomicBool::new(false),
         }
     }
 
     /// Write something the answer produced, only if everything it used is still
     /// allowed at the moment of writing (one transaction, see [`atomically`]).
-    pub fn check_and_write<T>(&self, write: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, WriteError> {
-        let inner = self.inner.lock().map_err(|_| WriteError::Failed("busy".into()))?;
-        let r = atomically(&inner.conn, |c| still_allowed(c, &self.chat_id, &self.prov), write);
+    pub fn check_and_write<T>(
+        &self,
+        write: impl FnOnce(&Connection) -> Result<T, String>,
+    ) -> Result<T, WriteError> {
+        let inner = self
+            .inner
+            .lock()
+            .map_err(|_| WriteError::Failed("busy".into()))?;
+        let r = atomically(
+            &inner.conn,
+            |c| still_allowed(c, &self.chat_id, &self.prov),
+            write,
+        );
         if matches!(r, Err(WriteError::Revoked)) {
             self.revoked.store(true, Ordering::SeqCst);
         }

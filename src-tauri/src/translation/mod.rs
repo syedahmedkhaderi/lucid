@@ -1,17 +1,17 @@
 // src-tauri/src/translation/mod.rs
-pub mod microsoft;
-pub mod google;
 pub mod deepl;
-pub mod opus_mt;
-pub mod opus_mt_registry;
-pub mod opus_mt_manager;
+pub mod google;
 pub mod llm_provider;
+pub mod microsoft;
+pub mod opus_mt;
+pub mod opus_mt_manager;
+pub mod opus_mt_registry;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 use std::sync::Arc;
 
 // ── Error types ──
@@ -34,7 +34,9 @@ pub enum TranslationError {
 
 impl Serialize for TranslationError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer {
+    where
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&self.to_string())
     }
 }
@@ -174,7 +176,12 @@ impl TranslationCache {
             }
         }
         self.order.push(key.clone());
-        self.map.insert(key, CacheEntry { translated_text: translated });
+        self.map.insert(
+            key,
+            CacheEntry {
+                translated_text: translated,
+            },
+        );
     }
 }
 
@@ -270,18 +277,27 @@ impl TranslationRouter {
     ) -> Result<(), TranslationError> {
         let provider: Box<dyn TranslationProvider> = match provider_type {
             TranslationProviderType::Microsoft => {
-                let key = self.microsoft_api_key.clone()
+                let key = self
+                    .microsoft_api_key
+                    .clone()
                     .ok_or_else(|| TranslationError::NoApiKey("microsoft".into()))?;
-                let region = self.microsoft_region.clone().unwrap_or_else(|| "global".into());
+                let region = self
+                    .microsoft_region
+                    .clone()
+                    .unwrap_or_else(|| "global".into());
                 Box::new(microsoft::MicrosoftTranslator::new(key, region))
             }
             TranslationProviderType::Google => {
-                let key = self.google_api_key.clone()
+                let key = self
+                    .google_api_key
+                    .clone()
                     .ok_or_else(|| TranslationError::NoApiKey("google".into()))?;
                 Box::new(google::GoogleTranslator::new(key))
             }
             TranslationProviderType::Deepl => {
-                let key = self.deepl_api_key.clone()
+                let key = self
+                    .deepl_api_key
+                    .clone()
                     .ok_or_else(|| TranslationError::NoApiKey("deepl".into()))?;
                 Box::new(deepl::DeepLTranslator::new(key))
             }
@@ -297,9 +313,7 @@ impl TranslationRouter {
                 }
                 Box::new(translator)
             }
-            TranslationProviderType::Llm => {
-                Box::new(llm_provider::LlmTranslator::new())
-            }
+            TranslationProviderType::Llm => Box::new(llm_provider::LlmTranslator::new()),
         };
 
         self.active_provider = Some(Arc::from(provider));
@@ -324,7 +338,9 @@ impl TranslationRouter {
     /// Keep privacy mode stable for the full period in which a translation
     /// provider may receive meeting text. LLM translation reserves its own
     /// LLM request guard at the completion boundary.
-    pub fn begin_content_request(&self) -> Result<Option<crate::privacy::ContentRequestGuard>, String> {
+    pub fn begin_content_request(
+        &self,
+    ) -> Result<Option<crate::privacy::ContentRequestGuard>, String> {
         let Some(provider) = self.active_type.as_ref() else {
             return Err("No translation provider set".into());
         };

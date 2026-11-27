@@ -122,7 +122,11 @@ pub fn effective_effort(model: Option<&ClaudeModelInfo>, saved: &str) -> Option<
 
 /// [`effective_effort`] with the CLI's own ordered list of levels (`ranks`),
 /// which decides "closest level" (Codex has `ultra` on top).
-pub fn effective_effort_in(model: Option<&ClaudeModelInfo>, saved: &str, ranks: &[&str]) -> Option<String> {
+pub fn effective_effort_in(
+    model: Option<&ClaudeModelInfo>,
+    saved: &str,
+    ranks: &[&str],
+) -> Option<String> {
     let Some(model) = model else {
         return Some(saved.to_string());
     };
@@ -162,8 +166,13 @@ impl ModelCatalog {
     /// The process-wide catalog of one CLI agent (one per kind).
     pub fn global_for(kind: CliAgentKind) -> Arc<ModelCatalog> {
         static GLOBALS: OnceLock<[Arc<ModelCatalog>; 3]> = OnceLock::new();
-        let all = GLOBALS.get_or_init(|| std::array::from_fn(|_| Arc::new(ModelCatalog::default())));
-        all[CliAgentKind::ALL.iter().position(|k| *k == kind).unwrap_or(0)].clone()
+        let all =
+            GLOBALS.get_or_init(|| std::array::from_fn(|_| Arc::new(ModelCatalog::default())));
+        all[CliAgentKind::ALL
+            .iter()
+            .position(|k| *k == kind)
+            .unwrap_or(0)]
+        .clone()
     }
 
     pub fn get(&self) -> Option<Vec<ClaudeModelInfo>> {

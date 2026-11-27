@@ -2,12 +2,11 @@
 //! The index and the context ladder live in `workspace_search`; this module
 //! is the engine around them (chats, sessions, events) and the wiring.
 
-
 pub mod approval;
 pub mod engine;
 pub mod errors;
-pub mod guard;
 pub mod files;
+pub mod guard;
 pub mod hub;
 pub mod migrate;
 pub mod ops;

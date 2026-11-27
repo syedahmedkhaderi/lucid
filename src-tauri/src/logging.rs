@@ -34,7 +34,10 @@ static VERBOSE: AtomicBool = AtomicBool::new(false);
 static DROPPED: AtomicU64 = AtomicU64::new(0);
 
 enum Msg {
-    Line { text: String, urgent: bool },
+    Line {
+        text: String,
+        urgent: bool,
+    },
     /// The log folder is known (after Tauri's path resolver is available).
     Open(PathBuf),
     /// Flush everything written so far, then acknowledge.
@@ -45,7 +48,11 @@ struct Logger;
 
 impl Log for Logger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        enabled(metadata.target(), metadata.level(), VERBOSE.load(Ordering::Relaxed))
+        enabled(
+            metadata.target(),
+            metadata.level(),
+            VERBOSE.load(Ordering::Relaxed),
+        )
     }
 
     fn log(&self, record: &Record) {
@@ -53,7 +60,9 @@ impl Log for Logger {
             return;
         }
         let text = format_line(
-            &chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
+            &chrono::Local::now()
+                .format("%Y-%m-%d %H:%M:%S%.3f")
+                .to_string(),
             record.level(),
             record.target(),
             &record.args().to_string(),
@@ -67,7 +76,8 @@ impl Log for Logger {
 }
 
 fn enabled(target: &str, level: Level, verbose: bool) -> bool {
-    let ours = target == APP_TARGET || target.starts_with("lucid_lib") || target.starts_with("lucid::");
+    let ours =
+        target == APP_TARGET || target.starts_with("lucid_lib") || target.starts_with("lucid::");
     let max = match (ours, verbose) {
         (true, true) => Level::Debug,
         (true, false) => Level::Info,
@@ -150,7 +160,9 @@ pub fn frontend(level: Level, source: &str, message: &str) {
     }
     let message: String = message.chars().take(4000).collect();
     let text = format_line(
-        &chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
+        &chrono::Local::now()
+            .format("%Y-%m-%d %H:%M:%S%.3f")
+            .to_string(),
         level,
         &target,
         &message,
@@ -163,7 +175,10 @@ fn install_panic_hook() {
     std::panic::set_hook(Box::new(move |info| {
         let thread = std::thread::current();
         let name = thread.name().unwrap_or("unnamed");
-        let location = info.location().map(|l| format!(" at {}:{}", l.file(), l.line())).unwrap_or_default();
+        let location = info
+            .location()
+            .map(|l| format!(" at {}:{}", l.file(), l.line()))
+            .unwrap_or_default();
         let payload = info
             .payload()
             .downcast_ref::<&str>()
@@ -190,7 +205,11 @@ impl Sink {
         let path = dir.join(LOG_FILE);
         let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
         let file = OpenOptions::new().create(true).append(true).open(&path)?;
-        Ok(Self { path, file: BufWriter::new(file), size })
+        Ok(Self {
+            path,
+            file: BufWriter::new(file),
+            size,
+        })
     }
 
     fn write(&mut self, text: &str) {
@@ -205,7 +224,12 @@ impl Sink {
     fn rotate(&mut self) {
         let _ = self.file.flush();
         rotate_files(&self.path, KEPT_FILES);
-        if let Ok(file) = OpenOptions::new().create(true).write(true).truncate(true).open(&self.path) {
+        if let Ok(file) = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&self.path)
+        {
             self.file = BufWriter::new(file);
             self.size = 0;
         }
@@ -332,7 +356,18 @@ fn last_lines(text: &str, max_lines: usize) -> &str {
 /// Google `AIza`, OpenRouter `sk-or-`, Deepgram/xAI style `xai-`).
 const KEY_PREFIXES: &[&str] = &["sk-", "gsk_", "AIza", "xai-"];
 /// Names whose value is a secret: `name=value`, `name: value`, `"name":"value"`.
-const SECRET_NAMES: &[&str] = &["api_key", "apikey", "api-key", "auth_value", "access_token", "token", "authorization", "password", "secret", "key"];
+const SECRET_NAMES: &[&str] = &[
+    "api_key",
+    "apikey",
+    "api-key",
+    "auth_value",
+    "access_token",
+    "token",
+    "authorization",
+    "password",
+    "secret",
+    "key",
+];
 const REDACTED: &str = "[redacted]";
 
 fn is_token_char(c: char) -> bool {
@@ -435,12 +470,26 @@ mod tests {
 
     #[test]
     fn masks_keys_and_tokens() {
-        assert_eq!(redact("using key sk-proj-abcdefghijklmnop1234567890"), "using key [redacted]");
-        assert_eq!(redact("Authorization: Bearer abc.def-ghi_jkl123"), "Authorization: Bearer [redacted]");
-        assert_eq!(redact("url?key=AIzaSyA1234567890abcdefghij&x=1"), "url?key=[redacted]&x=1");
-        assert_eq!(redact(r#"{"api_key": "gsk_0123456789abcdefghijkl"}"#), r#"{"api_key": "[redacted]"}"#);
         assert_eq!(
-            redact(r#"LLM provider set to: {"provider_type":"gemini","api_key":"TEST_ONLY_NOT_A_REAL_KEY"}"#),
+            redact("using key sk-proj-abcdefghijklmnop1234567890"),
+            "using key [redacted]"
+        );
+        assert_eq!(
+            redact("Authorization: Bearer abc.def-ghi_jkl123"),
+            "Authorization: Bearer [redacted]"
+        );
+        assert_eq!(
+            redact("url?key=AIzaSyA1234567890abcdefghij&x=1"),
+            "url?key=[redacted]&x=1"
+        );
+        assert_eq!(
+            redact(r#"{"api_key": "gsk_0123456789abcdefghijkl"}"#),
+            r#"{"api_key": "[redacted]"}"#
+        );
+        assert_eq!(
+            redact(
+                r#"LLM provider set to: {"provider_type":"gemini","api_key":"TEST_ONLY_NOT_A_REAL_KEY"}"#
+            ),
             r#"LLM provider set to: {"provider_type":"gemini","api_key":"[redacted]"}"#
         );
         // A custom provider's token has no known prefix.
@@ -479,7 +528,12 @@ mod tests {
     #[test]
     fn formats_one_line_per_record() {
         assert_eq!(
-            format_line("2026-10-24 10:00:00.000", Level::Warn, "lucid_lib::stt::deepgram", "closed"),
+            format_line(
+                "2026-10-24 10:00:00.000",
+                Level::Warn,
+                "lucid_lib::stt::deepgram",
+                "closed"
+            ),
             "2026-10-24 10:00:00.000 WARN  [stt::deepgram] closed\n"
         );
     }
@@ -495,8 +549,14 @@ mod tests {
             rotate_files(&path, 3);
         }
         assert!(!path.exists());
-        assert_eq!(fs::read_to_string(dir.join("lucid.1.log")).unwrap(), "gen 5");
-        assert_eq!(fs::read_to_string(dir.join("lucid.3.log")).unwrap(), "gen 3");
+        assert_eq!(
+            fs::read_to_string(dir.join("lucid.1.log")).unwrap(),
+            "gen 5"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("lucid.3.log")).unwrap(),
+            "gen 3"
+        );
         assert!(!dir.join("lucid.4.log").exists());
         let _ = fs::remove_dir_all(&dir);
     }

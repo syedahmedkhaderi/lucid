@@ -1020,6 +1020,38 @@ async fn the_live_scope_carries_the_workspaces_instructions_for_the_brief() {
 }
 
 #[tokio::test]
+async fn meeting_context_is_added_to_only_its_own_live_scope() {
+    let h = harness();
+    let ws = brief_workspace(&h);
+    let m = make_meeting(&h, &ws);
+    h.conn
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE meetings SET meeting_context = ?1 WHERE id = ?2",
+            rusqlite::params!["Review renewal records by exact account ID.", m],
+        )
+        .unwrap();
+    let scope = h.rt.deps().db.scope(&m).unwrap();
+    assert!(scope
+        .instructions
+        .contains("Meeting context provided for this meeting:"));
+    assert!(scope
+        .instructions
+        .contains("Review renewal records by exact account ID."));
+
+    let other = make_meeting(&h, &ws);
+    assert!(!h
+        .rt
+        .deps()
+        .db
+        .scope(&other)
+        .unwrap()
+        .instructions
+        .contains("Review renewal records"));
+}
+
+#[tokio::test]
 async fn brief_is_off_in_a_workspace_that_has_it_off() {
     let h = harness();
     let ws = {

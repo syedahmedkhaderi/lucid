@@ -1,6 +1,6 @@
-pub mod device_default;
 pub mod capture_common;
 pub mod capture_supervisor;
+pub mod device_default;
 pub mod device_manager;
 pub mod echo_cancel;
 pub mod encoder;
@@ -63,7 +63,10 @@ impl PartyAudioConfig {
 
     /// The language picked for this side alone, if any.
     pub fn own_language(&self) -> Option<&str> {
-        self.language.as_deref().map(str::trim).filter(|own| !own.is_empty())
+        self.language
+            .as_deref()
+            .map(str::trim)
+            .filter(|own| !own.is_empty())
     }
 }
 
@@ -189,7 +192,13 @@ impl AudioCaptureManager {
             );
             // Single capture that produces both Mic and System chunks
             let (side, _) = self
-                .spawn_input(CaptureKind::Dual, mic_device_id, mic_capture::InputTags::Both, &tx, &on_status)
+                .spawn_input(
+                    CaptureKind::Dual,
+                    mic_device_id,
+                    mic_capture::InputTags::Both,
+                    &tx,
+                    &on_status,
+                )
                 .map_err(|errors| format!("Dual capture failed: {}", errors.join("; ")))?;
             self.sides.push(side);
             // One stream serves both sides: its xruns and rebuilds show on both stats lines.
@@ -216,7 +225,9 @@ impl AudioCaptureManager {
                 Err(errors) => {
                     // Keep going: the other side may still be captured.
                     let e = match errors.as_slice() {
-                        [chosen, default] => format!("{chosen}; the default microphone failed too: {default}"),
+                        [chosen, default] => {
+                            format!("{chosen}; the default microphone failed too: {default}")
+                        }
                         _ => errors.join("; "),
                     };
                     log::error!("Failed to start mic capture: {e}");
@@ -244,14 +255,19 @@ impl AudioCaptureManager {
                 Err(errors) => {
                     // Keep "You" running; the caller warns about the other side.
                     let e = errors.join("; ");
-                    log::error!("System input capture failed: {e}. The other party won't be captured.");
+                    log::error!(
+                        "System input capture failed: {e}. The other party won't be captured."
+                    );
                     system_error = Some(e);
                 }
             }
         } else {
             // A chosen output that isn't connected falls back to the default output.
             let (messages_tx, messages_rx) = capture_supervisor::side_channel();
-            let opener = system_capture::OutputOpener { tx: tx.clone(), errors: messages_tx.clone() };
+            let opener = system_capture::OutputOpener {
+                tx: tx.clone(),
+                errors: messages_tx.clone(),
+            };
             match capture_supervisor::spawn_side(
                 SideSpec {
                     kind: CaptureKind::Output,
@@ -278,7 +294,9 @@ impl AudioCaptureManager {
                     // Keep "You" running; the caller warns about the other side.
                     // The last error is the last device tried (the default output).
                     let e = errors.last().cloned().unwrap_or_default();
-                    log::error!("System output capture failed: {e}. The other party won't be captured.");
+                    log::error!(
+                        "System output capture failed: {e}. The other party won't be captured."
+                    );
                     system_error = Some(e);
                 }
             }
@@ -287,7 +305,9 @@ impl AudioCaptureManager {
         match (mic_error, system_error) {
             (Some(mic), Some(system)) => {
                 self.stop_sides();
-                return Err(format!("Couldn't capture any audio. Microphone: {mic}. Other side: {system}"));
+                return Err(format!(
+                    "Couldn't capture any audio. Microphone: {mic}. Other side: {system}"
+                ));
             }
             (Some(mic), None) => self.warnings.push(format!(
                 "Couldn't capture your microphone ({mic}). The other side is still transcribed."
@@ -537,10 +557,7 @@ impl AudioCaptureManager {
         }
 
         let detected = self.test_audio_detected.load(Ordering::SeqCst);
-        log::info!(
-            "Audio test stopped, audio detected: {}",
-            detected
-        );
+        log::info!("Audio test stopped, audio detected: {}", detected);
         detected
     }
 
@@ -755,17 +772,15 @@ pub async fn process_recording(
     let db_result = {
         let db_guard = db.lock();
         match db_guard {
-            Ok(guard) => {
-                crate::db::meetings::update_meeting_recording(
-                    guard.connection(),
-                    &meeting_id_clone,
-                    &recording_path_str,
-                    recording_size,
-                    &waveform_path_str,
-                    recording_offset_ms,
-                )
-                .map_err(|e| e.to_string())
-            }
+            Ok(guard) => crate::db::meetings::update_meeting_recording(
+                guard.connection(),
+                &meeting_id_clone,
+                &recording_path_str,
+                recording_size,
+                &waveform_path_str,
+                recording_offset_ms,
+            )
+            .map_err(|e| e.to_string()),
             Err(e) => Err(format!("DB lock poisoned: {}", e)),
         }
     };
@@ -829,8 +844,15 @@ mod tests {
         assert_eq!((saved.as_path(), start_time_ms), (path.as_path(), started));
         let reader = hound::WavReader::open(&path).unwrap();
         let samples: Vec<i16> = reader.into_samples::<i16>().map(Result::unwrap).collect();
-        assert!(samples.len() >= 32_000 + 3_200, "both parts and the gap: {}", samples.len());
-        assert_eq!(samples[0], 100, "audio from before the change is still there");
+        assert!(
+            samples.len() >= 32_000 + 3_200,
+            "both parts and the gap: {}",
+            samples.len()
+        );
+        assert_eq!(
+            samples[0], 100,
+            "audio from before the change is still there"
+        );
         assert_eq!(samples[16_000], 0, "the gap is silence");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
@@ -840,7 +862,9 @@ mod tests {
     fn end_finalizes_a_kept_recording_without_capture() {
         let path = temp_wav("end");
         let mut mgr = AudioCaptureManager::new();
-        mgr.recorder = Some(SharedRecorder::new(recorder::start_recording_at(path.clone()).unwrap()));
+        mgr.recorder = Some(SharedRecorder::new(
+            recorder::start_recording_at(path.clone()).unwrap(),
+        ));
         mgr.stop_capture(true);
         assert!(mgr.stop_capture(false).is_some());
         assert!(mgr.recorder.is_none() && mgr.recording_paused_at.is_none());
@@ -848,7 +872,7 @@ mod tests {
     }
 
     use capture_supervisor::tests::Rig;
-    use capture_supervisor::{side_channel, spawn_side, SideSpec, CaptureSide, SideMessage};
+    use capture_supervisor::{side_channel, spawn_side, CaptureSide, SideMessage, SideSpec};
 
     /// A side on a fake device, as `start_capture` would add it. Returns the
     /// sender its stream's error callback would use.
@@ -881,7 +905,11 @@ mod tests {
 
     fn invalidated(side: CaptureSide) -> SideMessage {
         // A device id that is a single choice opens once at start: generation 1.
-        SideMessage::StreamError { side, generation: 1, error: cpal::Error::new(cpal::ErrorKind::StreamInvalidated) }
+        SideMessage::StreamError {
+            side,
+            generation: 1,
+            error: cpal::Error::new(cpal::ErrorKind::StreamInvalidated),
+        }
     }
 
     fn wait_until(what: impl Fn() -> bool) {
@@ -913,7 +941,11 @@ mod tests {
         assert_eq!(saved, path);
         let reader = hound::WavReader::open(&path).unwrap();
         let samples: Vec<i16> = reader.into_samples::<i16>().map(Result::unwrap).collect();
-        assert_eq!(samples.len(), 32_000, "before and after the rebuild, in one file");
+        assert_eq!(
+            samples.len(),
+            32_000,
+            "before and after the rebuild, in one file"
+        );
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
@@ -930,17 +962,28 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(50)); // both rebuilds pending
 
         mgr.stop_capture(true);
-        assert_eq!((rig.live(CaptureSide::You), rig.live(CaptureSide::Them)), (0, 0));
+        assert_eq!(
+            (rig.live(CaptureSide::You), rig.live(CaptureSide::Them)),
+            (0, 0)
+        );
         fake_side(&mut mgr, &rig, CaptureKind::Mic, "Mic");
         fake_side(&mut mgr, &rig, CaptureKind::Output, "Speakers");
         std::thread::sleep(std::time::Duration::from_millis(800)); // past the debounce
 
-        assert_eq!((rig.live(CaptureSide::You), rig.live(CaptureSide::Them)), (1, 1));
+        assert_eq!(
+            (rig.live(CaptureSide::You), rig.live(CaptureSide::Them)),
+            (1, 1)
+        );
         assert_eq!(rig.attempts(CaptureSide::You), 2, "two starts, no rebuild");
         assert_eq!(rig.attempts(CaptureSide::Them), 2, "two starts, no rebuild");
-        assert!(!rig.states().contains(&capture_supervisor::CaptureState::Recovered));
+        assert!(!rig
+            .states()
+            .contains(&capture_supervisor::CaptureState::Recovered));
         mgr.stop_capture(false);
-        assert_eq!((rig.live(CaptureSide::You), rig.live(CaptureSide::Them)), (0, 0));
+        assert_eq!(
+            (rig.live(CaptureSide::You), rig.live(CaptureSide::Them)),
+            (0, 0)
+        );
     }
 
     /// Samples per source over `secs` of real capture through `start_capture`
@@ -948,7 +991,9 @@ mod tests {
     /// loopback fed (Windows loopback sends nothing while nothing plays).
     fn capture_default_devices(secs: u64) -> (usize, usize, Vec<String>) {
         use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-        let output = cpal::default_host().default_output_device().expect("a default output");
+        let output = cpal::default_host()
+            .default_output_device()
+            .expect("a default output");
         let config = output.default_output_config().expect("an output config");
         let silence = output
             .build_output_stream_raw(
@@ -970,7 +1015,9 @@ mod tests {
             "default",
             false,
             tx,
-            Arc::new(move |s: capture_supervisor::CaptureStatus| sink_statuses.lock().unwrap().push(s.message)),
+            Arc::new(move |s: capture_supervisor::CaptureStatus| {
+                sink_statuses.lock().unwrap().push(s.message)
+            }),
         )
         .expect("capture starts");
         let warnings = mgr.take_warnings();
@@ -1008,7 +1055,10 @@ mod tests {
     #[ignore = "needs an output device"]
     fn hardware_default_output_loopback_delivers_16k() {
         let (_, system, notes) = capture_default_devices(3);
-        assert!(system >= 3 * 14_000, "loopback: {system} samples in 3 s ({notes:?})");
+        assert!(
+            system >= 3 * 14_000,
+            "loopback: {system} samples in 3 s ({notes:?})"
+        );
     }
 
     /// Hardware probe: a real mic stream dropped and reopened by its side after
@@ -1036,7 +1086,9 @@ mod tests {
                 opener,
                 clock: SystemClock,
                 counters: Arc::clone(&counters),
-                sink: Arc::new(move |s: capture_supervisor::CaptureStatus| sink_statuses.lock().unwrap().push(s.state)),
+                sink: Arc::new(move |s: capture_supervisor::CaptureStatus| {
+                    sink_statuses.lock().unwrap().push(s.state)
+                }),
                 start_timeout: START_TIMEOUT,
             },
             (side_tx, side_rx),
@@ -1060,16 +1112,28 @@ mod tests {
         side.join();
         assert_eq!(
             *statuses.lock().unwrap(),
-            vec![capture_supervisor::CaptureState::Recovering, capture_supervisor::CaptureState::Recovered]
+            vec![
+                capture_supervisor::CaptureState::Recovering,
+                capture_supervisor::CaptureState::Recovered
+            ]
         );
         assert_eq!(counters.rebuilds(), 1);
-        assert!(before >= 2 * 14_000 && after >= 2 * 14_000, "before {before}, after {after}");
+        assert!(
+            before >= 2 * 14_000 && after >= 2 * 14_000,
+            "before {before}, after {after}"
+        );
     }
 
     #[test]
     fn gap_silence_is_capped_at_a_minute() {
-        assert_eq!(gap_silence(std::time::Duration::from_millis(250)).len(), 4_000);
-        assert_eq!(gap_silence(std::time::Duration::from_secs(600)).len(), 60 * 16_000);
+        assert_eq!(
+            gap_silence(std::time::Duration::from_millis(250)).len(),
+            4_000
+        );
+        assert_eq!(
+            gap_silence(std::time::Duration::from_secs(600)).len(),
+            60 * 16_000
+        );
     }
 
     #[test]

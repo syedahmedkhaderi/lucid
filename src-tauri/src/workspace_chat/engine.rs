@@ -571,7 +571,9 @@ pub fn build(
         .map(|p| p.text.as_str())
         .collect::<Vec<_>>()
         .join("\n\n");
-    let system = format!("{system}\n\nAnswer in English. Keep any required structured output format unchanged.");
+    let system = format!(
+        "{system}\n\nAnswer in English. Keep any required structured output format unchanged."
+    );
     let volatile = plan
         .prompt_parts
         .iter()

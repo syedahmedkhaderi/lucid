@@ -21,14 +21,17 @@
 use super::launch::{build_args, configure_command, discover_user_mcp_servers, CodexLaunch};
 use super::policy::{self, decide, CodexPolicy};
 use super::protocol::{
-    self, Account, Incoming, Item, Notification, RpcError, ServerRequest, ThreadStart, TurnStatus, Usage,
+    self, Account, Incoming, Item, Notification, RpcError, ServerRequest, ThreadStart, TurnStatus,
+    Usage,
 };
 use crate::llm::cli_agent::manager::{OnDelta, SessionHandle};
 use crate::llm::cli_agent::process_tree::ProcessTree;
-use crate::llm::cli_agent::protocol::{classify_error, AgentErrorKind, McpServerState, ToolResult, ToolUse, TurnResult};
+use crate::llm::cli_agent::protocol::{
+    classify_error, AgentErrorKind, McpServerState, ToolResult, ToolUse, TurnResult,
+};
 use crate::llm::cli_agent::session::{
-    encode_activity, encode_tool_result, failed_server_names, nothing_usable, strip_marker, AgentError, InitInfo,
-    SessionTimeouts, THINKING_SIGNAL,
+    encode_activity, encode_tool_result, failed_server_names, nothing_usable, strip_marker,
+    AgentError, InitInfo, SessionTimeouts, THINKING_SIGNAL,
 };
 use crate::llm::provider::CancelToken;
 use serde_json::Value;
@@ -108,7 +111,12 @@ impl Shared {
         if self.closed.load(Ordering::SeqCst) {
             return "session closed".to_string();
         }
-        let status = self.exit_status.lock().unwrap().clone().unwrap_or_else(|| "pipe closed".to_string());
+        let status = self
+            .exit_status
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| "pipe closed".to_string());
         let tail: Vec<String> = self.stderr_tail.lock().unwrap().iter().cloned().collect();
         if tail.is_empty() {
             format!("codex exited unexpectedly ({status})")
@@ -145,17 +153,23 @@ impl Shared {
         let mut all = self.mcp.lock().unwrap();
         match all.iter_mut().find(|s| s.name == name) {
             Some(s) => s.status = status.to_string(),
-            None => all.push(McpServerState { name: name.to_string(), status: status.to_string() }),
+            None => all.push(McpServerState {
+                name: name.to_string(),
+                status: status.to_string(),
+            }),
         }
     }
 }
 
 /// The first MCP server that is starting or ready although Lucid did not
 /// configure it (one that merely failed never ran).
-fn unexpected_server<'a>(servers: &'a [McpServerState], expected: &[String]) -> Option<&'a McpServerState> {
-    servers
-        .iter()
-        .find(|s| !expected.contains(&s.name) && matches!(s.status.as_str(), "pending" | "connected"))
+fn unexpected_server<'a>(
+    servers: &'a [McpServerState],
+    expected: &[String],
+) -> Option<&'a McpServerState> {
+    servers.iter().find(|s| {
+        !expected.contains(&s.name) && matches!(s.status.as_str(), "pending" | "connected")
+    })
 }
 
 /// A thread item the session may not see: `Some(what it was)` for anything
@@ -167,11 +181,16 @@ fn item_breach(item: &Item, policy: &CodexPolicy) -> Option<String> {
     match item {
         Item::AgentMessage { .. } | Item::Reasoning { .. } => None,
         Item::McpToolCall { server, tool, .. } => {
-            (!policy::tool_allowed(&policy.allowed_tools, server, tool)).then(|| format!("the MCP tool {server}.{tool}"))
+            (!policy::tool_allowed(&policy.allowed_tools, server, tool))
+                .then(|| format!("the MCP tool {server}.{tool}"))
         }
         Item::CommandExecution { .. } => Some("a command".to_string()),
         Item::FileChange { .. } => Some("a file change".to_string()),
-        Item::Other { kind } if matches!(kind.as_str(), "userMessage" | "plan" | "contextCompaction") => None,
+        Item::Other { kind }
+            if matches!(kind.as_str(), "userMessage" | "plan" | "contextCompaction") =>
+        {
+            None
+        }
         Item::Other { kind } if kind.is_empty() => Some("an unknown tool".to_string()),
         Item::Other { kind } => Some(format!("a {kind} tool")),
     }
@@ -184,7 +203,11 @@ fn mcp_status(status: &str, error: Option<&str>) -> &'static str {
         "ready" => "connected",
         "failed" => {
             let e = error.unwrap_or("").to_lowercase();
-            if e.contains("not logged in") || e.contains("login") || e.contains("authoriz") || e.contains("auth") {
+            if e.contains("not logged in")
+                || e.contains("login")
+                || e.contains("authoriz")
+                || e.contains("auth")
+            {
                 "needs-auth"
             } else {
                 "failed"
@@ -223,16 +246,25 @@ impl CodexSession {
     }
 
     /// [`spawn`](Self::spawn) with custom hang guards (tests use short ones).
-    pub async fn spawn_with_timeouts(launch: CodexLaunch, timeouts: SessionTimeouts) -> Result<CodexSession, AgentError> {
+    pub async fn spawn_with_timeouts(
+        launch: CodexLaunch,
+        timeouts: SessionTimeouts,
+    ) -> Result<CodexSession, AgentError> {
         let user_servers = match launch.user_mcp_servers.clone() {
             Some(names) => names,
-            None => discover_user_mcp_servers(&launch.program, &launch.prefix_args).await.ok_or_else(|| {
-                // Without the names the user's own MCP servers would load.
-                AgentError::Spawn("could not read the list of MCP servers from the Codex config".into())
-            })?,
+            None => discover_user_mcp_servers(&launch.program, &launch.prefix_args)
+                .await
+                .ok_or_else(|| {
+                    // Without the names the user's own MCP servers would load.
+                    AgentError::Spawn(
+                        "could not read the list of MCP servers from the Codex config".into(),
+                    )
+                })?,
         };
         let args = build_args(&launch, &user_servers);
-        let approvals = Arc::new(Approvals { policy: launch.policy.clone() });
+        let approvals = Arc::new(Approvals {
+            policy: launch.policy.clone(),
+        });
         let spawn_launch = launch.clone();
         let (shared, events) =
             tokio::task::spawn_blocking(move || start_process(&spawn_launch, &args, approvals))
@@ -249,7 +281,13 @@ impl CodexSession {
             timeouts,
             init: Mutex::new(InitInfo::default()),
         };
-        match tokio::time::timeout(timeouts.init + MCP_STARTUP_WAIT, session.prime(&launch, &user_servers)).await.unwrap_or(Err(AgentError::Timeout)) {
+        match tokio::time::timeout(
+            timeouts.init + MCP_STARTUP_WAIT,
+            session.prime(&launch, &user_servers),
+        )
+        .await
+        .unwrap_or(Err(AgentError::Timeout))
+        {
             Ok(()) => Ok(session),
             Err(e) => {
                 session.close().await;
@@ -260,7 +298,11 @@ impl CodexSession {
 
     /// `initialize`, sign-in check, `thread/start`, and (for Lucid's own MCP
     /// servers) the wait for their startup.
-    async fn prime(&mut self, launch: &CodexLaunch, user_servers: &[String]) -> Result<(), AgentError> {
+    async fn prime(
+        &mut self,
+        launch: &CodexLaunch,
+        user_servers: &[String],
+    ) -> Result<(), AgentError> {
         let version = env!("CARGO_PKG_VERSION");
         let (id, rx) = self.shared.register();
         self.send_line(protocol::initialize_request(id, version))?;
@@ -297,13 +339,18 @@ impl CodexSession {
         let (id, rx) = self.shared.register();
         self.send_line(protocol::thread_start_request(id, &start))?;
         let result = self.await_response(rx).await?;
-        let (thread_id, model) = protocol::parse_thread_start(&result)
-            .ok_or_else(|| AgentError::Spawn("Codex answered thread/start without a thread".into()))?;
+        let (thread_id, model) = protocol::parse_thread_start(&result).ok_or_else(|| {
+            AgentError::Spawn("Codex answered thread/start without a thread".into())
+        })?;
         self.thread_id = thread_id;
         if self.model.is_empty() {
             self.model = model;
         }
-        log::info!("codex session {} ready (model {})", self.thread_id, self.model);
+        log::info!(
+            "codex session {} ready (model {})",
+            self.thread_id,
+            self.model
+        );
 
         let expected = launch.server_keys();
         if !expected.is_empty() {
@@ -315,7 +362,10 @@ impl CodexSession {
             self.send_line(protocol::account_read_request(id))?;
             self.await_response(rx).await?;
         }
-        let info = InitInfo { tools: Vec::new(), mcp_servers: self.shared.mcp.lock().unwrap().clone() };
+        let info = InitInfo {
+            tools: Vec::new(),
+            mcp_servers: self.shared.mcp.lock().unwrap().clone(),
+        };
         // The user's own servers are switched off: one that starts anyway means
         // the config was not honoured, and its tools are not ours to vouch for.
         if let Some(server) = unexpected_server(&info.mcp_servers, &expected) {
@@ -347,7 +397,9 @@ impl CodexSession {
         loop {
             let settled = {
                 let all = self.shared.mcp.lock().unwrap();
-                expected.iter().all(|key| all.iter().any(|s| &s.name == key && s.status != "pending"))
+                expected
+                    .iter()
+                    .all(|key| all.iter().any(|s| &s.name == key && s.status != "pending"))
             };
             if settled || Instant::now() >= deadline || !self.is_alive() {
                 return;
@@ -366,7 +418,10 @@ impl CodexSession {
 
     /// The response to a registered request. A JSON-RPC error is classified
     /// like any CLI error.
-    async fn await_response(&self, rx: oneshot::Receiver<Result<Value, RpcError>>) -> Result<Value, AgentError> {
+    async fn await_response(
+        &self,
+        rx: oneshot::Receiver<Result<Value, RpcError>>,
+    ) -> Result<Value, AgentError> {
         match rx.await {
             Ok(Ok(value)) => Ok(value),
             Ok(Err(e)) => Err(AgentError::Cli(classify_error(&e.message), e.message)),
@@ -496,7 +551,8 @@ impl CodexSession {
         let context: Vec<String> = std::mem::take(&mut *self.pending_context.lock().unwrap());
         let text = compose_prompt(&context, prompt);
         let (id, response) = self.shared.register();
-        let line = protocol::turn_start_request(id, &self.thread_id, &text, None, self.effort.as_deref());
+        let line =
+            protocol::turn_start_request(id, &self.thread_id, &text, None, self.effort.as_deref());
         if !self.shared.send_line(line) {
             self.shared.pending.lock().unwrap().remove(&id);
             // The context was not delivered: keep it for the next ask.
@@ -507,7 +563,14 @@ impl CodexSession {
             return Err(AgentError::Crashed(self.shared.crash_reason()));
         }
         let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(drive_turn(guard, tx, self.shared.clone(), self.thread_id.clone(), response, self.timeouts));
+        tokio::spawn(drive_turn(
+            guard,
+            tx,
+            self.shared.clone(),
+            self.thread_id.clone(),
+            response,
+            self.timeouts,
+        ));
         Ok(rx)
     }
 }
@@ -527,7 +590,12 @@ impl SessionHandle for CodexSession {
         CodexSession::append_context(self, text).await
     }
 
-    async fn ask(&self, prompt: &str, on_delta: OnDelta, cancel: Arc<CancelToken>) -> Result<TurnResult, AgentError> {
+    async fn ask(
+        &self,
+        prompt: &str,
+        on_delta: OnDelta,
+        cancel: Arc<CancelToken>,
+    ) -> Result<TurnResult, AgentError> {
         CodexSession::ask(self, prompt, on_delta, cancel).await
     }
 
@@ -589,7 +657,10 @@ fn turn_result(text: String, usage: Usage, duration_ms: u64) -> TurnResult {
     TurnResult {
         text,
         is_error: false,
-        input_tokens: usage.input.saturating_sub(usage.cached_input).saturating_sub(usage.cache_write),
+        input_tokens: usage
+            .input
+            .saturating_sub(usage.cached_input)
+            .saturating_sub(usage.cache_write),
         output_tokens: usage.output,
         cache_read_tokens: usage.cached_input,
         cache_write_tokens: usage.cache_write,
@@ -631,13 +702,20 @@ async fn run_turn(
     let response = tokio::time::timeout(timeouts.inactivity, response).await;
     let turn_id = match response {
         Err(_) => {
-            shared.terminate(&format!("no answer to turn/start for {} s", timeouts.inactivity.as_secs()));
+            shared.terminate(&format!(
+                "no answer to turn/start for {} s",
+                timeouts.inactivity.as_secs()
+            ));
             return Err(AgentError::Timeout);
         }
         Ok(Err(_)) => return Err(AgentError::Crashed(shared.crash_reason())),
         Ok(Ok(Err(e))) => return Err(AgentError::Cli(classify_error(&e.message), e.message)),
-        Ok(Ok(Ok(value))) => protocol::parse_turn_start(&value)
-            .ok_or_else(|| AgentError::Cli(AgentErrorKind::Other, "Codex answered turn/start without a turn".into()))?,
+        Ok(Ok(Ok(value))) => protocol::parse_turn_start(&value).ok_or_else(|| {
+            AgentError::Cli(
+                AgentErrorKind::Other,
+                "Codex answered turn/start without a turn".into(),
+            )
+        })?,
     };
 
     let mut interrupted = false;
@@ -666,7 +744,9 @@ async fn run_turn(
 
     loop {
         let wait = match drain_deadline {
-            Some(deadline) => timeouts.inactivity.min(deadline.saturating_duration_since(tokio::time::Instant::now())),
+            Some(deadline) => timeouts
+                .inactivity
+                .min(deadline.saturating_duration_since(tokio::time::Instant::now())),
             None => timeouts.inactivity,
         };
         tokio::select! {
@@ -813,14 +893,23 @@ type Started = (Arc<Shared>, mpsc::UnboundedReceiver<Notification>);
 
 /// Spawn the child (no shell, no window, stripped env, in a kill-on-close job)
 /// and its three pipe threads. Blocking; run on a blocking thread.
-fn start_process(launch: &CodexLaunch, args: &[String], approvals: Arc<Approvals>) -> Result<Started, AgentError> {
+fn start_process(
+    launch: &CodexLaunch,
+    args: &[String],
+    approvals: Arc<Approvals>,
+) -> Result<Started, AgentError> {
     let mut cmd = Command::new(&launch.program);
     cmd.args(args);
     configure_command(&mut cmd, launch);
-    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
-            AgentError::Spawn(format!("Codex CLI not installed: {} ({e})", launch.program.display()))
+            AgentError::Spawn(format!(
+                "Codex CLI not installed: {} ({e})",
+                launch.program.display()
+            ))
         } else {
             AgentError::Spawn(format!("failed to start {}: {e}", launch.program.display()))
         }
@@ -853,11 +942,15 @@ fn start_process(launch: &CodexLaunch, args: &[String], approvals: Arc<Approvals
     // A pipe thread that fails to start must not leave the child running.
     let kill_shared = shared.clone();
     let spawn_thread = move |name: &str, f: Box<dyn FnOnce() + Send>| {
-        std::thread::Builder::new().name(name.to_string()).spawn(f).map(|_| ()).map_err(|e| {
-            kill_shared.alive.store(false, Ordering::SeqCst);
-            kill_shared.kill_tree();
-            AgentError::Spawn(format!("cannot start {name} thread: {e}"))
-        })
+        std::thread::Builder::new()
+            .name(name.to_string())
+            .spawn(f)
+            .map(|_| ())
+            .map_err(|e| {
+                kill_shared.alive.store(false, Ordering::SeqCst);
+                kill_shared.kill_tree();
+                AgentError::Spawn(format!("cannot start {name} thread: {e}"))
+            })
     };
 
     spawn_thread(
@@ -865,8 +958,10 @@ fn start_process(launch: &CodexLaunch, args: &[String], approvals: Arc<Approvals
         Box::new(move || {
             let mut stdin = stdin;
             for line in stdin_rx {
-                let written =
-                    stdin.write_all(line.as_bytes()).and_then(|_| stdin.write_all(b"\n")).and_then(|_| stdin.flush());
+                let written = stdin
+                    .write_all(line.as_bytes())
+                    .and_then(|_| stdin.write_all(b"\n"))
+                    .and_then(|_| stdin.flush());
                 if let Err(e) = written {
                     log::warn!("codex stdin write failed: {e}");
                     break;
@@ -907,7 +1002,12 @@ fn start_process(launch: &CodexLaunch, args: &[String], approvals: Arc<Approvals
                     }
                 }
                 Some(Incoming::Notification(note)) => {
-                    if let Notification::McpStartup { name, status, error } = &note {
+                    if let Notification::McpStartup {
+                        name,
+                        status,
+                        error,
+                    } = &note
+                    {
                         out_shared.record_mcp(name, status, error.as_deref());
                     }
                     let _ = event_tx.send(note);
@@ -1020,7 +1120,13 @@ mod tests {
 
     #[test]
     fn token_counts_follow_nexqs_meaning() {
-        let usage = Usage { input: 1200, cached_input: 1000, cache_write: 0, output: 80, reasoning: 30 };
+        let usage = Usage {
+            input: 1200,
+            cached_input: 1000,
+            cache_write: 0,
+            output: 80,
+            reasoning: 30,
+        };
         let r = turn_result("hi".into(), usage, 1500);
         assert_eq!(r.input_tokens, 200);
         assert_eq!(r.cache_read_tokens, 1000);
@@ -1034,7 +1140,13 @@ mod tests {
 
     #[test]
     fn items_are_an_allowlist() {
-        let policy = CodexPolicy { allowed_tools: ["mcp__nexq_notes__read_note".to_string(), "mcp__wiki__*".to_string()].into() };
+        let policy = CodexPolicy {
+            allowed_tools: [
+                "mcp__nexq_notes__read_note".to_string(),
+                "mcp__wiki__*".to_string(),
+            ]
+            .into(),
+        };
         let mcp = |server: &str, tool: &str| Item::McpToolCall {
             id: "i".into(),
             server: server.into(),
@@ -1045,7 +1157,11 @@ mod tests {
         };
         let other = |kind: &str| Item::Other { kind: kind.into() };
         for ok in [
-            Item::AgentMessage { id: "m".into(), text: String::new(), phase: None },
+            Item::AgentMessage {
+                id: "m".into(),
+                text: String::new(),
+                phase: None,
+            },
             Item::Reasoning { id: "r".into() },
             other("userMessage"),
             other("plan"),
@@ -1056,7 +1172,12 @@ mod tests {
             assert_eq!(item_breach(&ok, &policy), None, "{ok:?}");
         }
         for bad in [
-            Item::CommandExecution { id: "c".into(), command: "dir".into(), actions: vec![], status: String::new() },
+            Item::CommandExecution {
+                id: "c".into(),
+                command: "dir".into(),
+                actions: vec![],
+                status: String::new(),
+            },
             Item::FileChange { id: "f".into() },
             other("webSearch"),
             other("imageView"),
@@ -1075,12 +1196,25 @@ mod tests {
 
     #[test]
     fn only_a_started_unexpected_server_counts() {
-        let state = |name: &str, status: &str| McpServerState { name: name.into(), status: status.into() };
+        let state = |name: &str, status: &str| McpServerState {
+            name: name.into(),
+            status: status.into(),
+        };
         let expected = vec!["nexq_notes".to_string()];
-        let all = [state("nexq_notes", "connected"), state("old", "failed"), state("auth", "needs-auth")];
+        let all = [
+            state("nexq_notes", "connected"),
+            state("old", "failed"),
+            state("auth", "needs-auth"),
+        ];
         assert!(unexpected_server(&all, &expected).is_none());
-        assert_eq!(unexpected_server(&[state("mira", "pending")], &expected).map(|s| s.name.as_str()), Some("mira"));
-        assert_eq!(unexpected_server(&[state("mira", "connected")], &expected).map(|s| s.name.as_str()), Some("mira"));
+        assert_eq!(
+            unexpected_server(&[state("mira", "pending")], &expected).map(|s| s.name.as_str()),
+            Some("mira")
+        );
+        assert_eq!(
+            unexpected_server(&[state("mira", "connected")], &expected).map(|s| s.name.as_str()),
+            Some("mira")
+        );
     }
 
     #[test]
@@ -1088,7 +1222,10 @@ mod tests {
         assert_eq!(mcp_status("ready", None), "connected");
         assert_eq!(mcp_status("starting", None), "pending");
         assert_eq!(mcp_status("failed", Some("spawn error")), "failed");
-        assert_eq!(mcp_status("failed", Some("The context7 MCP server is not logged in")), "needs-auth");
+        assert_eq!(
+            mcp_status("failed", Some("The context7 MCP server is not logged in")),
+            "needs-auth"
+        );
     }
 
     #[test]
@@ -1096,7 +1233,11 @@ mod tests {
         let none = developer_instructions(false);
         assert!(none.contains("no files"));
         let some = developer_instructions(true);
-        assert!(some.contains("list_notes") && some.contains("search_notes") && some.contains("read_note"));
+        assert!(
+            some.contains("list_notes")
+                && some.contains("search_notes")
+                && some.contains("read_note")
+        );
         assert!(some.contains("no shell"));
     }
 

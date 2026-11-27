@@ -15,10 +15,8 @@ pub async fn create_gemini_context_cache(
     system_prompt: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let _content_request = crate::privacy::begin_llm_request(
-        &crate::llm::ProviderType::Gemini,
-        None,
-    )?;
+    let _content_request =
+        crate::privacy::begin_llm_request(&crate::llm::ProviderType::Gemini, None)?;
     // The documents of the running meeting's scope (the default workspace's
     // when none runs). The cache answers only requests with the same scope.
     let scoped = crate::workspace::runtime::for_live_or_default(&state);
@@ -30,10 +28,16 @@ pub async fn create_gemini_context_cache(
             .ok_or("Context manager not initialized")?
             .lock()
             .map_err(|e| format!("Context lock failed: {}", e))?;
-        (ctx.get_assembled_context_for(&scoped), ctx.document_rules_for(&scoped))
+        (
+            ctx.get_assembled_context_for(&scoped),
+            ctx.document_rules_for(&scoped),
+        )
     };
     // the documents are fenced data: the cache's system prompt says so
-    let system_prompt = match (system_prompt.filter(|s| !s.trim().is_empty()), document_rules.is_empty()) {
+    let system_prompt = match (
+        system_prompt.filter(|s| !s.trim().is_empty()),
+        document_rules.is_empty(),
+    ) {
         (Some(s), false) => Some(format!("{s}\n\n{document_rules}")),
         (Some(s), true) => Some(s),
         (None, false) => Some(document_rules),
@@ -41,7 +45,9 @@ pub async fn create_gemini_context_cache(
     };
 
     if context_text.trim().is_empty() {
-        return Err("No context resources loaded. Add documents before creating a cache.".to_string());
+        return Err(
+            "No context resources loaded. Add documents before creating a cache.".to_string(),
+        );
     }
 
     // Get Gemini API key and base URL
@@ -67,7 +73,11 @@ pub async fn create_gemini_context_cache(
 
         let url = llm
             .active_provider_type()
-            .map(|_| crate::llm::ProviderType::Gemini.default_base_url().to_string())
+            .map(|_| {
+                crate::llm::ProviderType::Gemini
+                    .default_base_url()
+                    .to_string()
+            })
             .unwrap_or_else(|| "https://generativelanguage.googleapis.com".to_string());
 
         (key, url)
@@ -76,12 +86,7 @@ pub async fn create_gemini_context_cache(
     let client = GeminiCacheClient::new(&api_key, Some(&base_url));
 
     let cached = client
-        .create(
-            &model,
-            system_prompt.as_deref(),
-            &context_text,
-            ttl_secs,
-        )
+        .create(&model, system_prompt.as_deref(), &context_text, ttl_secs)
         .await?;
 
     log::info!(
@@ -97,7 +102,10 @@ pub async fn create_gemini_context_cache(
             .gemini_cache
             .lock()
             .map_err(|e| format!("Cache state lock failed: {}", e))?;
-        *cache_slot = Some(crate::llm::gemini_cache::ScopedCache { content: cached.clone(), scope: scope_fingerprint });
+        *cache_slot = Some(crate::llm::gemini_cache::ScopedCache {
+            content: cached.clone(),
+            scope: scope_fingerprint,
+        });
     }
 
     serde_json::to_string(&cached).map_err(|e| format!("Serialize failed: {}", e))
@@ -105,9 +113,7 @@ pub async fn create_gemini_context_cache(
 
 /// Delete the active Gemini context cache and clear it from AppState.
 #[command]
-pub async fn delete_gemini_context_cache(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn delete_gemini_context_cache(state: State<'_, AppState>) -> Result<(), String> {
     let cache_name = {
         let slot = state
             .gemini_cache
@@ -155,9 +161,7 @@ pub async fn delete_gemini_context_cache(
 
 /// Return the active Gemini cache info, or null if none.
 #[command]
-pub async fn get_gemini_cache_status(
-    state: State<'_, AppState>,
-) -> Result<Option<String>, String> {
+pub async fn get_gemini_cache_status(state: State<'_, AppState>) -> Result<Option<String>, String> {
     let slot = state
         .gemini_cache
         .lock()

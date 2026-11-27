@@ -154,11 +154,18 @@ impl ProviderConfig {
     pub fn request_options(&self) -> thinking::RequestOptions {
         let offers_extra = matches!(
             ProviderType::from_str(&self.provider_type),
-            Ok(ProviderType::Ollama | ProviderType::LmStudio | ProviderType::Openrouter | ProviderType::Custom)
+            Ok(ProviderType::Ollama
+                | ProviderType::LmStudio
+                | ProviderType::Openrouter
+                | ProviderType::Custom)
         );
         thinking::RequestOptions {
             thinking: self.thinking,
-            extra_json: if offers_extra { self.extra_request_json.clone() } else { None },
+            extra_json: if offers_extra {
+                self.extra_request_json.clone()
+            } else {
+                None
+            },
         }
     }
 }
@@ -186,11 +193,12 @@ pub fn create_provider(config: &ProviderConfig) -> Result<Box<dyn LLMProvider>, 
 
     let options = config.request_options();
     let provider: Box<dyn LLMProvider> = match provider_type {
-        ProviderType::Ollama => Box::new(
-            ollama::OllamaClient::new(config.base_url.as_deref()).with_options(options),
-        ),
+        ProviderType::Ollama => {
+            Box::new(ollama::OllamaClient::new(config.base_url.as_deref()).with_options(options))
+        }
         ProviderType::LmStudio => Box::new(
-            openai_compat::create_lm_studio_client(config.base_url.as_deref()).with_options(options),
+            openai_compat::create_lm_studio_client(config.base_url.as_deref())
+                .with_options(options),
         ),
         ProviderType::Openai => {
             let api_key = config
@@ -205,7 +213,8 @@ pub fn create_provider(config: &ProviderConfig) -> Result<Box<dyn LLMProvider>, 
                 .as_deref()
                 .ok_or_else(|| "Anthropic API key required".to_string())?;
             Box::new(
-                anthropic::AnthropicClient::new(api_key, config.base_url.as_deref()).with_options(options),
+                anthropic::AnthropicClient::new(api_key, config.base_url.as_deref())
+                    .with_options(options),
             )
         }
         ProviderType::Groq => {
@@ -220,7 +229,10 @@ pub fn create_provider(config: &ProviderConfig) -> Result<Box<dyn LLMProvider>, 
                 .api_key
                 .as_deref()
                 .ok_or_else(|| "Gemini API key required".to_string())?;
-            Box::new(gemini::GeminiClient::new(api_key, config.base_url.as_deref()).with_options(options))
+            Box::new(
+                gemini::GeminiClient::new(api_key, config.base_url.as_deref())
+                    .with_options(options),
+            )
         }
         ProviderType::Openrouter => {
             let api_key = config
@@ -252,7 +264,9 @@ pub fn create_provider(config: &ProviderConfig) -> Result<Box<dyn LLMProvider>, 
         // Needs no config: it reaches the session manager through the
         // `AppHandle` passed to every `stream_completion` call.
         ProviderType::ClaudeCli | ProviderType::AntigravityCli | ProviderType::CodexCli => {
-            let kind = provider_type.cli_agent_kind().expect("a CLI agent provider type");
+            let kind = provider_type
+                .cli_agent_kind()
+                .expect("a CLI agent provider type");
             Box::new(cli_agent::provider::CliAgentProvider::new(kind))
         }
     };
@@ -281,10 +295,7 @@ impl LLMRouter {
     }
 
     /// Set the active provider, creating the appropriate client.
-    pub fn set_provider(
-        &mut self,
-        config: ProviderConfig,
-    ) -> Result<(), LLMError> {
+    pub fn set_provider(&mut self, config: ProviderConfig) -> Result<(), LLMError> {
         let provider_type = ProviderType::from_str(&config.provider_type)?;
         let provider = create_provider(&config).map_err(LLMError::NotConfigured)?;
 
@@ -308,7 +319,9 @@ impl LLMRouter {
     /// Reserve the privacy policy for a content-bearing request routed through
     /// this active provider. The returned guard must live through the request.
     pub fn begin_content_request(&self) -> Result<crate::privacy::ContentRequestGuard, String> {
-        let provider_type = self.active_provider_type.as_ref()
+        let provider_type = self
+            .active_provider_type
+            .as_ref()
             .ok_or_else(|| "No active LLM provider configured".to_string())?;
         crate::privacy::begin_llm_request(provider_type, self.active_base_url.as_deref())
     }
@@ -417,7 +430,11 @@ mod tests {
     #[test]
     fn antigravity_and_codex_provider_types() {
         let cases = [
-            ("antigravity_cli", ProviderType::AntigravityCli, "Antigravity (subscription)"),
+            (
+                "antigravity_cli",
+                ProviderType::AntigravityCli,
+                "Antigravity (subscription)",
+            ),
             ("codex_cli", ProviderType::CodexCli, "Codex (subscription)"),
         ];
         for (id, pt, name) in cases {
@@ -435,7 +452,13 @@ mod tests {
                 .any(|p| p.provider_type == id && !p.requires_api_key && p.is_local));
         }
         assert!(ProviderType::ClaudeCli.is_cli_agent());
-        for pt in [ProviderType::Ollama, ProviderType::LmStudio, ProviderType::Openai, ProviderType::Custom, ProviderType::Gemini] {
+        for pt in [
+            ProviderType::Ollama,
+            ProviderType::LmStudio,
+            ProviderType::Openai,
+            ProviderType::Custom,
+            ProviderType::Gemini,
+        ] {
             assert!(!pt.is_cli_agent());
             assert_eq!(pt.cli_agent_kind(), None);
         }
@@ -472,7 +495,8 @@ mod tests {
         assert!(create_provider(&config).is_ok());
 
         // The frontend sends only the fields it has: provider type alone works.
-        let bare: ProviderConfig = serde_json::from_str(r#"{"provider_type":"claude_cli"}"#).unwrap();
+        let bare: ProviderConfig =
+            serde_json::from_str(r#"{"provider_type":"claude_cli"}"#).unwrap();
         assert!(bare.thinking.is_auto());
         assert!(create_provider(&bare).is_ok());
     }
@@ -495,7 +519,8 @@ mod tests {
         assert!(o.extra_request().is_none());
 
         // A damaged value never breaks loading.
-        let bad: ProviderConfig = serde_json::from_str(r#"{"provider_type":"ollama","thinking":"nonsense"}"#).unwrap();
+        let bad: ProviderConfig =
+            serde_json::from_str(r#"{"provider_type":"ollama","thinking":"nonsense"}"#).unwrap();
         assert!(bad.thinking.is_auto());
     }
 }

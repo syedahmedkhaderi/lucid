@@ -45,7 +45,17 @@ mod tests {
             .unwrap()
             .map(|r| r.unwrap())
             .collect();
-        assert_eq!(cols, ["meeting_id", "doc_json", "status", "tokens_used", "cap", "updated_at"]);
+        assert_eq!(
+            cols,
+            [
+                "meeting_id",
+                "doc_json",
+                "status",
+                "tokens_used",
+                "cap",
+                "updated_at"
+            ]
+        );
     }
 
     #[test]
@@ -56,7 +66,13 @@ mod tests {
             migrate_notes(&tx).unwrap();
             // dropped without commit
         }
-        let n: i64 = conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE name='meeting_notes'", [], |r| r.get(0)).unwrap();
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name='meeting_notes'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(n, 0);
     }
 }

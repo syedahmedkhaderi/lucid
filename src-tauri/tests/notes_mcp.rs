@@ -17,7 +17,10 @@ struct Server {
 
 impl Server {
     fn start(dirs: &[&Path]) -> Server {
-        let list: Vec<String> = dirs.iter().map(|d| d.to_string_lossy().into_owned()).collect();
+        let list: Vec<String> = dirs
+            .iter()
+            .map(|d| d.to_string_lossy().into_owned())
+            .collect();
         let mut child = Command::new(env!("CARGO_BIN_EXE_lucid"))
             .arg("--notes-mcp")
             .env("NEXQ_NOTES_DIRS", serde_json::to_string(&list).unwrap())
@@ -28,7 +31,12 @@ impl Server {
             .expect("start nexq --notes-mcp");
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
-        Server { child, stdin: Some(stdin), stdout, next_id: 1 }
+        Server {
+            child,
+            stdin: Some(stdin),
+            stdout,
+            next_id: 1,
+        }
     }
 
     fn send(&mut self, message: Value) {
@@ -39,8 +47,12 @@ impl Server {
 
     fn read(&mut self) -> Value {
         let mut line = String::new();
-        assert!(self.stdout.read_line(&mut line).unwrap() > 0, "the server closed its output");
-        serde_json::from_str(line.trim()).unwrap_or_else(|e| panic!("not JSON on stdout: {line:?} ({e})"))
+        assert!(
+            self.stdout.read_line(&mut line).unwrap() > 0,
+            "the server closed its output"
+        );
+        serde_json::from_str(line.trim())
+            .unwrap_or_else(|e| panic!("not JSON on stdout: {line:?} ({e})"))
     }
 
     fn request(&mut self, method: &str, params: Value) -> Value {
@@ -55,7 +67,10 @@ impl Server {
     fn call(&mut self, tool: &str, args: Value) -> (bool, String) {
         let reply = self.request("tools/call", json!({ "name": tool, "arguments": args }));
         let result = &reply["result"];
-        (result["isError"].as_bool().unwrap(), result["content"][0]["text"].as_str().unwrap().to_string())
+        (
+            result["isError"].as_bool().unwrap(),
+            result["content"][0]["text"].as_str().unwrap().to_string(),
+        )
     }
 }
 
@@ -71,8 +86,16 @@ fn tree(tag: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("Vault").join("projects")).unwrap();
     std::fs::create_dir_all(dir.join("Vault").join(".obsidian")).unwrap();
-    std::fs::write(dir.join("Vault").join("projects").join("falcon.md"), "# Falcon\nLaunch date: March 3.\n").unwrap();
-    std::fs::write(dir.join("Vault").join(".obsidian").join("workspace.md"), "falcon hidden").unwrap();
+    std::fs::write(
+        dir.join("Vault").join("projects").join("falcon.md"),
+        "# Falcon\nLaunch date: March 3.\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("Vault").join(".obsidian").join("workspace.md"),
+        "falcon hidden",
+    )
+    .unwrap();
     std::fs::write(dir.join("private.md"), "do not leak").unwrap();
     dir
 }
@@ -81,7 +104,12 @@ fn tree(tag: &str) -> PathBuf {
 fn the_binary_speaks_mcp_and_stays_inside_the_folder() {
     let root = tree("session");
     let vault = std::fs::canonicalize(root.join("Vault")).unwrap();
-    let vault = PathBuf::from(vault.to_string_lossy().trim_start_matches(r"\\?\").to_string());
+    let vault = PathBuf::from(
+        vault
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .to_string(),
+    );
     let mut server = Server::start(&[&vault]);
 
     let init = server.request(
@@ -94,13 +122,24 @@ fn the_binary_speaks_mcp_and_stays_inside_the_folder() {
     assert_eq!(server.request("ping", json!({}))["result"], json!({}));
 
     let tools = server.request("tools/list", json!({}));
-    let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
     assert_eq!(names, ["list_notes", "search_notes", "read_note"]);
 
     let (error, text) = server.call("list_notes", json!({}));
-    assert!(!error && text.contains("Vault/projects/") && !text.contains(".obsidian"), "{text}");
+    assert!(
+        !error && text.contains("Vault/projects/") && !text.contains(".obsidian"),
+        "{text}"
+    );
     let (error, text) = server.call("search_notes", json!({ "query": "LAUNCH" }));
-    assert!(!error && text.contains("Vault/projects/falcon.md:2: Launch date: March 3."), "{text}");
+    assert!(
+        !error && text.contains("Vault/projects/falcon.md:2: Launch date: March 3."),
+        "{text}"
+    );
     assert!(!text.contains("hidden"));
     let (error, text) = server.call("read_note", json!({ "path": "Vault/projects/falcon.md" }));
     assert!(!error && text.contains("# Falcon"), "{text}");
@@ -119,7 +158,10 @@ fn the_binary_speaks_mcp_and_stays_inside_the_folder() {
     ] {
         let (error, text) = server.call("read_note", json!({ "path": path }));
         assert!(error, "{path} must be refused: {text}");
-        assert!(!text.contains("do not leak") && !text.contains("for 16-bit"), "{path}: {text}");
+        assert!(
+            !text.contains("do not leak") && !text.contains("for 16-bit"),
+            "{path}: {text}"
+        );
     }
     let _ = std::fs::remove_dir_all(&root);
 }

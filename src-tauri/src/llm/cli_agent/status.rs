@@ -14,11 +14,13 @@
 
 use super::acp::{antigravity_args, find_agy, probe_models as acp_probe_models};
 use super::codex::launch::run_probe;
-use super::codex::{find_codex, login_status, probe_models as codex_probe_models, CodexLogin, CodexModel};
+use super::codex::{
+    find_codex, login_status, probe_models as codex_probe_models, CodexLogin, CodexModel,
+};
 use super::detect::{
-    claude_auth_status, claude_too_old, claude_version, find_claude_binary, find_current_claude, find_npm_claude,
-    format_version, is_too_old, parse_claude_version, ClaudeAuthStatus, ClaudeBinaryError, ClaudeLogin, API_BILLED_NOTE,
-    MIN_CLAUDE_VERSION,
+    claude_auth_status, claude_too_old, claude_version, find_claude_binary, find_current_claude,
+    find_npm_claude, format_version, is_too_old, parse_claude_version, ClaudeAuthStatus,
+    ClaudeBinaryError, ClaudeLogin, API_BILLED_NOTE, MIN_CLAUDE_VERSION,
 };
 use super::models::{probe_models as claude_probe_models, ClaudeModelInfo};
 use super::protocol::AgentErrorKind;
@@ -51,7 +53,15 @@ pub struct CliAgentStatus {
 
 impl CliAgentStatus {
     fn not_installed(kind: CliAgentKind, npm_only: bool) -> Self {
-        Self { kind, installed: false, binary_path: None, version: None, auth: None, npm_only, required_version: None }
+        Self {
+            kind,
+            installed: false,
+            binary_path: None,
+            version: None,
+            auth: None,
+            npm_only,
+            required_version: None,
+        }
     }
 }
 
@@ -166,7 +176,11 @@ static STATUS_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::Atom
 /// running does not put its older answer back.
 pub fn forget_statuses() {
     STATUS_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    for kind in [CliAgentKind::Claude, CliAgentKind::Codex, CliAgentKind::Antigravity] {
+    for kind in [
+        CliAgentKind::Claude,
+        CliAgentKind::Codex,
+        CliAgentKind::Antigravity,
+    ] {
         if let Ok(mut g) = status_slot(kind).1.lock() {
             *g = None;
         }
@@ -174,16 +188,36 @@ pub fn forget_statuses() {
 }
 
 fn reuse_for(status: &CliAgentStatus) -> std::time::Duration {
-    let healthy = status.installed && status.version.is_some() && status.auth.as_ref().is_some_and(|a| a.logged_in);
-    if healthy { STATUS_REUSE } else { STATUS_REUSE_FAILED }
+    let healthy = status.installed
+        && status.version.is_some()
+        && status.auth.as_ref().is_some_and(|a| a.logged_in);
+    if healthy {
+        STATUS_REUSE
+    } else {
+        STATUS_REUSE_FAILED
+    }
 }
 
 type Probed = (CliAgentStatus, Option<Vec<ClaudeModelInfo>>);
 
-fn status_slot(kind: CliAgentKind) -> &'static (tokio::sync::Mutex<()>, std::sync::Mutex<Option<(std::time::Instant, Probed)>>) {
+fn status_slot(
+    kind: CliAgentKind,
+) -> &'static (
+    tokio::sync::Mutex<()>,
+    std::sync::Mutex<Option<(std::time::Instant, Probed)>>,
+) {
     use std::sync::OnceLock;
-    static SLOTS: OnceLock<Vec<(tokio::sync::Mutex<()>, std::sync::Mutex<Option<(std::time::Instant, Probed)>>)>> = OnceLock::new();
-    let slots = SLOTS.get_or_init(|| (0..3).map(|_| (tokio::sync::Mutex::new(()), std::sync::Mutex::new(None))).collect());
+    static SLOTS: OnceLock<
+        Vec<(
+            tokio::sync::Mutex<()>,
+            std::sync::Mutex<Option<(std::time::Instant, Probed)>>,
+        )>,
+    > = OnceLock::new();
+    let slots = SLOTS.get_or_init(|| {
+        (0..3)
+            .map(|_| (tokio::sync::Mutex::new(()), std::sync::Mutex::new(None)))
+            .collect()
+    });
     &slots[match kind {
         CliAgentKind::Claude => 0,
         CliAgentKind::Codex => 1,
@@ -198,7 +232,11 @@ fn status_slot(kind: CliAgentKind) -> &'static (tokio::sync::Mutex<()>, std::syn
 pub async fn cli_agent_status_cached(kind: CliAgentKind, force: bool) -> Probed {
     let (gate, last) = status_slot(kind);
     let fresh = |last: &std::sync::Mutex<Option<(std::time::Instant, Probed)>>| {
-        last.lock().ok().and_then(|g| g.as_ref().filter(|(at, p)| at.elapsed() < reuse_for(&p.0)).map(|(_, p)| p.clone()))
+        last.lock().ok().and_then(|g| {
+            g.as_ref()
+                .filter(|(at, p)| at.elapsed() < reuse_for(&p.0))
+                .map(|(_, p)| p.clone())
+        })
     };
     if !force {
         if let Some(p) = fresh(last) {
@@ -226,33 +264,51 @@ pub async fn cli_agent_status_cached(kind: CliAgentKind, force: bool) -> Probed 
 /// run independently, so one failing keeps the other's answer. For Antigravity
 /// the login probe also lists the models, which are returned for the caller's
 /// catalog.
-pub async fn cli_agent_status(kind: CliAgentKind) -> (CliAgentStatus, Option<Vec<ClaudeModelInfo>>) {
-    let found = tokio::task::spawn_blocking(move || find_binary(kind)).await.ok().flatten();
+pub async fn cli_agent_status(
+    kind: CliAgentKind,
+) -> (CliAgentStatus, Option<Vec<ClaudeModelInfo>>) {
+    let found = tokio::task::spawn_blocking(move || find_binary(kind))
+        .await
+        .ok()
+        .flatten();
     let Some((program, prefix_args)) = found else {
         let npm_only = kind == CliAgentKind::Claude
-            && tokio::task::spawn_blocking(find_npm_claude).await.ok().flatten().is_some();
+            && tokio::task::spawn_blocking(find_npm_claude)
+                .await
+                .ok()
+                .flatten()
+                .is_some();
         return (CliAgentStatus::not_installed(kind, npm_only), None);
     };
     let binary_path = Some(program.to_string_lossy().into_owned());
     let (version, auth, models) = match kind {
         CliAgentKind::Claude => {
-            let (version, auth) = tokio::join!(claude_version(&program), claude_auth_status(&program));
+            let (version, auth) =
+                tokio::join!(claude_version(&program), claude_auth_status(&program));
             (
-                version.map_err(|e| log::warn!("Claude CLI version probe failed: {e}")).ok(),
-                auth.map_err(|e| log::warn!("Claude CLI auth probe failed: {e}")).ok(),
+                version
+                    .map_err(|e| log::warn!("Claude CLI version probe failed: {e}"))
+                    .ok(),
+                auth.map_err(|e| log::warn!("Claude CLI auth probe failed: {e}"))
+                    .ok(),
                 None,
             )
         }
         CliAgentKind::Codex => {
-            let (version, login) = tokio::join!(version_of(&program, &prefix_args), login_status(&program, &prefix_args));
+            let (version, login) = tokio::join!(
+                version_of(&program, &prefix_args),
+                login_status(&program, &prefix_args)
+            );
             if let CodexLogin::Unavailable(why) = &login {
                 log::warn!("Codex login probe failed: {why}");
             }
             (version, codex_auth(&login), None)
         }
         CliAgentKind::Antigravity => {
-            let (version, probe) =
-                tokio::join!(version_of(&program, &prefix_args), acp_probe_models(program.clone(), antigravity_args()));
+            let (version, probe) = tokio::join!(
+                version_of(&program, &prefix_args),
+                acp_probe_models(program.clone(), antigravity_args())
+            );
             let auth = antigravity_auth(&probe);
             if auth.is_none() {
                 if let Err(e) = &probe {
@@ -263,7 +319,18 @@ pub async fn cli_agent_status(kind: CliAgentKind) -> (CliAgentStatus, Option<Vec
         }
     };
     let required_version = required_version_for(kind, version.as_deref());
-    (CliAgentStatus { kind, installed: true, binary_path, version, auth, npm_only: false, required_version }, models)
+    (
+        CliAgentStatus {
+            kind,
+            installed: true,
+            binary_path,
+            version,
+            auth,
+            npm_only: false,
+            required_version,
+        },
+        models,
+    )
 }
 
 /// `agy`'s `(id, name)` models as catalog entries: one entry per model id, no
@@ -317,7 +384,9 @@ pub async fn fetch_models(kind: CliAgentKind) -> Result<Vec<ClaudeModelInfo>, St
         .ok_or_else(|| format!("{} CLI is not installed", kind.short_name()))?;
     match kind {
         CliAgentKind::Claude => unreachable!("handled above"),
-        CliAgentKind::Codex => codex_probe_models(&program, &prefix_args).await.map(|m| codex_models(&m)),
+        CliAgentKind::Codex => codex_probe_models(&program, &prefix_args)
+            .await
+            .map(|m| codex_models(&m)),
         CliAgentKind::Antigravity => acp_probe_models(program, antigravity_args())
             .await
             .map(|m| acp_models(&m))
@@ -338,10 +407,17 @@ pub async fn probe_kind(kind: CliAgentKind) -> Result<(), AgentErrorKind> {
             // Too old to launch: unavailable, so requests don't try it and the
             // probe keeps checking until it is updated.
             let probed = program.clone();
-            if tokio::task::spawn_blocking(move || claude_too_old(&probed)).await.ok().flatten().is_some() {
+            if tokio::task::spawn_blocking(move || claude_too_old(&probed))
+                .await
+                .ok()
+                .flatten()
+                .is_some()
+            {
                 return Err(AgentErrorKind::Outdated);
             }
-            let auth = claude_auth_status(&program).await.map_err(|_| AgentErrorKind::Other)?;
+            let auth = claude_auth_status(&program)
+                .await
+                .map_err(|_| AgentErrorKind::Other)?;
             match auth.login {
                 ClaudeLogin::Subscription => Ok(()),
                 ClaudeLogin::LoggedOut => Err(AgentErrorKind::NotLoggedIn),
@@ -384,11 +460,18 @@ mod tests {
         let mut good = CliAgentStatus::not_installed(CliAgentKind::Codex, false);
         good.installed = true;
         good.version = Some("1.0.0".into());
-        good.auth = Some(ClaudeAuthStatus { logged_in: true, auth_method: "x".into(), subscription_type: None, email: None, login: Default::default() });
+        good.auth = Some(ClaudeAuthStatus {
+            logged_in: true,
+            auth_method: "x".into(),
+            subscription_type: None,
+            email: None,
+            login: Default::default(),
+        });
         assert_eq!(reuse_for(&good), STATUS_REUSE);
         good.auth.as_mut().unwrap().logged_in = false;
         assert_eq!(reuse_for(&good), STATUS_REUSE_FAILED);
-        *status_slot(CliAgentKind::Codex).1.lock().unwrap() = Some((std::time::Instant::now(), (bad, None)));
+        *status_slot(CliAgentKind::Codex).1.lock().unwrap() =
+            Some((std::time::Instant::now(), (bad, None)));
         forget_statuses();
         assert!(status_slot(CliAgentKind::Codex).1.lock().unwrap().is_none());
     }
@@ -397,9 +480,15 @@ mod tests {
 
     #[test]
     fn versions_are_read_from_the_first_line() {
-        assert_eq!(parse_version("codex-cli 0.171.0\n").as_deref(), Some("0.171.0"));
+        assert_eq!(
+            parse_version("codex-cli 0.171.0\n").as_deref(),
+            Some("0.171.0")
+        );
         assert_eq!(parse_version("1.5.14\r\n").as_deref(), Some("1.5.14"));
-        assert_eq!(parse_version("\n  \nclaude 2.1.0 (Claude Code)\n").as_deref(), Some("2.1.0"));
+        assert_eq!(
+            parse_version("\n  \nclaude 2.1.0 (Claude Code)\n").as_deref(),
+            Some("2.1.0")
+        );
         assert_eq!(parse_version("no number here"), None);
         assert_eq!(parse_version(""), None);
     }
@@ -407,28 +496,64 @@ mod tests {
     #[test]
     fn only_a_known_older_claude_reports_a_required_version() {
         let claude = CliAgentKind::Claude;
-        assert_eq!(required_version_for(claude, Some("2.1.206 (Claude Code)")).as_deref(), Some("2.1.259"));
-        assert_eq!(required_version_for(claude, Some("2.1.99 (Claude Code)")).as_deref(), Some("2.1.259"));
-        assert_eq!(required_version_for(claude, Some("2.1.259 (Claude Code)")), None);
-        assert_eq!(required_version_for(claude, Some("2.1.330 (Claude Code)")), None);
+        assert_eq!(
+            required_version_for(claude, Some("2.1.206 (Claude Code)")).as_deref(),
+            Some("2.1.259")
+        );
+        assert_eq!(
+            required_version_for(claude, Some("2.1.99 (Claude Code)")).as_deref(),
+            Some("2.1.259")
+        );
+        assert_eq!(
+            required_version_for(claude, Some("2.1.259 (Claude Code)")),
+            None
+        );
+        assert_eq!(
+            required_version_for(claude, Some("2.1.330 (Claude Code)")),
+            None
+        );
         assert_eq!(required_version_for(claude, Some("3.0.0")), None);
         // Unknown or unreadable: nothing is claimed.
         assert_eq!(required_version_for(claude, None), None);
         assert_eq!(required_version_for(claude, Some("garbage")), None);
         // Never for the other CLIs, whatever their version looks like.
-        assert_eq!(required_version_for(CliAgentKind::Codex, Some("0.1.0")), None);
-        assert_eq!(required_version_for(CliAgentKind::Antigravity, Some("1.5.14")), None);
+        assert_eq!(
+            required_version_for(CliAgentKind::Codex, Some("0.1.0")),
+            None
+        );
+        assert_eq!(
+            required_version_for(CliAgentKind::Antigravity, Some("1.5.14")),
+            None
+        );
     }
 
     #[test]
     fn a_chatgpt_login_is_the_subscription() {
-        let a = codex_auth(&CodexLogin::ChatGpt { email: Some("a@b.test".into()), plan: Some("plus".into()) }).unwrap();
+        let a = codex_auth(&CodexLogin::ChatGpt {
+            email: Some("a@b.test".into()),
+            plan: Some("plus".into()),
+        })
+        .unwrap();
         assert_eq!(a.login, ClaudeLogin::Subscription);
         assert!(a.logged_in);
-        assert_eq!((a.email.as_deref(), a.subscription_type.as_deref(), a.auth_method.as_str()), (Some("a@b.test"), Some("plus"), "chatgpt"));
+        assert_eq!(
+            (
+                a.email.as_deref(),
+                a.subscription_type.as_deref(),
+                a.auth_method.as_str()
+            ),
+            (Some("a@b.test"), Some("plus"), "chatgpt")
+        );
         // No claims readable: still the subscription.
-        let bare = codex_auth(&CodexLogin::ChatGpt { email: None, plan: None }).unwrap();
-        assert_eq!((bare.login, bare.subscription_type.as_deref()), (ClaudeLogin::Subscription, Some("ChatGPT")));
+        let bare = codex_auth(&CodexLogin::ChatGpt {
+            email: None,
+            plan: None,
+        })
+        .unwrap();
+        assert_eq!(
+            (bare.login, bare.subscription_type.as_deref()),
+            (ClaudeLogin::Subscription, Some("ChatGPT"))
+        );
     }
 
     #[test]
@@ -447,9 +572,14 @@ mod tests {
     #[test]
     fn antigravity_is_signed_in_when_a_session_opens() {
         let ok: Result<Vec<()>, AgentError> = Ok(vec![]);
-        assert_eq!(antigravity_auth(&ok).unwrap().login, ClaudeLogin::Subscription);
-        let out: Result<Vec<()>, AgentError> =
-            Err(AgentError::Cli(AgentErrorKind::NotLoggedIn, "API key is missing".into()));
+        assert_eq!(
+            antigravity_auth(&ok).unwrap().login,
+            ClaudeLogin::Subscription
+        );
+        let out: Result<Vec<()>, AgentError> = Err(AgentError::Cli(
+            AgentErrorKind::NotLoggedIn,
+            "API key is missing".into(),
+        ));
         let out = antigravity_auth(&out).unwrap();
         assert_eq!((out.logged_in, out.login), (false, ClaudeLogin::LoggedOut));
         // A timeout says nothing about the login.

@@ -53,7 +53,12 @@ fn normalize_url(url: &str) -> String {
                 Some(i) => (&rest[..i], &rest[i..]),
                 None => (rest, ""),
             };
-            format!("{}://{}{}", scheme.to_lowercase(), host.to_lowercase(), path.trim_end_matches('/'))
+            format!(
+                "{}://{}{}",
+                scheme.to_lowercase(),
+                host.to_lowercase(),
+                path.trim_end_matches('/')
+            )
         }
         None => u.trim_end_matches('/').to_lowercase(),
     }
@@ -86,35 +91,62 @@ impl McpServer {
                 if command.trim().is_empty() {
                     return None;
                 }
-                Launch::Stdio { command: normalize_path_text(command), args: args.iter().map(|a| normalize_value(a)).collect() }
+                Launch::Stdio {
+                    command: normalize_path_text(command),
+                    args: args.iter().map(|a| normalize_value(a)).collect(),
+                }
             }
-            McpTransport::Http { url, header_names: names } => {
+            McpTransport::Http {
+                url,
+                header_names: names,
+            } => {
                 if url.trim().is_empty() {
                     return None;
                 }
-                header_names = names.iter().map(|h| h.trim().to_ascii_uppercase()).collect();
-                Launch::Http { url: normalize_url(url) }
+                header_names = names
+                    .iter()
+                    .map(|h| h.trim().to_ascii_uppercase())
+                    .collect();
+                Launch::Http {
+                    url: normalize_url(url),
+                }
             }
         };
         let mut plain_env: Vec<(String, String)> = self
             .env
             .iter()
             .filter(|v| !v.secret)
-            .map(|v| (v.name.trim().to_ascii_uppercase(), normalize_value(v.value.as_deref().unwrap_or_default())))
+            .map(|v| {
+                (
+                    v.name.trim().to_ascii_uppercase(),
+                    normalize_value(v.value.as_deref().unwrap_or_default()),
+                )
+            })
             .collect();
-        let mut secret_names: Vec<String> =
-            self.env.iter().filter(|v| v.secret).map(|v| v.name.trim().to_ascii_uppercase()).collect();
+        let mut secret_names: Vec<String> = self
+            .env
+            .iter()
+            .filter(|v| v.secret)
+            .map(|v| v.name.trim().to_ascii_uppercase())
+            .collect();
         plain_env.sort();
         secret_names.sort();
         header_names.sort();
-        Some(ServerIdentity { launch, plain_env, secret_names, header_names })
+        Some(ServerIdentity {
+            launch,
+            plain_env,
+            secret_names,
+            header_names,
+        })
     }
 }
 
 /// The server among `known` that `server` duplicates, if any.
 pub fn find_duplicate<'a>(server: &McpServer, known: &'a [McpServer]) -> Option<&'a McpServer> {
     let identity = server.identity()?;
-    known.iter().find(|k| k.id != server.id && k.identity().as_ref() == Some(&identity))
+    known
+        .iter()
+        .find(|k| k.id != server.id && k.identity().as_ref() == Some(&identity))
 }
 
 /// A notes folder's identity: its path as the system compares it.
@@ -180,16 +212,37 @@ fn keep_rank(s: &McpServer) -> (bool, bool, bool, usize) {
 fn secret_moves(dropped: &McpServer, kept: &McpServer) -> Vec<SecretMove> {
     let mut moves = Vec::new();
     for var in dropped.env.iter().filter(|e| e.secret) {
-        if let Some(to_var) = kept.env.iter().find(|e| e.secret && e.name.trim().eq_ignore_ascii_case(var.name.trim())) {
-            moves.push(SecretMove { from: credential_id(&dropped.key, &var.name), to: credential_id(&kept.key, &to_var.name) });
+        if let Some(to_var) = kept
+            .env
+            .iter()
+            .find(|e| e.secret && e.name.trim().eq_ignore_ascii_case(var.name.trim()))
+        {
+            moves.push(SecretMove {
+                from: credential_id(&dropped.key, &var.name),
+                to: credential_id(&kept.key, &to_var.name),
+            });
         }
     }
-    if let (McpTransport::Http { header_names: from_names, .. }, McpTransport::Http { header_names: to_names, .. }) =
-        (&dropped.transport, &kept.transport)
+    if let (
+        McpTransport::Http {
+            header_names: from_names,
+            ..
+        },
+        McpTransport::Http {
+            header_names: to_names,
+            ..
+        },
+    ) = (&dropped.transport, &kept.transport)
     {
         for name in from_names {
-            if let Some(to_name) = to_names.iter().find(|n| n.trim().eq_ignore_ascii_case(name.trim())) {
-                moves.push(SecretMove { from: header_credential_id(&dropped.key, name), to: header_credential_id(&kept.key, to_name) });
+            if let Some(to_name) = to_names
+                .iter()
+                .find(|n| n.trim().eq_ignore_ascii_case(name.trim()))
+            {
+                moves.push(SecretMove {
+                    from: header_credential_id(&dropped.key, name),
+                    to: header_credential_id(&kept.key, to_name),
+                });
             }
         }
     }
@@ -198,7 +251,10 @@ fn secret_moves(dropped: &McpServer, kept: &McpServer) -> Vec<SecretMove> {
 
 /// Groups of equal items (by `identity`) among `items`, each group as indexes
 /// in their original order. Only groups of two or more, in first-seen order.
-fn groups<T, K: std::hash::Hash + Eq + Clone>(items: &[T], identity: impl Fn(&T) -> Option<K>) -> Vec<Vec<usize>> {
+fn groups<T, K: std::hash::Hash + Eq + Clone>(
+    items: &[T],
+    identity: impl Fn(&T) -> Option<K>,
+) -> Vec<Vec<usize>> {
     let mut by: HashMap<K, Vec<usize>> = HashMap::new();
     let mut order: Vec<K> = Vec::new();
     for (i, item) in items.iter().enumerate() {
@@ -209,7 +265,11 @@ fn groups<T, K: std::hash::Hash + Eq + Clone>(items: &[T], identity: impl Fn(&T)
             by.entry(k).or_default().push(i);
         }
     }
-    order.into_iter().filter_map(|k| by.remove(&k)).filter(|g| g.len() > 1).collect()
+    order
+        .into_iter()
+        .filter_map(|k| by.remove(&k))
+        .filter(|g| g.len() > 1)
+        .collect()
 }
 
 /// Propose `cfg` without its duplicate servers and notes folders. Servers with
@@ -217,10 +277,19 @@ fn groups<T, K: std::hash::Hash + Eq + Clone>(items: &[T], identity: impl Fn(&T)
 /// touched. Pure: nothing is changed, and a proposal made from a config the
 /// webview sent must never be acted on (see [`plan_saved_merges`]).
 pub fn plan_repair(cfg: &PersonalSourcesConfig) -> SourcesRepair {
-    let mut out = SourcesRepair { config: cfg.clone(), ..Default::default() };
+    let mut out = SourcesRepair {
+        config: cfg.clone(),
+        ..Default::default()
+    };
 
     let mut drop_servers: Vec<usize> = Vec::new();
-    for group in groups(&cfg.mcp_servers, |s| if s.id.is_empty() { None } else { s.identity() }) {
+    for group in groups(&cfg.mcp_servers, |s| {
+        if s.id.is_empty() {
+            None
+        } else {
+            s.identity()
+        }
+    }) {
         let mut keep = group[0];
         for &i in &group[1..] {
             if keep_rank(&cfg.mcp_servers[i]) > keep_rank(&cfg.mcp_servers[keep]) {
@@ -248,9 +317,19 @@ pub fn plan_repair(cfg: &PersonalSourcesConfig) -> SourcesRepair {
     });
 
     let mut drop_folders: Vec<usize> = Vec::new();
-    for group in groups(&cfg.notes_folders, |f: &NotesFolder| if f.id.is_empty() { None } else { folder_identity(&f.path) }) {
+    for group in groups(&cfg.notes_folders, |f: &NotesFolder| {
+        if f.id.is_empty() {
+            None
+        } else {
+            folder_identity(&f.path)
+        }
+    }) {
         // The one that is on, else the first.
-        let keep = group.iter().copied().find(|&i| cfg.notes_folders[i].enabled).unwrap_or(group[0]);
+        let keep = group
+            .iter()
+            .copied()
+            .find(|&i| cfg.notes_folders[i].enabled)
+            .unwrap_or(group[0]);
         let kept_id = cfg.notes_folders[keep].id.clone();
         let mut merged = cfg.notes_folders[keep].clone();
         for &i in group.iter().filter(|&&i| i != keep) {
@@ -286,15 +365,24 @@ pub fn plan_repair(cfg: &PersonalSourcesConfig) -> SourcesRepair {
 pub fn plan_saved_merges(old: &PersonalSourcesConfig, new: &PersonalSourcesConfig) -> MergePlan {
     let mut out = MergePlan::default();
     for dropped in &old.mcp_servers {
-        if dropped.id.is_empty() || new.mcp_servers.iter().any(|s| s.id == dropped.id || s.key == dropped.key) {
+        if dropped.id.is_empty()
+            || new
+                .mcp_servers
+                .iter()
+                .any(|s| s.id == dropped.id || s.key == dropped.key)
+        {
             continue;
         }
-        let Some(identity) = dropped.identity() else { continue };
+        let Some(identity) = dropped.identity() else {
+            continue;
+        };
         let kept = old.mcp_servers.iter().find(|k| {
             !k.id.is_empty()
                 && k.id != dropped.id
                 && k.identity().as_ref() == Some(&identity)
-                && new.mcp_servers.iter().any(|n| n.id == k.id && n.key == k.key && n.identity().as_ref() == Some(&identity))
+                && new.mcp_servers.iter().any(|n| {
+                    n.id == k.id && n.key == k.key && n.identity().as_ref() == Some(&identity)
+                })
         });
         let Some(kept) = kept else { continue };
         out.server_map.push((dropped.id.clone(), kept.id.clone()));
@@ -304,12 +392,17 @@ pub fn plan_saved_merges(old: &PersonalSourcesConfig, new: &PersonalSourcesConfi
         if dropped.id.is_empty() || new.notes_folders.iter().any(|f| f.id == dropped.id) {
             continue;
         }
-        let Some(identity) = folder_identity(&dropped.path) else { continue };
+        let Some(identity) = folder_identity(&dropped.path) else {
+            continue;
+        };
         let kept = old.notes_folders.iter().find(|k| {
             !k.id.is_empty()
                 && k.id != dropped.id
                 && folder_identity(&k.path).as_ref() == Some(&identity)
-                && new.notes_folders.iter().any(|n| n.id == k.id && folder_identity(&n.path).as_ref() == Some(&identity))
+                && new
+                    .notes_folders
+                    .iter()
+                    .any(|n| n.id == k.id && folder_identity(&n.path).as_ref() == Some(&identity))
         });
         if let Some(kept) = kept {
             out.folder_map.push((dropped.id.clone(), kept.id.clone()));
@@ -328,27 +421,53 @@ mod tests {
             id: id.into(),
             key: key.into(),
             label: key.into(),
-            transport: McpTransport::Stdio { command: command.into(), args: args.iter().map(|a| a.to_string()).collect() },
+            transport: McpTransport::Stdio {
+                command: command.into(),
+                args: args.iter().map(|a| a.to_string()).collect(),
+            },
             ..Default::default()
         }
     }
 
     fn plain(name: &str, value: &str) -> EnvVar {
-        EnvVar { name: name.into(), value: Some(value.into()), secret: false }
+        EnvVar {
+            name: name.into(),
+            value: Some(value.into()),
+            secret: false,
+        }
     }
 
     fn secret(name: &str) -> EnvVar {
-        EnvVar { name: name.into(), value: None, secret: true }
+        EnvVar {
+            name: name.into(),
+            value: None,
+            secret: true,
+        }
     }
 
     fn checked(ok: bool) -> Option<McpCheckStatus> {
-        Some(McpCheckStatus { ok, tool_count: 1, error: None, checked_at_ms: 1 })
+        Some(McpCheckStatus {
+            ok,
+            tool_count: 1,
+            error: None,
+            checked_at_ms: 1,
+        })
     }
 
     #[test]
     fn paths_are_compared_without_case_or_slash_style() {
-        let a = stdio("a", "mira", r"C:\Program Files\nodejs\node.exe", &[r"D:\Vault\Mira\index.js", "--port=80"]);
-        let b = stdio("b", "mira-2", "c:/program files/NodeJS/node.exe", &["d:/vault/mira/index.js/", "--port=80"]);
+        let a = stdio(
+            "a",
+            "mira",
+            r"C:\Program Files\nodejs\node.exe",
+            &[r"D:\Vault\Mira\index.js", "--port=80"],
+        );
+        let b = stdio(
+            "b",
+            "mira-2",
+            "c:/program files/NodeJS/node.exe",
+            &["d:/vault/mira/index.js/", "--port=80"],
+        );
         assert_eq!(a.identity(), b.identity());
         assert!(find_duplicate(&b, std::slice::from_ref(&a)).is_some());
     }
@@ -379,10 +498,18 @@ mod tests {
         assert_eq!(a.identity(), same.identity());
         let mut value = same.clone();
         value.env = vec![secret("api_key"), plain("MODE", "rw")];
-        assert_ne!(a.identity(), value.identity(), "a different plain value is another server");
+        assert_ne!(
+            a.identity(),
+            value.identity(),
+            "a different plain value is another server"
+        );
         let mut no_secret = same.clone();
         no_secret.env = vec![plain("MODE", "ro")];
-        assert_ne!(a.identity(), no_secret.identity(), "a secret that is missing is another server");
+        assert_ne!(
+            a.identity(),
+            no_secret.identity(),
+            "a secret that is missing is another server"
+        );
         let mut paths = stdio("c", "k", "node", &["s.js"]);
         paths.env = vec![plain("ROOT", r"D:\Notes\")];
         let mut paths2 = paths.clone();
@@ -393,7 +520,10 @@ mod tests {
     #[test]
     fn http_servers_compare_by_url_and_header_names() {
         let http = |url: &str, headers: &[&str]| McpServer {
-            transport: McpTransport::Http { url: url.into(), header_names: headers.iter().map(|h| h.to_string()).collect() },
+            transport: McpTransport::Http {
+                url: url.into(),
+                header_names: headers.iter().map(|h| h.to_string()).collect(),
+            },
             ..Default::default()
         };
         assert_eq!(
@@ -404,8 +534,15 @@ mod tests {
             http("https://wiki.example.com/mcp", &[]).identity(),
             http("https://wiki.example.com/mcp", &["Authorization"]).identity()
         );
-        assert_ne!(http("https://wiki.example.com/mcp", &[]).identity(), http("https://wiki.example.com/other", &[]).identity());
-        assert_ne!(http("https://a.example.com/Mcp", &[]).identity(), http("https://a.example.com/mcp", &[]).identity(), "a path keeps its case");
+        assert_ne!(
+            http("https://wiki.example.com/mcp", &[]).identity(),
+            http("https://wiki.example.com/other", &[]).identity()
+        );
+        assert_ne!(
+            http("https://a.example.com/Mcp", &[]).identity(),
+            http("https://a.example.com/mcp", &[]).identity(),
+            "a path keeps its case"
+        );
     }
 
     #[test]
@@ -413,11 +550,23 @@ mod tests {
         let empty = stdio("a", "k", "  ", &[]);
         assert!(empty.identity().is_none());
         assert!(find_duplicate(&empty, &[empty.clone()]).is_none());
-        assert!(find_duplicate(&stdio("a", "k", "node", &[]), &[stdio("a", "k", "node", &[])]).is_none(), "never itself");
+        assert!(
+            find_duplicate(
+                &stdio("a", "k", "node", &[]),
+                &[stdio("a", "k", "node", &[])]
+            )
+            .is_none(),
+            "never itself"
+        );
     }
 
     fn mira(id: &str, key: &str) -> McpServer {
-        let mut s = stdio(id, key, r"C:\Program Files\nodejs\node.exe", &[r"D:\x\mira.js"]);
+        let mut s = stdio(
+            id,
+            key,
+            r"C:\Program Files\nodejs\node.exe",
+            &[r"D:\x\mira.js"],
+        );
         s.env = vec![secret("API_KEY"), plain("MODE", "ro")];
         s
     }
@@ -427,12 +576,23 @@ mod tests {
         let mut ok = mira("ok", "mira");
         ok.enabled = true;
         ok.last_check = checked(true);
-        ok.tools = vec![McpTool { name: "t".into(), full_name: "mcp__mira__t".into(), allowed: true, ..Default::default() }];
+        ok.tools = vec![McpTool {
+            name: "t".into(),
+            full_name: "mcp__mira__t".into(),
+            allowed: true,
+            ..Default::default()
+        }];
         let mut fresh = mira("fresh", "mira-2");
         fresh.enabled = false;
-        let cfg = PersonalSourcesConfig { mcp_servers: vec![fresh, ok.clone()], ..Default::default() };
+        let cfg = PersonalSourcesConfig {
+            mcp_servers: vec![fresh, ok.clone()],
+            ..Default::default()
+        };
         let plan = plan_repair(&cfg);
-        assert_eq!(plan.server_map, vec![("fresh".to_string(), "ok".to_string())]);
+        assert_eq!(
+            plan.server_map,
+            vec![("fresh".to_string(), "ok".to_string())]
+        );
         assert_eq!(plan.config.mcp_servers, vec![ok]);
     }
 
@@ -443,7 +603,10 @@ mod tests {
         a.enabled = false;
         let mut b = mira("b", "mira-2");
         b.enabled = true;
-        let plan = plan_repair(&PersonalSourcesConfig { mcp_servers: vec![a, b], ..Default::default() });
+        let plan = plan_repair(&PersonalSourcesConfig {
+            mcp_servers: vec![a, b],
+            ..Default::default()
+        });
         assert_eq!(plan.server_map, vec![("b".to_string(), "a".to_string())]);
         assert!(plan.config.mcp_servers[0].enabled, "on if any was on");
         assert_eq!(plan.config.mcp_servers.len(), 1);
@@ -455,7 +618,10 @@ mod tests {
         let mut b = mira("b", "mira-2");
         b.env[1] = plain("MODE", "rw");
         let c = stdio("c", "other", "node", &["x.js"]);
-        let cfg = PersonalSourcesConfig { mcp_servers: vec![a, b, c], ..Default::default() };
+        let cfg = PersonalSourcesConfig {
+            mcp_servers: vec![a, b, c],
+            ..Default::default()
+        };
         let plan = plan_repair(&cfg);
         assert!(plan.is_empty());
         assert_eq!(plan.config, cfg);
@@ -466,14 +632,28 @@ mod tests {
         let cfg = PersonalSourcesConfig {
             mcp_servers: vec![mira("a", "mira"), mira("b", "mira-2"), mira("c", "mira-3")],
             notes_folders: vec![
-                NotesFolder { id: "f1".into(), label: "A".into(), path: r"D:\Notes".into(), enabled: false },
-                NotesFolder { id: "f2".into(), label: "B".into(), path: "d:/notes/".into(), enabled: true },
+                NotesFolder {
+                    id: "f1".into(),
+                    label: "A".into(),
+                    path: r"D:\Notes".into(),
+                    enabled: false,
+                },
+                NotesFolder {
+                    id: "f2".into(),
+                    label: "B".into(),
+                    path: "d:/notes/".into(),
+                    enabled: true,
+                },
             ],
             ..Default::default()
         };
         let once = plan_repair(&cfg);
         assert_eq!(once.server_map.len(), 2);
-        assert_eq!(once.folder_map, vec![("f1".to_string(), "f2".to_string())], "the enabled folder stays");
+        assert_eq!(
+            once.folder_map,
+            vec![("f1".to_string(), "f2".to_string())],
+            "the enabled folder stays"
+        );
         let twice = plan_repair(&once.config);
         assert!(twice.is_empty());
         assert_eq!(twice.config, once.config);
@@ -489,7 +669,10 @@ mod tests {
     // ── plan_saved_merges: only what the backend already held counts ──
 
     fn cfg_of(servers: Vec<McpServer>) -> PersonalSourcesConfig {
-        PersonalSourcesConfig { mcp_servers: servers, ..Default::default() }
+        PersonalSourcesConfig {
+            mcp_servers: servers,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -497,8 +680,17 @@ mod tests {
         let old = cfg_of(vec![mira("keep", "mira"), mira("drop", "mira-2")]);
         let new = cfg_of(vec![mira("keep", "mira")]);
         let plan = plan_saved_merges(&old, &new);
-        assert_eq!(plan.server_map, vec![("drop".to_string(), "keep".to_string())]);
-        assert_eq!(plan.secret_moves, vec![SecretMove { from: "mcp:mira-2:API_KEY".into(), to: "mcp:mira:API_KEY".into() }]);
+        assert_eq!(
+            plan.server_map,
+            vec![("drop".to_string(), "keep".to_string())]
+        );
+        assert_eq!(
+            plan.secret_moves,
+            vec![SecretMove {
+                from: "mcp:mira-2:API_KEY".into(),
+                to: "mcp:mira:API_KEY".into()
+            }]
+        );
         // Nothing to merge once the duplicate is gone from what is held.
         assert!(plan_saved_merges(&new, &new).is_empty());
     }
@@ -529,19 +721,35 @@ mod tests {
         changed.env[1] = plain("MODE", "rw");
         assert!(plan_saved_merges(&old, &cfg_of(vec![changed])).is_empty());
         // A dropped server whose key lives on under another id is a rename.
-        assert!(plan_saved_merges(&old, &cfg_of(vec![mira("keep", "mira"), mira("renamed", "mira-2")])).is_empty());
+        assert!(plan_saved_merges(
+            &old,
+            &cfg_of(vec![mira("keep", "mira"), mira("renamed", "mira-2")])
+        )
+        .is_empty());
     }
 
     #[test]
     fn folders_merge_only_by_the_held_paths() {
-        let f = |id: &str, path: &str| NotesFolder { id: id.into(), label: id.into(), path: path.into(), enabled: true };
-        let folders = |v: Vec<NotesFolder>| PersonalSourcesConfig { notes_folders: v, ..Default::default() };
+        let f = |id: &str, path: &str| NotesFolder {
+            id: id.into(),
+            label: id.into(),
+            path: path.into(),
+            enabled: true,
+        };
+        let folders = |v: Vec<NotesFolder>| PersonalSourcesConfig {
+            notes_folders: v,
+            ..Default::default()
+        };
         let old = folders(vec![f("f1", r"D:\Notes"), f("f2", "d:/notes/")]);
         let plan = plan_saved_merges(&old, &folders(vec![f("f2", "d:/notes/")]));
         assert_eq!(plan.folder_map, vec![("f1".to_string(), "f2".to_string())]);
         // Incoming f2 now points elsewhere: no merge.
         assert!(plan_saved_merges(&old, &folders(vec![f("f2", r"D:\Other")])).is_empty());
         // A different folder is just removed.
-        assert!(plan_saved_merges(&folders(vec![f("f1", r"D:\A"), f("f2", r"D:\B")]), &folders(vec![f("f2", r"D:\B")])).is_empty());
+        assert!(plan_saved_merges(
+            &folders(vec![f("f1", r"D:\A"), f("f2", r"D:\B")]),
+            &folders(vec![f("f2", r"D:\B")])
+        )
+        .is_empty());
     }
 }

@@ -46,8 +46,58 @@ pub fn extract_text(file_type: &str, file_path: &str) -> Result<String, String> 
         "txt" | "md" | NOTE_TYPE => file_loader::load_text_file(file_path),
         "docx" => crate::rag::file_processor::extract_docx_text(file_path),
         "pptx" => crate::rag::pptx::extract_pptx_text(file_path),
+        "csv" => extract_csv_text(
+            &fs::read(file_path).map_err(|e| format!("Couldn't read this CSV: {e}"))?,
+        ),
         _ => Ok(String::new()),
     }
+}
+
+/// Turns each CSV record into a labeled, header-aware line so search can match
+/// an exact ID and return every value from that record together.
+pub fn extract_csv_text(bytes: &[u8]) -> Result<String, String> {
+    let payload = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+    let text = match std::str::from_utf8(payload) {
+        Ok(text) => text.to_owned(),
+        Err(_) => encoding_rs::WINDOWS_1252.decode(payload).0.into_owned(),
+    };
+    let mut reader = csv::ReaderBuilder::new()
+        .flexible(false)
+        .from_reader(text.as_bytes());
+    let headers = reader
+        .headers()
+        .map_err(|e| format!("This CSV's header row could not be read: {e}"))?
+        .clone();
+    if headers.is_empty() || headers.iter().all(|header| header.trim().is_empty()) {
+        return Err("This CSV needs a header row naming its columns".to_string());
+    }
+    let mut rows = Vec::new();
+    for (index, result) in reader.records().enumerate() {
+        let record = result.map_err(|e| format!("CSV row {} could not be read: {e}", index + 2))?;
+        let cells = headers
+            .iter()
+            .zip(record.iter())
+            .filter_map(|(header, value)| {
+                let header = header.trim();
+                if header.is_empty() {
+                    return None;
+                }
+                let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+                Some(format!("{header}: {value}"))
+            })
+            .collect::<Vec<_>>();
+        rows.push(format!("Row {} | {}", index + 2, cells.join(" | ")));
+        if rows.len() >= 50_000 {
+            return Err("This CSV has more than 50,000 rows. Split it into smaller files to keep lookups fast.".to_string());
+        }
+    }
+    if rows.is_empty() {
+        return Ok(format!(
+            "Columns: {}",
+            headers.iter().collect::<Vec<_>>().join(" | ")
+        ));
+    }
+    Ok(rows.join("\n"))
 }
 
 /// `file_type` of a note written in the app (pasted text): Markdown on disk,
@@ -148,6 +198,34 @@ mod file_stem_tests {
     }
 }
 
+#[cfg(test)]
+mod csv_tests {
+    use super::extract_csv_text;
+
+    #[test]
+    fn csv_rows_keep_headers_row_numbers_and_quoted_values_together() {
+        let text = extract_csv_text(
+            b"Account ID,Status,Amount,Notes\r\nACCT-1042,Escalated,4820,\"Needs a call, this week\"\r\n",
+        )
+        .unwrap();
+        assert!(text.contains("Row 2 | Account ID: ACCT-1042 | Status: Escalated | Amount: 4820 | Notes: Needs a call, this week"));
+    }
+
+    #[test]
+    fn csv_requires_a_header_and_rejects_more_than_fifty_thousand_rows() {
+        assert!(extract_csv_text(b"\n\n")
+            .unwrap_err()
+            .contains("header row"));
+        let mut text = String::from("id\n");
+        for i in 0..50_000 {
+            text.push_str(&format!("{i}\n"));
+        }
+        assert!(extract_csv_text(text.as_bytes())
+            .unwrap_err()
+            .contains("50,000 rows"));
+    }
+}
+
 /// Loads, caches, and serves context text from files.
 /// Files stored in %APPDATA%/com.lucid.desktop/context/
 pub struct ContextManager {
@@ -236,9 +314,10 @@ impl ContextManager {
             "md" => "md",
             "docx" => "docx",
             "pptx" => "pptx",
+            "csv" => "csv",
             _ => {
                 return Err(format!(
-                    "Unsupported file type: .{}. Supported: .pdf, .txt, .md, .docx, .pptx",
+                    "Unsupported file type: .{}. Supported: .pdf, .txt, .md, .docx, .pptx, .csv",
                     extension
                 ))
             }
@@ -287,6 +366,9 @@ impl ContextManager {
                 dest_path.to_str().unwrap_or(file_path),
             ),
             "pptx" => crate::rag::pptx::extract_pptx_text(dest_path.to_str().unwrap_or(file_path)),
+            "csv" => fs::read(&dest_path)
+                .map_err(|e| format!("Couldn't read this CSV: {e}"))
+                .and_then(|bytes| extract_csv_text(&bytes)),
             _ => Ok(String::new()),
         }
         .map_err(|e| {

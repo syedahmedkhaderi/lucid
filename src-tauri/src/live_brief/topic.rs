@@ -46,7 +46,12 @@ pub struct TopicDetector {
 
 impl TopicDetector {
     pub fn new(cfg: TopicConfig) -> Self {
-        Self { cfg, lines: VecDeque::new(), armed: true, last_change_ms: None }
+        Self {
+            cfg,
+            lines: VecDeque::new(),
+            armed: true,
+            last_change_ms: None,
+        }
     }
 
     /// A finished transcript line spoken at `ms`.
@@ -56,7 +61,12 @@ impl TopicDetector {
             self.lines.push_back((ms, terms));
         }
         let keep_from = ms.saturating_sub(self.cfg.recent_ms + self.cfg.prior_ms + 1_000);
-        while self.lines.front().map(|(t, _)| *t < keep_from).unwrap_or(false) {
+        while self
+            .lines
+            .front()
+            .map(|(t, _)| *t < keep_from)
+            .unwrap_or(false)
+        {
             self.lines.pop_front();
         }
     }
@@ -86,7 +96,11 @@ impl TopicDetector {
                 prior.extend(terms.iter().map(|s| s.as_str()));
             }
         }
-        let recurring: Vec<&str> = recent.iter().filter(|(_, c)| **c >= 2).map(|(w, _)| *w).collect();
+        let recurring: Vec<&str> = recent
+            .iter()
+            .filter(|(_, c)| **c >= 2)
+            .map(|(w, _)| *w)
+            .collect();
         if recurring.len() < self.cfg.min_recent_terms || prior.len() < self.cfg.min_prior_terms {
             return None;
         }
@@ -96,7 +110,9 @@ impl TopicDetector {
 
     /// True once per topic change.
     pub fn poll(&mut self, now: u64) -> bool {
-        let Some(n) = self.novelty(now) else { return false };
+        let Some(n) = self.novelty(now) else {
+            return false;
+        };
         if !self.armed {
             if n < self.cfg.rearm_below {
                 self.armed = true;
@@ -137,7 +153,13 @@ mod tests {
 
     /// Plays a script: topic changes at the block boundaries. A trigger is
     /// right when it falls within `window` of a boundary.
-    fn play(lang: Lang, seed: u64, blocks: &[(usize, u64)], cfg: TopicConfig, window_ms: u64) -> Score {
+    fn play(
+        lang: Lang,
+        seed: u64,
+        blocks: &[(usize, u64)],
+        cfg: TopicConfig,
+        window_ms: u64,
+    ) -> Score {
         let utt = conversation(lang, seed, blocks, 5, 12);
         let mut d = TopicDetector::new(cfg);
         let mut boundaries = Vec::new();
@@ -153,9 +175,17 @@ mod tests {
                 hits.push(u.ms + 4_000);
             }
         }
-        let mut s = Score { false_triggers: 0, missed: 0, late_ms: vec![] };
+        let mut s = Score {
+            false_triggers: 0,
+            missed: 0,
+            late_ms: vec![],
+        };
         for h in &hits {
-            if !boundaries.iter().skip(1).any(|b| *h >= *b && *h <= *b + window_ms) {
+            if !boundaries
+                .iter()
+                .skip(1)
+                .any(|b| *h >= *b && *h <= *b + window_ms)
+            {
                 s.false_triggers += 1;
             }
         }
@@ -243,7 +273,10 @@ mod tests {
         for i in 0..120u64 {
             let t = i * 5_000;
             let words: Vec<&str> = a[if t < 300_000 { 0 } else { 1 }].split(' ').collect();
-            let line: String = (0..6).map(|_| words[r.below(words.len())]).collect::<Vec<_>>().join("的");
+            let line: String = (0..6)
+                .map(|_| words[r.below(words.len())])
+                .collect::<Vec<_>>()
+                .join("的");
             d.push(t, &line);
             if d.poll(t + 4_000) {
                 fired.push(t);

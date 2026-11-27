@@ -50,9 +50,13 @@ fn db_err(what: &str, e: rusqlite::Error) -> String {
 
 /// The workspace `id`, if there is one.
 pub fn find_workspace(conn: &Connection, id: &str) -> Result<Option<Workspace>, String> {
-    conn.query_row(&format!("SELECT {COLUMNS} FROM workspaces WHERE id = ?1"), params![id], read_workspace)
-        .optional()
-        .map_err(|e| db_err("Couldn't read the workspace", e))
+    conn.query_row(
+        &format!("SELECT {COLUMNS} FROM workspaces WHERE id = ?1"),
+        params![id],
+        read_workspace,
+    )
+    .optional()
+    .map_err(|e| db_err("Couldn't read the workspace", e))
 }
 
 /// The workspace `id`, or an error saying it is gone.
@@ -71,9 +75,13 @@ pub fn default_workspace_id(conn: &Connection) -> String {
 }
 
 fn table_exists(conn: &Connection, name: &str) -> bool {
-    conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1", params![name], |r| r.get::<_, i64>(0))
-        .map(|n| n > 0)
-        .unwrap_or(false)
+    conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        params![name],
+        |r| r.get::<_, i64>(0),
+    )
+    .map(|n| n > 0)
+    .unwrap_or(false)
 }
 
 /// Chats per workspace and the newest chat edit (the chat feature may not be
@@ -85,12 +93,24 @@ fn chat_stats(conn: &Connection) -> HashMap<String, (i64, i64)> {
     let Ok(mut stmt) = conn.prepare("SELECT workspace_id, COUNT(*), COALESCE(MAX(updated_at), 0) FROM workspace_chats GROUP BY workspace_id") else {
         return HashMap::new();
     };
-    let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, (row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))));
-    rows.map(|rows| rows.filter_map(Result::ok).collect()).unwrap_or_default()
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            (row.get::<_, i64>(1)?, row.get::<_, i64>(2)?),
+        ))
+    });
+    rows.map(|rows| rows.filter_map(Result::ok).collect())
+        .unwrap_or_default()
 }
 
 /// The summary of a workspace row with its counts.
-fn summarize(w: Workspace, meetings: i64, items: i64, latest_meeting: Option<String>, chats: (i64, i64)) -> WorkspaceSummary {
+fn summarize(
+    w: Workspace,
+    meetings: i64,
+    items: i64,
+    latest_meeting: Option<String>,
+    chats: (i64, i64),
+) -> WorkspaceSummary {
     let activity = latest_meeting
         .and_then(|t| chrono::DateTime::parse_from_rfc3339(&t).ok())
         .map(|t| t.timestamp_millis())
@@ -159,17 +179,30 @@ pub fn list_summaries(conn: &Connection) -> Result<Vec<WorkspaceSummary>, String
             (SELECT COUNT(*) FROM workspace_items i WHERE i.workspace_id = w.id),
             (SELECT MAX(m.start_time) FROM meetings m WHERE m.workspace_id = w.id)
          FROM workspaces w ORDER BY w.sort, w.created_at",
-        cols = COLUMNS.split(", ").map(|c| format!("w.{c}")).collect::<Vec<_>>().join(", ")
+        cols = COLUMNS
+            .split(", ")
+            .map(|c| format!("w.{c}"))
+            .collect::<Vec<_>>()
+            .join(", ")
     );
-    let mut stmt = conn.prepare(&sql).map_err(|e| db_err("Couldn't list the workspaces", e))?;
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| db_err("Couldn't list the workspaces", e))?;
     let rows = stmt
         .query_map([], |row| {
             let workspace = read_workspace(row)?;
             let chat = chats.get(&workspace.id).copied().unwrap_or((0, 0));
-            Ok(summarize(workspace, row.get(18)?, row.get(19)?, row.get(20)?, chat))
+            Ok(summarize(
+                workspace,
+                row.get(18)?,
+                row.get(19)?,
+                row.get(20)?,
+                chat,
+            ))
         })
         .map_err(|e| db_err("Couldn't list the workspaces", e))?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| db_err("Couldn't list the workspaces", e))
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| db_err("Couldn't list the workspaces", e))
 }
 
 /// One workspace as a summary.
@@ -197,7 +230,9 @@ pub fn chosen_id(conn: &Connection, wanted: Option<&str>) -> Result<String, Stri
     let Some(wanted) = wanted else {
         return Ok(uuid::Uuid::new_v4().to_string());
     };
-    let parsed = uuid::Uuid::parse_str(wanted).ok().filter(|u| u.get_version() == Some(uuid::Version::Random));
+    let parsed = uuid::Uuid::parse_str(wanted)
+        .ok()
+        .filter(|u| u.get_version() == Some(uuid::Version::Random));
     let Some(parsed) = parsed else {
         return Err("A workspace id must be a UUID v4".to_string());
     };
@@ -210,19 +245,30 @@ pub fn chosen_id(conn: &Connection, wanted: Option<&str>) -> Result<String, Stri
 }
 
 fn clean_opt(value: Option<String>) -> Option<String> {
-    value.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 fn next_sort(conn: &Connection) -> i64 {
-    conn.query_row("SELECT COALESCE(MAX(sort), 0) + 1 FROM workspaces", [], |row| row.get(0)).unwrap_or(1)
+    conn.query_row(
+        "SELECT COALESCE(MAX(sort), 0) + 1 FROM workspaces",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap_or(1)
 }
 
 /// Creates a workspace. It uses General only when asked, and never when kept
 /// separate.
-pub fn create_workspace(conn: &Connection, input: CreateWorkspaceInput) -> Result<Workspace, String> {
+pub fn create_workspace(
+    conn: &Connection,
+    input: CreateWorkspaceInput,
+) -> Result<Workspace, String> {
     let name = clean_name(&input.name)?;
     let id = chosen_id(conn, input.id.as_deref())?;
-    let (include_general, keep_separate) = rules::normalize_flags(&id, input.include_general, input.keep_separate)?;
+    let (include_general, keep_separate) =
+        rules::normalize_flags(&id, input.include_general, input.keep_separate)?;
     let now = now_ms();
     conn.execute(
         "INSERT INTO workspaces (id, name, icon, color, description, instructions, include_general,
@@ -248,15 +294,24 @@ pub fn create_workspace(conn: &Connection, input: CreateWorkspaceInput) -> Resul
 
 /// Changes the given fields of a workspace. Becoming kept separate ends every
 /// borrow that involves it.
-pub fn update_workspace(conn: &Connection, id: &str, patch: WorkspacePatch) -> Result<Workspace, String> {
+pub fn update_workspace(
+    conn: &Connection,
+    id: &str,
+    patch: WorkspacePatch,
+) -> Result<Workspace, String> {
     // The change and the cleanup of what it takes away are one transaction.
     let tx = crate::db::immediate_tx(conn).map_err(|e| db_err("Couldn't save the workspace", e))?;
     let updated = update_workspace_in(&tx, id, patch)?;
-    tx.commit().map_err(|e| db_err("Couldn't save the workspace", e))?;
+    tx.commit()
+        .map_err(|e| db_err("Couldn't save the workspace", e))?;
     Ok(updated)
 }
 
-fn update_workspace_in(conn: &Connection, id: &str, patch: WorkspacePatch) -> Result<Workspace, String> {
+fn update_workspace_in(
+    conn: &Connection,
+    id: &str,
+    patch: WorkspacePatch,
+) -> Result<Workspace, String> {
     let mut ws = get_workspace(conn, id)?;
     if let Some(name) = patch.name {
         ws.name = clean_name(&name)?;
@@ -330,7 +385,8 @@ fn update_workspace_in(conn: &Connection, id: &str, patch: WorkspacePatch) -> Re
         // Its chats' summaries may quote General's material, and their citations
         // of it say it is no longer used.
         super::derived::clear_condensed(conn, id)?;
-        let lost = super::derived::material_lost(conn, &[GENERAL_ID.to_string()], &[id.to_string()]);
+        let lost =
+            super::derived::material_lost(conn, &[GENERAL_ID.to_string()], &[id.to_string()]);
         crate::workspace_chat::store::redact_material_in_workspace(
             conn,
             id,
@@ -343,7 +399,12 @@ fn update_workspace_in(conn: &Connection, id: &str, patch: WorkspacePatch) -> Re
 
 /// A copy with the same name look, instructions, settings, library items and
 /// talking points; not the meetings, chats, memory or secrets.
-pub fn clone_workspace(conn: &Connection, id: &str, name: &str, new_id: Option<String>) -> Result<Workspace, String> {
+pub fn clone_workspace(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    new_id: Option<String>,
+) -> Result<Workspace, String> {
     let source = get_workspace(conn, id)?;
     let tx = crate::db::immediate_tx(conn).map_err(|e| db_err("Couldn't copy the workspace", e))?;
     let copy = create_workspace(
@@ -367,7 +428,8 @@ pub fn clone_workspace(conn: &Connection, id: &str, name: &str, new_id: Option<S
     )
     .map_err(|e| db_err("Couldn't copy the library items", e))?;
     super::talking_points::copy_all(&tx, id, &copy.id)?;
-    tx.commit().map_err(|e| db_err("Couldn't copy the workspace", e))?;
+    tx.commit()
+        .map_err(|e| db_err("Couldn't copy the workspace", e))?;
     Ok(copy)
 }
 
@@ -378,10 +440,15 @@ pub fn archive_workspace(conn: &Connection, id: &str, archived: bool) -> Result<
         return Err("General can't be archived".to_string());
     }
     if archived && ws.is_default {
-        return Err("This is the default workspace. Make another one the default first".to_string());
+        return Err(
+            "This is the default workspace. Make another one the default first".to_string(),
+        );
     }
-    conn.execute("UPDATE workspaces SET archived = ?2, updated_at = ?3 WHERE id = ?1", params![id, archived, now_ms()])
-        .map_err(|e| db_err("Couldn't archive the workspace", e))?;
+    conn.execute(
+        "UPDATE workspaces SET archived = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, archived, now_ms()],
+    )
+    .map_err(|e| db_err("Couldn't archive the workspace", e))?;
     get_workspace(conn, id)
 }
 
@@ -394,7 +461,8 @@ pub fn set_default_workspace(conn: &Connection, id: &str) -> Result<(), String> 
     let tx = crate::db::immediate_tx(conn).map_err(|e| db_err("Couldn't set the default", e))?;
     tx.execute("UPDATE workspaces SET is_default = (id = ?1)", params![id])
         .map_err(|e| db_err("Couldn't set the default", e))?;
-    tx.commit().map_err(|e| db_err("Couldn't set the default", e))
+    tx.commit()
+        .map_err(|e| db_err("Couldn't set the default", e))
 }
 
 /// Puts the workspaces in the order of `ids`; any not listed follow in their old order.
@@ -402,14 +470,23 @@ pub fn reorder_workspaces(conn: &Connection, ids: &[String]) -> Result<(), Strin
     let tx = crate::db::immediate_tx(conn).map_err(|e| db_err("Couldn't reorder", e))?;
     let mut order: Vec<String> = ids.to_vec();
     let rest: Vec<String> = {
-        let mut stmt = tx.prepare("SELECT id FROM workspaces ORDER BY sort, created_at").map_err(|e| db_err("Couldn't reorder", e))?;
-        let rows = stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| db_err("Couldn't reorder", e))?;
-        rows.filter_map(Result::ok).filter(|id| !ids.contains(id)).collect()
+        let mut stmt = tx
+            .prepare("SELECT id FROM workspaces ORDER BY sort, created_at")
+            .map_err(|e| db_err("Couldn't reorder", e))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| db_err("Couldn't reorder", e))?;
+        rows.filter_map(Result::ok)
+            .filter(|id| !ids.contains(id))
+            .collect()
     };
     order.extend(rest);
     for (index, id) in order.iter().enumerate() {
-        tx.execute("UPDATE workspaces SET sort = ?2 WHERE id = ?1", params![id, index as i64])
-            .map_err(|e| db_err("Couldn't reorder", e))?;
+        tx.execute(
+            "UPDATE workspaces SET sort = ?2 WHERE id = ?1",
+            params![id, index as i64],
+        )
+        .map_err(|e| db_err("Couldn't reorder", e))?;
     }
     tx.commit().map_err(|e| db_err("Couldn't reorder", e))
 }
@@ -431,17 +508,30 @@ pub fn delete_workspace(conn: &Connection, id: &str, mode: DeleteMode) -> Result
         return Err("General can't be deleted".to_string());
     }
     if ws.is_default {
-        return Err("This is the default workspace. Make another one the default first".to_string());
+        return Err(
+            "This is the default workspace. Make another one the default first".to_string(),
+        );
     }
-    let tx = crate::db::immediate_tx(conn).map_err(|e| db_err("Couldn't delete the workspace", e))?;
+    let tx =
+        crate::db::immediate_tx(conn).map_err(|e| db_err("Couldn't delete the workspace", e))?;
     let meeting_ids: Vec<String> = {
-        let mut stmt = tx.prepare("SELECT id FROM meetings WHERE workspace_id = ?1").map_err(|e| db_err("Couldn't delete", e))?;
-        let rows = stmt.query_map(params![id], |row| row.get::<_, String>(0)).map_err(|e| db_err("Couldn't delete", e))?;
+        let mut stmt = tx
+            .prepare("SELECT id FROM meetings WHERE workspace_id = ?1")
+            .map_err(|e| db_err("Couldn't delete", e))?;
+        let rows = stmt
+            .query_map(params![id], |row| row.get::<_, String>(0))
+            .map_err(|e| db_err("Couldn't delete", e))?;
         rows.filter_map(Result::ok).collect()
     };
-    let mut report = Deleted { meetings: meeting_ids.len(), ..Deleted::default() };
+    let mut report = Deleted {
+        meetings: meeting_ids.len(),
+        ..Deleted::default()
+    };
     // Meetings of other workspaces that borrowed this one lose what came from it.
-    let borrowers: Vec<String> = super::derived::meetings_involving(&tx, id).into_iter().filter(|m| !meeting_ids.contains(m)).collect();
+    let borrowers: Vec<String> = super::derived::meetings_involving(&tx, id)
+        .into_iter()
+        .filter(|m| !meeting_ids.contains(m))
+        .collect();
     let before = super::derived::snapshot(&tx, &borrowers)?;
     match mode {
         DeleteMode::Move => {
@@ -461,7 +551,8 @@ pub fn delete_workspace(conn: &Connection, id: &str, mode: DeleteMode) -> Result
     }
     purge::delete_workspace_rows(&tx, id)?;
     super::derived::prune_after(&tx, &before)?;
-    tx.commit().map_err(|e| db_err("Couldn't delete the workspace", e))?;
+    tx.commit()
+        .map_err(|e| db_err("Couldn't delete the workspace", e))?;
     Ok(report)
 }
 
@@ -486,19 +577,32 @@ pub fn list_items(conn: &Connection, workspace_id: &str) -> Result<Vec<ItemRow>,
              WHERE workspace_id = ?1 ORDER BY pinned DESC, added_at, ref_id",
         )
         .map_err(|e| db_err("Couldn't read the items", e))?;
-    let rows = stmt.query_map(params![workspace_id], read_item).map_err(|e| db_err("Couldn't read the items", e))?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| db_err("Couldn't read the items", e))
+    let rows = stmt
+        .query_map(params![workspace_id], read_item)
+        .map_err(|e| db_err("Couldn't read the items", e))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| db_err("Couldn't read the items", e))
 }
 
 /// Puts a library item in a workspace (again is fine).
-pub fn add_item(conn: &Connection, workspace_id: &str, kind: ItemKind, ref_id: &str, label: Option<&str>) -> Result<(), String> {
+pub fn add_item(
+    conn: &Connection,
+    workspace_id: &str,
+    kind: ItemKind,
+    ref_id: &str,
+    label: Option<&str>,
+) -> Result<(), String> {
     get_workspace(conn, workspace_id)?;
     if ref_id.trim().is_empty() {
         return Err("Nothing to add".to_string());
     }
     if kind == ItemKind::Document {
         let exists: bool = conn
-            .query_row("SELECT EXISTS(SELECT 1 FROM context_resources WHERE id = ?1)", params![ref_id], |r| r.get(0))
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM context_resources WHERE id = ?1)",
+                params![ref_id],
+                |r| r.get(0),
+            )
             .map_err(|e| db_err("Couldn't find the document", e))?;
         if !exists {
             return Err("This document is no longer in the library".to_string());
@@ -570,7 +674,13 @@ pub fn add_item(conn: &Connection, workspace_id: &str, kind: ItemKind, ref_id: &
 }
 
 /// Changes an item's label or pin.
-pub fn update_item(conn: &Connection, workspace_id: &str, kind: ItemKind, ref_id: &str, patch: ItemPatch) -> Result<(), String> {
+pub fn update_item(
+    conn: &Connection,
+    workspace_id: &str,
+    kind: ItemKind,
+    ref_id: &str,
+    patch: ItemPatch,
+) -> Result<(), String> {
     let exists: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM workspace_items WHERE workspace_id = ?1 AND kind = ?2 AND ref_id = ?3)",
@@ -601,7 +711,12 @@ pub fn update_item(conn: &Connection, workspace_id: &str, kind: ItemKind, ref_id
 }
 
 /// Takes an item out of a workspace (it stays in the library).
-pub fn remove_item(conn: &Connection, workspace_id: &str, kind: ItemKind, ref_id: &str) -> Result<(), String> {
+pub fn remove_item(
+    conn: &Connection,
+    workspace_id: &str,
+    kind: ItemKind,
+    ref_id: &str,
+) -> Result<(), String> {
     conn.execute(
         "DELETE FROM workspace_items WHERE workspace_id = ?1 AND kind = ?2 AND ref_id = ?3",
         params![workspace_id, kind.as_str(), ref_id],
@@ -613,9 +728,12 @@ pub fn remove_item(conn: &Connection, workspace_id: &str, kind: ItemKind, ref_id
 
 /// A library item was removed: it leaves every workspace.
 pub fn remove_memberships(conn: &Connection, kind: ItemKind, ref_id: &str) -> Result<(), String> {
-    conn.execute("DELETE FROM workspace_items WHERE kind = ?1 AND ref_id = ?2", params![kind.as_str(), ref_id])
-        .map(|_| ())
-        .map_err(|e| db_err("Couldn't update the workspaces", e))
+    conn.execute(
+        "DELETE FROM workspace_items WHERE kind = ?1 AND ref_id = ?2",
+        params![kind.as_str(), ref_id],
+    )
+    .map(|_| ())
+    .map_err(|e| db_err("Couldn't update the workspaces", e))
 }
 
 /// Which workspaces point to each library item.
@@ -624,7 +742,13 @@ pub fn memberships(conn: &Connection) -> Result<HashMap<(ItemKind, String), Vec<
         .prepare("SELECT kind, ref_id, workspace_id FROM workspace_items ORDER BY added_at")
         .map_err(|e| db_err("Couldn't read the library", e))?;
     let rows = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)))
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
         .map_err(|e| db_err("Couldn't read the library", e))?;
     let mut map: HashMap<(ItemKind, String), Vec<String>> = HashMap::new();
     for row in rows {
@@ -638,14 +762,21 @@ pub fn memberships(conn: &Connection) -> Result<HashMap<(ItemKind, String), Vec<
 
 /// The workspace was touched (its last activity moves).
 pub fn touch(conn: &Connection, workspace_id: &str) {
-    let _ = conn.execute("UPDATE workspaces SET updated_at = ?2 WHERE id = ?1", params![workspace_id, now_ms()]);
+    let _ = conn.execute(
+        "UPDATE workspaces SET updated_at = ?2 WHERE id = ?1",
+        params![workspace_id, now_ms()],
+    );
 }
 
 /// A meeting's home workspace, if the meeting exists.
 pub fn home_of(conn: &Connection, meeting_id: &str) -> Result<Option<String>, String> {
-    conn.query_row("SELECT workspace_id FROM meetings WHERE id = ?1", params![meeting_id], |row| row.get(0))
-        .optional()
-        .map_err(|e| db_err("Couldn't read the meeting", e))
+    conn.query_row(
+        "SELECT workspace_id FROM meetings WHERE id = ?1",
+        params![meeting_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| db_err("Couldn't read the meeting", e))
 }
 
 /// The workspaces a meeting borrows now, oldest first.
@@ -653,8 +784,11 @@ pub fn borrowed_of(conn: &Connection, meeting_id: &str) -> Result<Vec<String>, S
     let mut stmt = conn
         .prepare("SELECT workspace_id FROM meeting_borrowed WHERE meeting_id = ?1 AND removed_at IS NULL ORDER BY added_at")
         .map_err(|e| db_err("Couldn't read the meeting", e))?;
-    let rows = stmt.query_map(params![meeting_id], |row| row.get::<_, String>(0)).map_err(|e| db_err("Couldn't read the meeting", e))?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| db_err("Couldn't read the meeting", e))
+    let rows = stmt
+        .query_map(params![meeting_id], |row| row.get::<_, String>(0))
+        .map_err(|e| db_err("Couldn't read the meeting", e))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| db_err("Couldn't read the meeting", e))
 }
 
 #[cfg(test)]
@@ -663,23 +797,49 @@ mod tests {
     use crate::workspace::test_support::*;
 
     fn list_talking_points_count(conn: &Connection, ws: &str) -> i64 {
-        conn.query_row("SELECT COUNT(*) FROM talking_points WHERE workspace_id = ?1", params![ws], |r| r.get(0)).unwrap()
+        conn.query_row(
+            "SELECT COUNT(*) FROM talking_points WHERE workspace_id = ?1",
+            params![ws],
+            |r| r.get(0),
+        )
+        .unwrap()
     }
 
     fn input(name: &str) -> CreateWorkspaceInput {
-        CreateWorkspaceInput { name: name.into(), ..Default::default() }
+        CreateWorkspaceInput {
+            name: name.into(),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn instructions_are_stored_without_hidden_characters_when_created_and_when_changed() {
         let conn = memory_db();
-        let made = create_workspace(&conn, CreateWorkspaceInput { name: "A".into(), instructions: "Be brief\u{202e}\u{200b}.".into(), ..Default::default() }).unwrap();
+        let made = create_workspace(
+            &conn,
+            CreateWorkspaceInput {
+                name: "A".into(),
+                instructions: "Be brief\u{202e}\u{200b}.".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(made.instructions, "Be brief.");
         let persian = "\u{0645}\u{0646}\u{200c}\u{0645}\u{0627}";
-        let patch = WorkspacePatch { instructions: Some(format!("Reply in Persian\u{202e}\u{200b}: {persian}")), ..Default::default() };
+        let patch = WorkspacePatch {
+            instructions: Some(format!("Reply in Persian\u{202e}\u{200b}: {persian}")),
+            ..Default::default()
+        };
         let changed = update_workspace(&conn, &made.id, patch).unwrap();
-        assert_eq!(changed.instructions, format!("Reply in Persian: {persian}"), "hidden characters out, real writing kept");
-        assert_eq!(get_workspace(&conn, &made.id).unwrap().instructions, changed.instructions);
+        assert_eq!(
+            changed.instructions,
+            format!("Reply in Persian: {persian}"),
+            "hidden characters out, real writing kept"
+        );
+        assert_eq!(
+            get_workspace(&conn, &made.id).unwrap().instructions,
+            changed.instructions
+        );
     }
 
     #[test]
@@ -695,7 +855,8 @@ mod tests {
     }
 
     #[test]
-    fn a_meeting_asked_for_an_unusable_workspace_is_unfiled_and_never_given_another_ones_material() {
+    fn a_meeting_asked_for_an_unusable_workspace_is_unfiled_and_never_given_another_ones_material()
+    {
         let conn = memory_db();
         let a = new_ws(&conn, "Old", false, false);
         let home = |id: Option<&str>| home_for_start(&conn, id);
@@ -705,7 +866,10 @@ mod tests {
         let (h, notice) = home(Some("nope"));
         assert_eq!(h, StartHome::Unfiled);
         let notice = notice.unwrap();
-        assert!(notice.contains("no longer available") && notice.contains("island"), "{notice}");
+        assert!(
+            notice.contains("no longer available") && notice.contains("island"),
+            "{notice}"
+        );
         archive_workspace(&conn, &a, true).unwrap();
         let (h, notice) = home(Some(&a));
         assert_eq!(h, StartHome::Unfiled);
@@ -718,7 +882,10 @@ mod tests {
         let (h, notice) = home_for_start(&conn, Some("x"));
         assert_eq!(h, StartHome::Unfiled);
         assert!(notice.unwrap().contains("couldn't be read"));
-        assert_eq!(home_for_start(&conn, None), (StartHome::Home("general".into()), None));
+        assert_eq!(
+            home_for_start(&conn, None),
+            (StartHome::Home("general".into()), None)
+        );
     }
 
     #[test]
@@ -727,8 +894,15 @@ mod tests {
         let a = new_ws(&conn, "Main", false, false);
         set_default_workspace(&conn, &a).unwrap();
         assert_eq!(home_for_start(&conn, None).0, StartHome::Home(a.clone()));
-        conn.execute("UPDATE workspaces SET archived = 1 WHERE id = ?1", params![a]).unwrap();
-        assert_eq!(home_for_start(&conn, None), (StartHome::Home("general".into()), None));
+        conn.execute(
+            "UPDATE workspaces SET archived = 1 WHERE id = ?1",
+            params![a],
+        )
+        .unwrap();
+        assert_eq!(
+            home_for_start(&conn, None),
+            (StartHome::Home("general".into()), None)
+        );
     }
 
     #[test]
@@ -736,29 +910,70 @@ mod tests {
         let conn = memory_db();
         let a = new_ws(&conn, "A", false, false);
         assert!(!get_workspace(&conn, &a).unwrap().brief_default);
-        update_workspace(&conn, &a, WorkspacePatch { brief_enabled: Some(true), ..Default::default() }).unwrap();
+        update_workspace(
+            &conn,
+            &a,
+            WorkspacePatch {
+                brief_enabled: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert!(get_workspace(&conn, &a).unwrap().brief_default);
-        update_workspace(&conn, &a, WorkspacePatch { name: Some("B".into()), ..Default::default() }).unwrap();
-        assert!(get_workspace(&conn, &a).unwrap().brief_default, "a patch without it leaves it");
+        update_workspace(
+            &conn,
+            &a,
+            WorkspacePatch {
+                name: Some("B".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(
+            get_workspace(&conn, &a).unwrap().brief_default,
+            "a patch without it leaves it"
+        );
     }
 
     #[test]
     fn a_caller_chosen_id_must_be_an_unused_uuid_v4_and_anything_else_is_refused() {
         let conn = memory_db();
         let id = uuid::Uuid::new_v4().to_string();
-        let made = create_workspace(&conn, CreateWorkspaceInput { id: Some(id.clone()), ..input("Mine") }).unwrap();
+        let made = create_workspace(
+            &conn,
+            CreateWorkspaceInput {
+                id: Some(id.clone()),
+                ..input("Mine")
+            },
+        )
+        .unwrap();
         assert_eq!(made.id, id);
         for bad in [
-            id.clone(),                                      // already used
+            id.clone(), // already used
             "general".to_string(),
             "not-a-uuid".to_string(),
-            uuid::Uuid::nil().to_string(),                   // not v4
+            uuid::Uuid::nil().to_string(), // not v4
             "6F1E2D3C-AAAA-4BBB-8CCC-0123456789AB".to_string(), // not the canonical spelling
         ] {
-            assert!(create_workspace(&conn, CreateWorkspaceInput { id: Some(bad.clone()), ..input("X") }).is_err(), "{bad}");
+            assert!(
+                create_workspace(
+                    &conn,
+                    CreateWorkspaceInput {
+                        id: Some(bad.clone()),
+                        ..input("X")
+                    }
+                )
+                .is_err(),
+                "{bad}"
+            );
         }
         let copy_id = uuid::Uuid::new_v4().to_string();
-        assert_eq!(clone_workspace(&conn, &id, "Copy", Some(copy_id.clone())).unwrap().id, copy_id);
+        assert_eq!(
+            clone_workspace(&conn, &id, "Copy", Some(copy_id.clone()))
+                .unwrap()
+                .id,
+            copy_id
+        );
         assert!(clone_workspace(&conn, &id, "Again", Some(copy_id)).is_err());
         assert_ne!(create_workspace(&conn, input("Generated")).unwrap().id, id);
     }
@@ -768,11 +983,22 @@ mod tests {
         let conn = memory_db();
         let plain = create_workspace(&conn, input("Plain")).unwrap();
         assert!(!plain.include_general);
-        let with = create_workspace(&conn, CreateWorkspaceInput { include_general: true, ..input("With") }).unwrap();
+        let with = create_workspace(
+            &conn,
+            CreateWorkspaceInput {
+                include_general: true,
+                ..input("With")
+            },
+        )
+        .unwrap();
         assert!(with.include_general);
         let separate = create_workspace(
             &conn,
-            CreateWorkspaceInput { include_general: true, keep_separate: true, ..input("Sep") },
+            CreateWorkspaceInput {
+                include_general: true,
+                keep_separate: true,
+                ..input("Sep")
+            },
         )
         .unwrap();
         assert!(separate.keep_separate && !separate.include_general);
@@ -782,12 +1008,27 @@ mod tests {
     #[test]
     fn update_changes_given_fields_and_can_clear_a_nullable_one() {
         let conn = memory_db();
-        let ws = create_workspace(&conn, CreateWorkspaceInput { color: Some("#aabbcc".into()), ..input("A") }).unwrap();
+        let ws = create_workspace(
+            &conn,
+            CreateWorkspaceInput {
+                color: Some("#aabbcc".into()),
+                ..input("A")
+            },
+        )
+        .unwrap();
         let patch: WorkspacePatch = serde_json::from_str(r##"{"name":"B","color":null}"##).unwrap();
         let updated = update_workspace(&conn, &ws.id, patch).unwrap();
         assert_eq!(updated.name, "B");
         assert_eq!(updated.color, None);
-        assert!(update_workspace(&conn, "general", WorkspacePatch { keep_separate: Some(true), ..Default::default() }).is_err());
+        assert!(update_workspace(
+            &conn,
+            "general",
+            WorkspacePatch {
+                keep_separate: Some(true),
+                ..Default::default()
+            }
+        )
+        .is_err());
     }
 
     #[test]
@@ -795,9 +1036,25 @@ mod tests {
         let conn = memory_db();
         let a = new_ws(&conn, "A", true, false);
         let b = new_ws(&conn, "B", false, false);
-        conn.execute("INSERT INTO meetings (id, title, start_time, workspace_id) VALUES ('m', 't', 'x', ?1)", params![a]).unwrap();
-        conn.execute("INSERT INTO meeting_borrowed (meeting_id, workspace_id, added_at) VALUES ('m', ?1, 1)", params![b]).unwrap();
-        let updated = update_workspace(&conn, &b, WorkspacePatch { keep_separate: Some(true), ..Default::default() }).unwrap();
+        conn.execute(
+            "INSERT INTO meetings (id, title, start_time, workspace_id) VALUES ('m', 't', 'x', ?1)",
+            params![a],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_borrowed (meeting_id, workspace_id, added_at) VALUES ('m', ?1, 1)",
+            params![b],
+        )
+        .unwrap();
+        let updated = update_workspace(
+            &conn,
+            &b,
+            WorkspacePatch {
+                keep_separate: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert!(updated.keep_separate && !updated.include_general);
         assert!(borrowed_of(&conn, "m").unwrap().is_empty());
     }
@@ -807,11 +1064,19 @@ mod tests {
         let conn = memory_db();
         let a = create_workspace(
             &conn,
-            CreateWorkspaceInput { instructions: "be brief".into(), color: Some("#123456".into()), ..input("A") },
+            CreateWorkspaceInput {
+                instructions: "be brief".into(),
+                color: Some("#123456".into()),
+                ..input("A")
+            },
         )
         .unwrap();
         file(&conn, &a.id, "document", "doc-a");
-        conn.execute("INSERT INTO meetings (id, title, start_time, workspace_id) VALUES ('m', 't', 'x', ?1)", params![a.id]).unwrap();
+        conn.execute(
+            "INSERT INTO meetings (id, title, start_time, workspace_id) VALUES ('m', 't', 'x', ?1)",
+            params![a.id],
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO workspace_memory (id, workspace_id, kind, status, created_at, updated_at) VALUES ('x', ?1, 'fact', 'saved', 0, 0)",
             params![a.id],
@@ -829,7 +1094,13 @@ mod tests {
         assert_eq!(summary.item_count, 1);
         assert_eq!(summary.meeting_count, 0);
         assert_eq!(list_talking_points_count(&conn, &copy.id), 1);
-        let memory: i64 = conn.query_row("SELECT COUNT(*) FROM workspace_memory WHERE workspace_id = ?1", params![copy.id], |r| r.get(0)).unwrap();
+        let memory: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workspace_memory WHERE workspace_id = ?1",
+                params![copy.id],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(memory, 0);
     }
 
@@ -855,7 +1126,11 @@ mod tests {
         let a = new_ws(&conn, "A", false, false);
         let b = new_ws(&conn, "B", false, false);
         reorder_workspaces(&conn, &[b.clone(), a.clone()]).unwrap();
-        let ids: Vec<String> = list_summaries(&conn).unwrap().into_iter().map(|s| s.id).collect();
+        let ids: Vec<String> = list_summaries(&conn)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
         assert_eq!(ids, vec![b, a, "general".to_string()]);
     }
 
@@ -868,12 +1143,25 @@ mod tests {
             [],
         )
         .unwrap();
-        assert_eq!(update_item(&conn, &a, ItemKind::Document, "d", ItemPatch::default()), Err("not_found".to_string()));
+        assert_eq!(
+            update_item(&conn, &a, ItemKind::Document, "d", ItemPatch::default()),
+            Err("not_found".to_string())
+        );
         add_item(&conn, &a, ItemKind::Document, "d", Some("Brief")).unwrap();
         add_item(&conn, &a, ItemKind::Document, "d", None).unwrap();
         assert_eq!(list_items(&conn, &a).unwrap().len(), 1);
         assert!(add_item(&conn, &a, ItemKind::Document, "missing", None).is_err());
-        update_item(&conn, &a, ItemKind::Document, "d", ItemPatch { pinned: Some(true), ..Default::default() }).unwrap();
+        update_item(
+            &conn,
+            &a,
+            ItemKind::Document,
+            "d",
+            ItemPatch {
+                pinned: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let item = &list_items(&conn, &a).unwrap()[0];
         assert!(item.pinned);
         assert_eq!(item.label.as_deref(), Some("Brief"));

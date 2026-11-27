@@ -58,14 +58,25 @@ impl CliSettings {
 
     fn with_catalogs(catalog: impl Fn(CliAgentKind) -> Arc<ModelCatalog>) -> Self {
         Self {
-            configs: RwLock::new(CliAgentKind::ALL.into_iter().map(|k| (k, ClaudeCliConfig::default_for(k))).collect()),
-            catalogs: CliAgentKind::ALL.into_iter().map(|k| (k, catalog(k))).collect(),
+            configs: RwLock::new(
+                CliAgentKind::ALL
+                    .into_iter()
+                    .map(|k| (k, ClaudeCliConfig::default_for(k)))
+                    .collect(),
+            ),
+            catalogs: CliAgentKind::ALL
+                .into_iter()
+                .map(|k| (k, catalog(k)))
+                .collect(),
             active: RwLock::new(CliAgentKind::Claude),
         }
     }
 
     pub fn config(&self, kind: CliAgentKind) -> ClaudeCliConfig {
-        self.configs.read().map(|c| c.get(&kind).cloned().unwrap_or_default()).unwrap_or_default()
+        self.configs
+            .read()
+            .map(|c| c.get(&kind).cloned().unwrap_or_default())
+            .unwrap_or_default()
     }
 
     pub fn set_config(&self, kind: CliAgentKind, config: ClaudeCliConfig) {
@@ -75,12 +86,18 @@ impl CliSettings {
     }
 
     pub fn catalog(&self, kind: CliAgentKind) -> Arc<ModelCatalog> {
-        self.catalogs.get(&kind).cloned().unwrap_or_else(|| Arc::new(ModelCatalog::default()))
+        self.catalogs
+            .get(&kind)
+            .cloned()
+            .unwrap_or_else(|| Arc::new(ModelCatalog::default()))
     }
 
     /// The kind new sessions are started for.
     pub fn active(&self) -> CliAgentKind {
-        self.active.read().map(|k| *k).unwrap_or(CliAgentKind::Claude)
+        self.active
+            .read()
+            .map(|k| *k)
+            .unwrap_or(CliAgentKind::Claude)
     }
 
     /// Make `kind` the one new sessions start for. True when it changed.
@@ -101,7 +118,12 @@ impl CliSettings {
 
     /// The model and effort one session of `kind` launches with for a saved
     /// `(model, effort)`; see the module docs.
-    pub fn resolve(&self, kind: CliAgentKind, saved_model: &str, saved_effort: &str) -> ResolvedModel {
+    pub fn resolve(
+        &self,
+        kind: CliAgentKind,
+        saved_model: &str,
+        saved_effort: &str,
+    ) -> ResolvedModel {
         resolve_model(kind, saved_model, saved_effort, &self.catalog(kind))
     }
 }
@@ -113,17 +135,26 @@ impl Default for CliSettings {
 }
 
 /// See [`CliSettings::resolve`]. Pure, over `catalog`.
-pub fn resolve_model(kind: CliAgentKind, saved_model: &str, saved_effort: &str, catalog: &ModelCatalog) -> ResolvedModel {
+pub fn resolve_model(
+    kind: CliAgentKind,
+    saved_model: &str,
+    saved_effort: &str,
+    catalog: &ModelCatalog,
+) -> ResolvedModel {
     match kind {
         CliAgentKind::Claude => ResolvedModel {
             model: saved_model.to_string(),
             effort: effective_effort(catalog.find(saved_model).as_ref(), saved_effort),
         },
         // The effort is part of the model id: there is nothing to pass.
-        CliAgentKind::Antigravity => ResolvedModel { model: usable_model(saved_model, catalog), effort: None },
+        CliAgentKind::Antigravity => ResolvedModel {
+            model: usable_model(saved_model, catalog),
+            effort: None,
+        },
         CliAgentKind::Codex => {
             let model = usable_model(saved_model, catalog);
-            let effort = effective_effort_in(catalog.find(&model).as_ref(), saved_effort, &CODEX_EFFORTS);
+            let effort =
+                effective_effort_in(catalog.find(&model).as_ref(), saved_effort, &CODEX_EFFORTS);
             ResolvedModel { model, effort }
         }
     }
@@ -191,13 +222,25 @@ mod tests {
     #[test]
     fn defaults_per_kind() {
         let claude = ClaudeCliConfig::default_for(CliAgentKind::Claude);
-        assert_eq!((claude.fast_model.as_str(), claude.deep_model.as_str()), ("haiku", "sonnet"));
+        assert_eq!(
+            (claude.fast_model.as_str(), claude.deep_model.as_str()),
+            ("haiku", "sonnet")
+        );
         assert_eq!(claude, ClaudeCliConfig::default());
         let agy = ClaudeCliConfig::default_for(CliAgentKind::Antigravity);
-        assert_eq!((agy.fast_model.as_str(), agy.deep_model.as_str()), ("gemini-3.8-flash-low", "gemini-4-neon-medium"));
+        assert_eq!(
+            (agy.fast_model.as_str(), agy.deep_model.as_str()),
+            ("gemini-3.8-flash-low", "gemini-4-neon-medium")
+        );
         let codex = ClaudeCliConfig::default_for(CliAgentKind::Codex);
-        assert_eq!((codex.fast_model.as_str(), codex.fast_effort.as_str()), ("", "low"));
-        assert_eq!((codex.deep_model.as_str(), codex.deep_effort.as_str()), ("", "medium"));
+        assert_eq!(
+            (codex.fast_model.as_str(), codex.fast_effort.as_str()),
+            ("", "low")
+        );
+        assert_eq!(
+            (codex.deep_model.as_str(), codex.deep_effort.as_str()),
+            ("", "medium")
+        );
         for kind in CliAgentKind::ALL {
             let c = ClaudeCliConfig::default_for(kind);
             assert_eq!(c.fallback_provider, None);
@@ -212,10 +255,14 @@ mod tests {
         s.set_config(CliAgentKind::Codex, c);
         assert_eq!(s.config(CliAgentKind::Codex).fast_model, "gpt-6.2-sol");
         assert_eq!(s.config(CliAgentKind::Claude).fast_model, "haiku");
-        s.catalog(CliAgentKind::Codex).set(vec![info("gpt-6.2-sol", &["low"])]);
+        s.catalog(CliAgentKind::Codex)
+            .set(vec![info("gpt-6.2-sol", &["low"])]);
         assert!(s.catalog(CliAgentKind::Claude).get().is_none());
         assert!(s.catalog(CliAgentKind::Codex).get().is_some());
-        assert!(!Arc::ptr_eq(&s.catalog(CliAgentKind::Claude), &s.catalog(CliAgentKind::Antigravity)));
+        assert!(!Arc::ptr_eq(
+            &s.catalog(CliAgentKind::Claude),
+            &s.catalog(CliAgentKind::Antigravity)
+        ));
     }
 
     #[test]
@@ -225,48 +272,111 @@ mod tests {
         assert!(!s.set_active(CliAgentKind::Claude));
         assert!(s.set_active(CliAgentKind::Codex));
         assert_eq!(s.active(), CliAgentKind::Codex);
-        assert_eq!(s.active_config(), ClaudeCliConfig::default_for(CliAgentKind::Codex));
+        assert_eq!(
+            s.active_config(),
+            ClaudeCliConfig::default_for(CliAgentKind::Codex)
+        );
     }
 
     #[test]
     fn a_saved_model_that_is_gone_falls_back_to_the_first_listed_one() {
         let catalog = ModelCatalog::default();
-        catalog.set(vec![info("gemini-4-neon-high", &[]), info("gemini-3.8-flash-low", &[])]);
+        catalog.set(vec![
+            info("gemini-4-neon-high", &[]),
+            info("gemini-3.8-flash-low", &[]),
+        ]);
         // Listed: kept.
-        let kept = resolve_model(CliAgentKind::Antigravity, "gemini-3.8-flash-low", "low", &catalog);
-        assert_eq!(kept, ResolvedModel { model: "gemini-3.8-flash-low".into(), effort: None });
+        let kept = resolve_model(
+            CliAgentKind::Antigravity,
+            "gemini-3.8-flash-low",
+            "low",
+            &catalog,
+        );
+        assert_eq!(
+            kept,
+            ResolvedModel {
+                model: "gemini-3.8-flash-low".into(),
+                effort: None
+            }
+        );
         // The deep default is not listed: the first listed model.
-        let fell = resolve_model(CliAgentKind::Antigravity, "gemini-4-neon-medium", "medium", &catalog);
+        let fell = resolve_model(
+            CliAgentKind::Antigravity,
+            "gemini-4-neon-medium",
+            "medium",
+            &catalog,
+        );
         assert_eq!(fell.model, "gemini-4-neon-high");
         // Empty saved model ("first listed", Codex's default).
         let codex = ModelCatalog::default();
-        codex.set(vec![info("gpt-6.2-sol", &["low", "medium", "high", "xhigh", "max", "ultra"]), info("gpt-6-luna", &["low"])]);
+        codex.set(vec![
+            info(
+                "gpt-6.2-sol",
+                &["low", "medium", "high", "xhigh", "max", "ultra"],
+            ),
+            info("gpt-6-luna", &["low"]),
+        ]);
         let fast = resolve_model(CliAgentKind::Codex, "", "low", &codex);
-        assert_eq!(fast, ResolvedModel { model: "gpt-6.2-sol".into(), effort: Some("low".into()) });
+        assert_eq!(
+            fast,
+            ResolvedModel {
+                model: "gpt-6.2-sol".into(),
+                effort: Some("low".into())
+            }
+        );
         let deep = resolve_model(CliAgentKind::Codex, "", "medium", &codex);
-        assert_eq!(deep, ResolvedModel { model: "gpt-6.2-sol".into(), effort: Some("medium".into()) });
+        assert_eq!(
+            deep,
+            ResolvedModel {
+                model: "gpt-6.2-sol".into(),
+                effort: Some("medium".into())
+            }
+        );
         // A retired Codex model: first listed, effort kept when it takes it.
         let gone = resolve_model(CliAgentKind::Codex, "gpt-old", "ultra", &codex);
-        assert_eq!(gone, ResolvedModel { model: "gpt-6.2-sol".into(), effort: Some("ultra".into()) });
+        assert_eq!(
+            gone,
+            ResolvedModel {
+                model: "gpt-6.2-sol".into(),
+                effort: Some("ultra".into())
+            }
+        );
     }
 
     #[test]
     fn without_a_catalog_the_saved_model_is_used_as_it_is() {
         let catalog = ModelCatalog::default();
-        let agy = resolve_model(CliAgentKind::Antigravity, "gemini-4-neon-medium", "medium", &catalog);
+        let agy = resolve_model(
+            CliAgentKind::Antigravity,
+            "gemini-4-neon-medium",
+            "medium",
+            &catalog,
+        );
         assert_eq!(agy.model, "gemini-4-neon-medium");
         // Codex: empty = the account's own default model; effort passed on.
         let codex = resolve_model(CliAgentKind::Codex, "", "low", &catalog);
-        assert_eq!(codex, ResolvedModel { model: String::new(), effort: Some("low".into()) });
+        assert_eq!(
+            codex,
+            ResolvedModel {
+                model: String::new(),
+                effort: Some("low".into())
+            }
+        );
         // An empty list is no catalog either.
         catalog.set(vec![]);
-        assert_eq!(resolve_model(CliAgentKind::Codex, "x", "low", &catalog).model, "x");
+        assert_eq!(
+            resolve_model(CliAgentKind::Codex, "x", "low", &catalog).model,
+            "x"
+        );
     }
 
     #[test]
     fn codex_effort_is_clamped_to_the_model_and_antigravity_has_none() {
         let catalog = ModelCatalog::default();
-        catalog.set(vec![info("luna", &["low", "medium", "high", "xhigh", "max"])]);
+        catalog.set(vec![info(
+            "luna",
+            &["low", "medium", "high", "xhigh", "max"],
+        )]);
         // `ultra` is not offered by this model: the closest level.
         let r = resolve_model(CliAgentKind::Codex, "luna", "ultra", &catalog);
         assert_eq!(r.effort.as_deref(), Some("max"));
@@ -275,7 +385,15 @@ mod tests {
         // Claude keeps its own rules (a model without effort support gets none).
         let claude = ModelCatalog::default();
         claude.set(vec![info("haiku", &[])]);
-        assert_eq!(resolve_model(CliAgentKind::Claude, "haiku", "low", &claude).effort, None);
-        assert_eq!(resolve_model(CliAgentKind::Claude, "sonnet", "low", &claude).effort.as_deref(), Some("low"));
+        assert_eq!(
+            resolve_model(CliAgentKind::Claude, "haiku", "low", &claude).effort,
+            None
+        );
+        assert_eq!(
+            resolve_model(CliAgentKind::Claude, "sonnet", "low", &claude)
+                .effort
+                .as_deref(),
+            Some("low")
+        );
     }
 }

@@ -126,7 +126,18 @@ impl LiveDb {
     // ---- settings (key/value)
 
     pub fn kv_get(&self, key: &str) -> Option<String> {
-        self.read(|c| c.query_row("SELECT value FROM app_state WHERE key = ?1", params![key], |r| r.get::<_, Option<String>>(0)).optional().ok().flatten().flatten()).flatten()
+        self.read(|c| {
+            c.query_row(
+                "SELECT value FROM app_state WHERE key = ?1",
+                params![key],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .ok()
+            .flatten()
+            .flatten()
+        })
+        .flatten()
     }
 
     pub fn kv_set(&self, key: &str, value: &str) -> Result<(), String> {
@@ -135,18 +146,40 @@ impl LiveDb {
     }
 
     pub fn meeting_exists(&self, meeting_id: &str) -> bool {
-        self.read(|c| c.query_row("SELECT 1 FROM meetings WHERE id = ?1", params![meeting_id], |_| Ok(())).optional().ok().flatten().is_some()).unwrap_or(false)
+        self.read(|c| {
+            c.query_row(
+                "SELECT 1 FROM meetings WHERE id = ?1",
+                params![meeting_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .ok()
+            .flatten()
+            .is_some()
+        })
+        .unwrap_or(false)
     }
 
     // ---- notes (a save never creates a row for a meeting that is gone)
 
     pub fn load_notes(&self, meeting_id: &str) -> Option<notes_db::StoredNotes> {
-        self.read(|c| notes_db::load_notes(c, meeting_id).ok().flatten()).flatten()
+        self.read(|c| notes_db::load_notes(c, meeting_id).ok().flatten())
+            .flatten()
     }
 
-    pub fn save_notes(&self, meeting_id: &str, doc: &NoteDoc, status: &str, used: u64, cap: u64) -> Result<(), String> {
-        self.with(|c| notes_db::save_notes(c, meeting_id, doc, status, used, cap, now_ms()).map_err(|e| e.to_string()))
-            .unwrap_or_else(|| Err("The database is busy".into()))
+    pub fn save_notes(
+        &self,
+        meeting_id: &str,
+        doc: &NoteDoc,
+        status: &str,
+        used: u64,
+        cap: u64,
+    ) -> Result<(), String> {
+        self.with(|c| {
+            notes_db::save_notes(c, meeting_id, doc, status, used, cap, now_ms())
+                .map_err(|e| e.to_string())
+        })
+        .unwrap_or_else(|| Err("The database is busy".into()))
     }
 
     // ---- brief
@@ -170,8 +203,18 @@ impl LiveDb {
         .flatten()
     }
 
-    pub fn save_brief(&self, meeting_id: &str, sheet: Option<&Sheet>, status: &str, used: u64, cap: u64, fingerprint: &str) -> Result<(), String> {
-        let json = sheet.map(|s| serde_json::to_string(s).unwrap_or_else(|_| "{}".into())).unwrap_or_else(|| "{}".into());
+    pub fn save_brief(
+        &self,
+        meeting_id: &str,
+        sheet: Option<&Sheet>,
+        status: &str,
+        used: u64,
+        cap: u64,
+        fingerprint: &str,
+    ) -> Result<(), String> {
+        let json = sheet
+            .map(|s| serde_json::to_string(s).unwrap_or_else(|_| "{}".into()))
+            .unwrap_or_else(|| "{}".into());
         self.with(|c| {
             c.execute(
                 "INSERT INTO meeting_briefs (meeting_id, sheet_json, status, tokens_used, cap, updated_at, fingerprint)
@@ -189,8 +232,18 @@ impl LiveDb {
     /// A run that was `running` when the app died is `interrupted`: resumable.
     pub fn mark_interrupted(&self) -> usize {
         self.with(|c| {
-            let a = c.execute("UPDATE meeting_notes SET status = 'interrupted' WHERE status = 'running'", []).unwrap_or(0);
-            let b = c.execute("UPDATE meeting_briefs SET status = 'interrupted' WHERE status = 'running'", []).unwrap_or(0);
+            let a = c
+                .execute(
+                    "UPDATE meeting_notes SET status = 'interrupted' WHERE status = 'running'",
+                    [],
+                )
+                .unwrap_or(0);
+            let b = c
+                .execute(
+                    "UPDATE meeting_briefs SET status = 'interrupted' WHERE status = 'running'",
+                    [],
+                )
+                .unwrap_or(0);
             a + b
         })
         .unwrap_or(0)
@@ -203,7 +256,9 @@ impl LiveDb {
         match self.read(|c| crate::workspace::access::live_parts(c, meeting_id)) {
             None => Err("the database is busy".to_string()),
             Some(None) => Err("workspaces are unavailable, or this meeting is gone".to_string()),
-            Some(Some(_)) => self.scope(meeting_id).ok_or_else(|| "the scope could not be read".to_string()),
+            Some(Some(_)) => self
+                .scope(meeting_id)
+                .ok_or_else(|| "the scope could not be read".to_string()),
         }
     }
 
@@ -211,6 +266,29 @@ impl LiveDb {
         self.read(|c| {
             // the one place the live fingerprint is made
             let p = crate::workspace::access::live_parts(c, meeting_id)?;
+            let meeting_context = c
+                .query_row(
+                    "SELECT meeting_context FROM meetings WHERE id = ?1",
+                    params![meeting_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .ok()?;
+            let meeting_context = crate::prompt_data::strip_hidden(&meeting_context)
+                .trim()
+                .to_string();
+            let mut instructions = p.instructions;
+            let mut fingerprint = p.fingerprint;
+            if !meeting_context.is_empty() {
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                meeting_context.hash(&mut hasher);
+                fingerprint = format!("{fingerprint}:{:x}", hasher.finish());
+                if !instructions.trim().is_empty() {
+                    instructions.push_str("\n\n");
+                }
+                instructions.push_str("Meeting context provided for this meeting:\n");
+                instructions.push_str(&meeting_context);
+            }
             let search = SearchScope {
                 meetings: MeetingScope::HomeWorkspace(p.home.clone()),
                 document_ids: p.document_ids,
@@ -218,7 +296,15 @@ impl LiveDb {
                 talking_point_ids: p.talking_point_ids,
                 excluded_meeting_ids: p.excluded_meetings,
             };
-            Some(LiveScope { generation: 0, fingerprint: p.fingerprint, home: p.home, search, memory_text: p.memory_text, brief_enabled: p.brief_enabled, instructions: p.instructions })
+            Some(LiveScope {
+                generation: 0,
+                fingerprint,
+                home: p.home,
+                search,
+                memory_text: p.memory_text,
+                brief_enabled: p.brief_enabled,
+                instructions,
+            })
         })
         .flatten()
     }
@@ -229,13 +315,26 @@ impl LiveDb {
     }
 
     /// The same search, saying why it failed (the brief shows that as its reason).
-    pub fn search_checked(&self, scope: &LiveScope, query: &str, max: usize) -> Result<Vec<Passage>, String> {
+    pub fn search_checked(
+        &self,
+        scope: &LiveScope,
+        query: &str,
+        max: usize,
+    ) -> Result<Vec<Passage>, String> {
         if query.trim().is_empty() {
             return Ok(Vec::new());
         }
-        let kinds = [PassageKind::Transcript, PassageKind::Document, PassageKind::Folder, PassageKind::TalkingPoint];
+        let kinds = [
+            PassageKind::Transcript,
+            PassageKind::Document,
+            PassageKind::Folder,
+            PassageKind::TalkingPoint,
+        ];
         let found = self
-            .read(|c| wsearch::search::search(c, &scope.search, query, &kinds, max).map_err(|e| e.to_string()))
+            .read(|c| {
+                wsearch::search::search(c, &scope.search, query, &kinds, max)
+                    .map_err(|e| e.to_string())
+            })
             .ok_or_else(|| "the database is busy".to_string())??;
         Ok(found
             .into_iter()
@@ -251,7 +350,15 @@ impl LiveDb {
     // ---- memory
 
     pub fn meeting_home(&self, meeting_id: &str) -> Option<String> {
-        self.read(|c| c.query_row("SELECT workspace_id FROM meetings WHERE id = ?1", params![meeting_id], |r| r.get::<_, String>(0)).ok()).flatten()
+        self.read(|c| {
+            c.query_row(
+                "SELECT workspace_id FROM meetings WHERE id = ?1",
+                params![meeting_id],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+        })
+        .flatten()
     }
 
     /// The meeting is filed in a workspace that exists.
@@ -263,16 +370,25 @@ impl LiveDb {
     }
 
     pub fn suggest_flag(&self, workspace_id: &str) -> bool {
-        self.read(|c| store::get_workspace(c, workspace_id).map(|w| w.suggest_memory && !w.archived).unwrap_or(false)).unwrap_or(false)
+        self.read(|c| {
+            store::get_workspace(c, workspace_id)
+                .map(|w| w.suggest_memory && !w.archived)
+                .unwrap_or(false)
+        })
+        .unwrap_or(false)
     }
 
     /// When the meeting started (epoch ms), if its row has a usable start time.
     pub fn meeting_start_ms(&self, meeting_id: &str) -> Option<i64> {
         self.read(|c| {
-            c.query_row("SELECT start_time FROM meetings WHERE id = ?1", params![meeting_id], |r| r.get::<_, Option<String>>(0))
-                .ok()
-                .flatten()
-                .and_then(|s| crate::live_common::parse_start_ms(&s))
+            c.query_row(
+                "SELECT start_time FROM meetings WHERE id = ?1",
+                params![meeting_id],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .ok()
+            .flatten()
+            .and_then(|s| crate::live_common::parse_start_ms(&s))
         })
         .flatten()
     }
@@ -302,7 +418,14 @@ impl LiveDb {
                 .unwrap_or_default()
                 .into_iter()
                 .filter(|m| m.status == "saved")
-                .filter_map(|m| Some(SavedItem { id: m.id, kind: MemoryKind::from_loose(&m.kind)?, title: m.title, text: m.text }))
+                .filter_map(|m| {
+                    Some(SavedItem {
+                        id: m.id,
+                        kind: MemoryKind::from_loose(&m.kind)?,
+                        title: m.title,
+                        text: m.text,
+                    })
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -311,15 +434,33 @@ impl LiveDb {
     /// Stores proposals as `suggested`, in one transaction that first checks
     /// the meeting still exists and is still filed in `workspace_id`: a
     /// meeting that moved or went while the model worked gets nothing saved.
-    pub fn save_suggestions(&self, meeting_id: &str, workspace_id: &str, items: Vec<MemoryCreate>, require_switch: bool) -> Vec<MemoryItem> {
+    pub fn save_suggestions(
+        &self,
+        meeting_id: &str,
+        workspace_id: &str,
+        items: Vec<MemoryCreate>,
+        require_switch: bool,
+    ) -> Vec<MemoryItem> {
         self.with(|c| {
-            let Ok(tx) = crate::db::immediate_tx(c) else { return Vec::new() };
-            let home: Option<String> = tx.query_row("SELECT workspace_id FROM meetings WHERE id = ?1", params![meeting_id], |r| r.get(0)).ok();
+            let Ok(tx) = crate::db::immediate_tx(c) else {
+                return Vec::new();
+            };
+            let home: Option<String> = tx
+                .query_row(
+                    "SELECT workspace_id FROM meetings WHERE id = ?1",
+                    params![meeting_id],
+                    |r| r.get(0),
+                )
+                .ok();
             if home.as_deref() != Some(workspace_id) {
                 return Vec::new();
             }
             // an automatic run saves only while the workspace still has its switch on
-            if require_switch && !store::get_workspace(&tx, workspace_id).map(|w| w.suggest_memory && !w.archived).unwrap_or(false) {
+            if require_switch
+                && !store::get_workspace(&tx, workspace_id)
+                    .map(|w| w.suggest_memory && !w.archived)
+                    .unwrap_or(false)
+            {
                 return Vec::new();
             }
             let saved: Vec<MemoryItem> = items

@@ -265,9 +265,7 @@ fn check_speech_recognizer_available(language: &str) -> bool {
     use windows::core::HSTRING;
     use windows::Globalization::Language;
     use windows::Media::SpeechRecognition::{
-        SpeechRecognitionScenario,
-        SpeechRecognitionTopicConstraint,
-        SpeechRecognizer,
+        SpeechRecognitionScenario, SpeechRecognitionTopicConstraint, SpeechRecognizer,
     };
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 
@@ -287,7 +285,8 @@ fn check_speech_recognizer_available(language: &str) -> bool {
             recognizer.Constraints()?.Append(&constraint)?;
             recognizer.CompileConstraintsAsync()?.join()?;
             Ok(true)
-        })().unwrap_or(false);
+        })()
+        .unwrap_or(false);
 
         CoUninitialize();
         available
@@ -301,7 +300,12 @@ fn check_speech_recognizer_available(_language: &str) -> bool {
 
 /// Emit a status event from the recognition thread.
 /// Also emits an stt_debug event for the DevLog panel.
-fn emit_thread_status(app_handle: &Option<tauri::AppHandle>, party: &str, status: &str, message: Option<String>) {
+fn emit_thread_status(
+    app_handle: &Option<tauri::AppHandle>,
+    party: &str,
+    status: &str,
+    message: Option<String>,
+) {
     if let Some(ref handle) = app_handle {
         let event = serde_json::json!({
             "provider": "windows_native",
@@ -316,7 +320,8 @@ fn emit_thread_status(app_handle: &Option<tauri::AppHandle>, party: &str, status
             "warn" => "warn",
             _ => "info",
         };
-        let debug_msg = message.unwrap_or_else(|| format!("windows_native [{}]: {}", party, status));
+        let debug_msg =
+            message.unwrap_or_else(|| format!("windows_native [{}]: {}", party, status));
         super::emit_stt_debug(handle, level, "win-stt", &debug_msg);
     }
 }
@@ -340,7 +345,8 @@ fn recognition_thread_main(
     {
         // Try Windows.Media.SpeechRecognition for DirectMic mode
         if input_mode == SapiInputMode::DirectMic {
-            if run_windows_speech_recognizer(&stop_flag, &language, &result_tx, &app_handle, &party) {
+            if run_windows_speech_recognizer(&stop_flag, &language, &result_tx, &app_handle, &party)
+            {
                 log::info!("WindowsNativeSTT: Windows Speech Recognizer completed");
                 emit_thread_status(&app_handle, &party, "disconnected", None);
                 return;
@@ -352,7 +358,12 @@ fn recognition_thread_main(
     }
 
     // CustomStream mode or fallback: use energy-based detection
-    emit_thread_status(&app_handle, &party, "connected", Some("Energy-based detection active".to_string()));
+    emit_thread_status(
+        &app_handle,
+        &party,
+        "connected",
+        Some("Energy-based detection active".to_string()),
+    );
     energy_detection_with_accumulation(stop_flag, input_mode, audio_rx, result_tx);
 }
 
@@ -371,13 +382,9 @@ fn run_windows_speech_recognizer(
     use windows::Globalization::Language;
     use windows::Media::SpeechRecognition::{
         SpeechContinuousRecognitionCompletedEventArgs,
-        SpeechContinuousRecognitionResultGeneratedEventArgs,
-        SpeechContinuousRecognitionSession,
-        SpeechRecognitionConfidence,
-        SpeechRecognitionHypothesisGeneratedEventArgs,
-        SpeechRecognitionResultStatus,
-        SpeechRecognitionScenario,
-        SpeechRecognitionTopicConstraint,
+        SpeechContinuousRecognitionResultGeneratedEventArgs, SpeechContinuousRecognitionSession,
+        SpeechRecognitionConfidence, SpeechRecognitionHypothesisGeneratedEventArgs,
+        SpeechRecognitionResultStatus, SpeechRecognitionScenario, SpeechRecognitionTopicConstraint,
         SpeechRecognizer,
     };
     use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
@@ -386,14 +393,23 @@ fn run_windows_speech_recognizer(
         let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         if hr.is_err() {
             log::error!("WindowsNativeSTT: COM initialization failed");
-            emit_thread_status(app_handle, party, "error", Some("COM initialization failed".to_string()));
+            emit_thread_status(
+                app_handle,
+                party,
+                "error",
+                Some("COM initialization failed".to_string()),
+            );
             return false;
         }
     }
 
     // Create recognizer with the requested language.
-    emit_thread_status(app_handle, party, "info",
-        Some(format!("Windows Speech language: {}", language)));
+    emit_thread_status(
+        app_handle,
+        party,
+        "info",
+        Some(format!("Windows Speech language: {}", language)),
+    );
 
     let recognizer = match (|| -> windows::core::Result<SpeechRecognizer> {
         let lang = Language::CreateLanguage(&HSTRING::from(language))?;
@@ -403,11 +419,14 @@ fn run_windows_speech_recognizer(
         Err(e) => {
             log::warn!(
                 "WindowsNativeSTT: requested language '{}' unavailable: {}",
-                language, e
+                language,
+                e
             );
             emit_thread_status(app_handle, party, "error",
                 Some(format!("Windows Speech language '{}' is unavailable. Install that speech language pack in Settings > Time & Language > Speech, or use Deepgram for this language.", language)));
-            unsafe { windows::Win32::System::Com::CoUninitialize(); }
+            unsafe {
+                windows::Win32::System::Com::CoUninitialize();
+            }
             return false;
         }
     };
@@ -422,24 +441,35 @@ fn run_windows_speech_recognizer(
             if let Ok(constraints) = recognizer.Constraints() {
                 let _ = constraints.Append(&constraint);
                 log::info!("WindowsNativeSTT: Dictation constraint added");
-                emit_thread_status(app_handle, party, "info",
-                    Some("Dictation constraint added".to_string()));
+                emit_thread_status(
+                    app_handle,
+                    party,
+                    "info",
+                    Some("Dictation constraint added".to_string()),
+                );
             }
             // Compile — mandatory before StartAsync
             match recognizer.CompileConstraintsAsync() {
-                Ok(op) => match op.join() {
-                    Ok(compile_result) => {
-                        // CRITICAL: Check the actual compilation status, not just Ok/Err.
-                        // A non-Success status means the recognizer will silently produce
-                        // zero results even though StartAsync succeeds.
-                        match compile_result.Status() {
-                            Ok(status) if status == SpeechRecognitionResultStatus::Success => {
-                                log::info!("WindowsNativeSTT: Constraints compiled successfully");
-                                emit_thread_status(app_handle, party, "info",
-                                    Some("Constraints compiled OK".to_string()));
-                            }
-                            Ok(status) => {
-                                let status_name = match status {
+                Ok(op) => {
+                    match op.join() {
+                        Ok(compile_result) => {
+                            // CRITICAL: Check the actual compilation status, not just Ok/Err.
+                            // A non-Success status means the recognizer will silently produce
+                            // zero results even though StartAsync succeeds.
+                            match compile_result.Status() {
+                                Ok(status) if status == SpeechRecognitionResultStatus::Success => {
+                                    log::info!(
+                                        "WindowsNativeSTT: Constraints compiled successfully"
+                                    );
+                                    emit_thread_status(
+                                        app_handle,
+                                        party,
+                                        "info",
+                                        Some("Constraints compiled OK".to_string()),
+                                    );
+                                }
+                                Ok(status) => {
+                                    let status_name = match status {
                                     SpeechRecognitionResultStatus::TopicLanguageNotSupported => "TopicLanguageNotSupported",
                                     SpeechRecognitionResultStatus::GrammarLanguageMismatch => "GrammarLanguageMismatch",
                                     SpeechRecognitionResultStatus::GrammarCompilationFailure => "GrammarCompilationFailure",
@@ -452,11 +482,11 @@ fn run_windows_speech_recognizer(
                                     SpeechRecognitionResultStatus::MicrophoneUnavailable => "MicrophoneUnavailable",
                                     _ => "Other",
                                 };
-                                log::error!(
+                                    log::error!(
                                     "WindowsNativeSTT: Constraint compilation FAILED with status: {}",
                                     status_name
                                 );
-                                let user_msg = match status {
+                                    let user_msg = match status {
                                     SpeechRecognitionResultStatus::TopicLanguageNotSupported =>
                                         format!("Language '{}' not supported for dictation. Install the speech language pack in Settings > Time & Language > Speech.", language),
                                     SpeechRecognitionResultStatus::NetworkFailure =>
@@ -465,31 +495,50 @@ fn run_windows_speech_recognizer(
                                         "Microphone unavailable. Check your audio device settings.".to_string(),
                                     _ => format!("Constraint compilation failed: {}. Speech recognition may not produce results.", status_name),
                                 };
-                                emit_thread_status(app_handle, party, "error", Some(user_msg));
-                                // Don't return false — let StartAsync try anyway, but we've warned the user
-                            }
-                            Err(e) => {
-                                log::warn!("WindowsNativeSTT: Could not read compile status: {}", e);
+                                    emit_thread_status(app_handle, party, "error", Some(user_msg));
+                                    // Don't return false — let StartAsync try anyway, but we've warned the user
+                                }
+                                Err(e) => {
+                                    log::warn!(
+                                        "WindowsNativeSTT: Could not read compile status: {}",
+                                        e
+                                    );
+                                }
                             }
                         }
+                        Err(e) => {
+                            log::warn!("WindowsNativeSTT: Compile result error: {}", e);
+                            emit_thread_status(
+                                app_handle,
+                                party,
+                                "error",
+                                Some(format!("Constraint compilation error: {}", e)),
+                            );
+                        }
                     }
-                    Err(e) => {
-                        log::warn!("WindowsNativeSTT: Compile result error: {}", e);
-                        emit_thread_status(app_handle, party, "error",
-                            Some(format!("Constraint compilation error: {}", e)));
-                    }
-                },
+                }
                 Err(e) => {
                     log::warn!("WindowsNativeSTT: CompileConstraintsAsync failed: {}", e);
-                    emit_thread_status(app_handle, party, "error",
-                        Some(format!("CompileConstraintsAsync failed: {}", e)));
+                    emit_thread_status(
+                        app_handle,
+                        party,
+                        "error",
+                        Some(format!("CompileConstraintsAsync failed: {}", e)),
+                    );
                 }
             }
         }
         Err(e) => {
-            log::warn!("WindowsNativeSTT: Could not create dictation constraint: {}", e);
-            emit_thread_status(app_handle, party, "error",
-                Some(format!("Could not create dictation constraint: {}", e)));
+            log::warn!(
+                "WindowsNativeSTT: Could not create dictation constraint: {}",
+                e
+            );
+            emit_thread_status(
+                app_handle,
+                party,
+                "error",
+                Some(format!("Could not create dictation constraint: {}", e)),
+            );
         }
     }
 
@@ -498,9 +547,15 @@ fn run_windows_speech_recognizer(
         Ok(s) => s,
         Err(e) => {
             log::warn!("WindowsNativeSTT: Failed to get recognition session: {}", e);
-            emit_thread_status(app_handle, party, "error",
-                Some(format!("Failed to get recognition session: {}", e)));
-            unsafe { windows::Win32::System::Com::CoUninitialize(); }
+            emit_thread_status(
+                app_handle,
+                party,
+                "error",
+                Some(format!("Failed to get recognition session: {}", e)),
+            );
+            unsafe {
+                windows::Win32::System::Com::CoUninitialize();
+            }
             return false;
         }
     };
@@ -551,10 +606,15 @@ fn run_windows_speech_recognizer(
     });
 
     if let Err(e) = recognizer.HypothesisGenerated(&hypothesis_handler) {
-        log::warn!("WindowsNativeSTT: Failed to register HypothesisGenerated handler: {}", e);
+        log::warn!(
+            "WindowsNativeSTT: Failed to register HypothesisGenerated handler: {}",
+            e
+        );
         // Non-fatal — we'll still get final results
     } else {
-        log::info!("WindowsNativeSTT: HypothesisGenerated handler registered (real-time streaming)");
+        log::info!(
+            "WindowsNativeSTT: HypothesisGenerated handler registered (real-time streaming)"
+        );
     }
 
     // ---- Set up ResultGenerated handler (final results after pause) ----
@@ -595,7 +655,9 @@ fn run_windows_speech_recognizer(
 
                         log::info!(
                             "WindowsNativeSTT: Final #{}: '{}' (confidence={:.2})",
-                            seg, text_str, confidence
+                            seg,
+                            text_str,
+                            confidence
                         );
                         let _ = tx_clone.blocking_send(transcript);
                     }
@@ -607,9 +669,15 @@ fn run_windows_speech_recognizer(
 
     if let Err(e) = session.ResultGenerated(&handler) {
         log::warn!("WindowsNativeSTT: Failed to register result handler: {}", e);
-        emit_thread_status(app_handle, party, "error",
-            Some(format!("Failed to register result handler: {}", e)));
-        unsafe { windows::Win32::System::Com::CoUninitialize(); }
+        emit_thread_status(
+            app_handle,
+            party,
+            "error",
+            Some(format!("Failed to register result handler: {}", e)),
+        );
+        unsafe {
+            windows::Win32::System::Com::CoUninitialize();
+        }
         return false;
     }
     log::info!("WindowsNativeSTT: ResultGenerated handler registered");
@@ -629,9 +697,15 @@ fn run_windows_speech_recognizer(
             if let Ok(status) = args.Status() {
                 let status_name = match status {
                     SpeechRecognitionResultStatus::Success => "Success",
-                    SpeechRecognitionResultStatus::TopicLanguageNotSupported => "TopicLanguageNotSupported",
-                    SpeechRecognitionResultStatus::GrammarLanguageMismatch => "GrammarLanguageMismatch",
-                    SpeechRecognitionResultStatus::GrammarCompilationFailure => "GrammarCompilationFailure",
+                    SpeechRecognitionResultStatus::TopicLanguageNotSupported => {
+                        "TopicLanguageNotSupported"
+                    }
+                    SpeechRecognitionResultStatus::GrammarLanguageMismatch => {
+                        "GrammarLanguageMismatch"
+                    }
+                    SpeechRecognitionResultStatus::GrammarCompilationFailure => {
+                        "GrammarCompilationFailure"
+                    }
                     SpeechRecognitionResultStatus::AudioQualityFailure => "AudioQualityFailure",
                     SpeechRecognitionResultStatus::UserCanceled => "UserCanceled",
                     SpeechRecognitionResultStatus::Unknown => "Unknown",
@@ -643,29 +717,43 @@ fn run_windows_speech_recognizer(
                 };
 
                 // Recoverable statuses: auto-restart instead of giving up
-                let is_recoverable = matches!(status,
+                let is_recoverable = matches!(
+                    status,
                     SpeechRecognitionResultStatus::UserCanceled
-                    | SpeechRecognitionResultStatus::TimeoutExceeded
-                    | SpeechRecognitionResultStatus::PauseLimitExceeded
+                        | SpeechRecognitionResultStatus::TimeoutExceeded
+                        | SpeechRecognitionResultStatus::PauseLimitExceeded
                 );
 
                 if status == SpeechRecognitionResultStatus::Success {
                     // Normal termination (e.g., stop during hot-swap) — not an error
                     log::info!("WindowsNativeSTT: Session completed successfully");
                 } else if is_recoverable {
-                    log::info!("WindowsNativeSTT: Session ended with {} — will auto-restart", status_name);
+                    log::info!(
+                        "WindowsNativeSTT: Session ended with {} — will auto-restart",
+                        status_name
+                    );
                     session_ended_for_handler.store(true, Ordering::SeqCst);
                 } else {
-                    log::warn!("WindowsNativeSTT: Session Completed with status: {}", status_name);
-                    emit_thread_status(&completed_app_handle, &completed_party, "error",
-                        Some(format!("Recognition session ended: {}", status_name)));
+                    log::warn!(
+                        "WindowsNativeSTT: Session Completed with status: {}",
+                        status_name
+                    );
+                    emit_thread_status(
+                        &completed_app_handle,
+                        &completed_party,
+                        "error",
+                        Some(format!("Recognition session ended: {}", status_name)),
+                    );
                 }
             }
         }
         Ok(())
     });
     if let Err(e) = session.Completed(&completed_handler) {
-        log::warn!("WindowsNativeSTT: Failed to register Completed handler: {}", e);
+        log::warn!(
+            "WindowsNativeSTT: Failed to register Completed handler: {}",
+            e
+        );
         // Non-fatal — continue without completion monitoring
     }
 
@@ -687,13 +775,19 @@ fn run_windows_speech_recognizer(
             format!("Failed to start: {}", err_str)
         };
         emit_thread_status(app_handle, party, "error", Some(user_msg));
-        unsafe { windows::Win32::System::Com::CoUninitialize(); }
+        unsafe {
+            windows::Win32::System::Com::CoUninitialize();
+        }
         return false;
     }
 
     log::info!("WindowsNativeSTT: Continuous recognition started — listening for speech...");
-    emit_thread_status(app_handle, party, "connected",
-        Some("Listening for speech (speak into your microphone)".to_string()));
+    emit_thread_status(
+        app_handle,
+        party,
+        "connected",
+        Some("Listening for speech (speak into your microphone)".to_string()),
+    );
 
     // Pump COM messages while waiting for stop signal.
     // The SpeechRecognizer delivers ResultGenerated callbacks via COM messages,
@@ -709,7 +803,10 @@ fn run_windows_speech_recognizer(
             // Cap restarts to avoid infinite loop when device is fundamentally incompatible
             const MAX_RESTARTS: u32 = 10;
             if restart_count > MAX_RESTARTS {
-                log::warn!("WindowsNativeSTT: Max restarts ({}) reached — stopping", MAX_RESTARTS);
+                log::warn!(
+                    "WindowsNativeSTT: Max restarts ({}) reached — stopping",
+                    MAX_RESTARTS
+                );
                 emit_thread_status(app_handle, party, "error",
                     Some("Recognition keeps timing out. Try a different STT provider for this device.".to_string()));
                 break;
@@ -717,7 +814,11 @@ fn run_windows_speech_recognizer(
 
             // Exponential backoff: 500ms, 1s, 2s, capped at 5s
             let backoff_ms = std::cmp::min(500 * (1u64 << (restart_count - 1).min(3)), 5000);
-            log::info!("WindowsNativeSTT: Auto-restarting session (#{}, backoff {}ms)", restart_count, backoff_ms);
+            log::info!(
+                "WindowsNativeSTT: Auto-restarting session (#{}, backoff {}ms)",
+                restart_count,
+                backoff_ms
+            );
             std::thread::sleep(std::time::Duration::from_millis(backoff_ms));
 
             // StopAsync before StartAsync — after TimeoutExceeded/PauseLimitExceeded
@@ -734,14 +835,22 @@ fn run_windows_speech_recognizer(
                         log::info!("WindowsNativeSTT: Session restarted successfully");
                         // Don't spam status updates — only show on first restart
                         if restart_count <= 2 {
-                            emit_thread_status(app_handle, party, "connected",
-                                Some("Listening for speech (auto-restarted)".to_string()));
+                            emit_thread_status(
+                                app_handle,
+                                party,
+                                "connected",
+                                Some("Listening for speech (auto-restarted)".to_string()),
+                            );
                         }
                     }
                     Err(e) => {
                         log::error!("WindowsNativeSTT: Restart failed: {}", e);
-                        emit_thread_status(app_handle, party, "error",
-                            Some(format!("Restart failed: {}", e)));
+                        emit_thread_status(
+                            app_handle,
+                            party,
+                            "error",
+                            Some(format!("Restart failed: {}", e)),
+                        );
                         break;
                     }
                 },
@@ -769,11 +878,16 @@ fn run_windows_speech_recognizer(
         pump_iterations += 1;
         if pump_iterations == 100 {
             // ~5 seconds in
-            log::info!("WindowsNativeSTT: COM message pump running (5s mark, still waiting for speech)");
+            log::info!(
+                "WindowsNativeSTT: COM message pump running (5s mark, still waiting for speech)"
+            );
         }
         if pump_iterations % 600 == 0 {
             // Every ~30 seconds
-            log::info!("WindowsNativeSTT: COM pump alive at {}s", pump_iterations * 50 / 1000);
+            log::info!(
+                "WindowsNativeSTT: COM pump alive at {}s",
+                pump_iterations * 50 / 1000
+            );
         }
     }
 
@@ -782,7 +896,9 @@ fn run_windows_speech_recognizer(
         let _ = op.join();
     }
 
-    unsafe { windows::Win32::System::Com::CoUninitialize(); }
+    unsafe {
+        windows::Win32::System::Com::CoUninitialize();
+    }
     true
 }
 

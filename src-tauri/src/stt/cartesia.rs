@@ -205,7 +205,8 @@ impl TurnTracker {
                 if self.turn_text.is_empty() {
                     return None;
                 }
-                let turn = matches!(event, ServerEvent::TurnEagerEnd { .. }).then_some(TurnSignal::EagerEnd);
+                let turn = matches!(event, ServerEvent::TurnEagerEnd { .. })
+                    .then_some(TurnSignal::EagerEnd);
                 Some(self.result(self.turn_text.clone(), false, start, None, turn))
             }
             // Carries no text: the turn's latest text goes out again, marked.
@@ -214,7 +215,13 @@ impl TurnTracker {
                     return None;
                 }
                 let start = *self.turn_start_ms.get_or_insert(now_ms);
-                Some(self.result(self.turn_text.clone(), false, start, None, Some(TurnSignal::Resumed)))
+                Some(self.result(
+                    self.turn_text.clone(),
+                    false,
+                    start,
+                    None,
+                    Some(TurnSignal::Resumed),
+                ))
             }
             ServerEvent::TurnEnd { transcript } => {
                 let start = self.turn_start_ms.take().unwrap_or(now_ms);
@@ -224,7 +231,13 @@ impl TurnTracker {
                     return None;
                 }
                 let duration = Some(now_ms.saturating_sub(start));
-                Some(self.result(text.to_string(), true, start, duration, Some(TurnSignal::End)))
+                Some(self.result(
+                    text.to_string(),
+                    true,
+                    start,
+                    duration,
+                    Some(TurnSignal::End),
+                ))
             }
             _ => None,
         }
@@ -396,27 +409,44 @@ impl CartesiaSTT {
         let mut request = url
             .into_client_request()
             .map_err(|e| ConnectError::Other(format!("Invalid Cartesia URL: {}", e)))?;
-        let key = HeaderValue::from_str(api_key)
-            .map_err(|_| ConnectError::Auth("The Cartesia API key contains invalid characters".to_string()))?;
+        let key = HeaderValue::from_str(api_key).map_err(|_| {
+            ConnectError::Auth("The Cartesia API key contains invalid characters".to_string())
+        })?;
         request.headers_mut().insert("X-API-Key", key);
 
-        match tokio::time::timeout(CONNECT_TIMEOUT, tokio_tungstenite::connect_async(request)).await {
-            Err(_) => Err(ConnectError::Other("Cartesia didn't answer within 10 s".to_string())),
+        match tokio::time::timeout(CONNECT_TIMEOUT, tokio_tungstenite::connect_async(request)).await
+        {
+            Err(_) => Err(ConnectError::Other(
+                "Cartesia didn't answer within 10 s".to_string(),
+            )),
             Ok(Ok((socket, _response))) => Ok(socket),
             Ok(Err(tokio_tungstenite::tungstenite::Error::Http(response))) => {
                 let code = response.status().as_u16();
                 if code == 401 || code == 403 {
-                    Err(ConnectError::Auth(format!("Cartesia rejected the API key (HTTP {})", code)))
+                    Err(ConnectError::Auth(format!(
+                        "Cartesia rejected the API key (HTTP {})",
+                        code
+                    )))
                 } else {
-                    Err(ConnectError::Other(format!("Cartesia refused the connection (HTTP {})", code)))
+                    Err(ConnectError::Other(format!(
+                        "Cartesia refused the connection (HTTP {})",
+                        code
+                    )))
                 }
             }
-            Ok(Err(e)) => Err(ConnectError::Other(format!("Couldn't connect to Cartesia: {}", e))),
+            Ok(Err(e)) => Err(ConnectError::Other(format!(
+                "Couldn't connect to Cartesia: {}",
+                e
+            ))),
         }
     }
 
     /// Start the reader and writer tasks for a connected socket.
-    fn install_session(&mut self, socket: CartesiaSocket, result_tx: mpsc::Sender<TranscriptResult>) {
+    fn install_session(
+        &mut self,
+        socket: CartesiaSocket,
+        result_tx: mpsc::Sender<TranscriptResult>,
+    ) {
         let (write_half, read_half) = socket.split();
         let (audio_tx, audio_rx) = mpsc::channel::<Vec<u8>>(AUDIO_QUEUE_CHUNKS);
         self.turns = Arc::new(Mutex::new(TurnTracker::new(&self.party)));
@@ -463,11 +493,17 @@ impl CartesiaSTT {
             // Dropping the audio sender makes the writer send the close command.
             self.audio_tx = None;
             self.is_streaming = false;
-            log::info!("CartesiaSTT: paused ({}): stream closed while muted", self.party);
+            log::info!(
+                "CartesiaSTT: paused ({}): stream closed while muted",
+                self.party
+            );
         } else {
             log::info!("CartesiaSTT: paused ({}) while not connected", self.party);
         }
-        self.emit_status("paused", Some("Muted: not streaming to Cartesia".to_string()));
+        self.emit_status(
+            "paused",
+            Some("Muted: not streaming to Cartesia".to_string()),
+        );
     }
 
     /// Unmuted: reconnect right away. Audio fed until the stream is ready is
@@ -486,7 +522,9 @@ impl CartesiaSTT {
 
     /// After an unmute, send the audio held while reconnecting before live audio.
     fn flush_resume_hold(&mut self) {
-        let Some(since) = self.resuming_since.take() else { return };
+        let Some(since) = self.resuming_since.take() else {
+            return;
+        };
         let held = std::mem::take(&mut self.resume_hold);
         if let Some(audio_tx) = self.audio_tx.as_ref() {
             for frame in held.chunks(SAMPLE_RATE as usize / 10) {
@@ -519,15 +557,30 @@ impl CartesiaSTT {
             let _ = tx.try_send(last);
         }
         if self.fatal_error.load(Ordering::SeqCst) {
-            log::warn!("CartesiaSTT: Cartesia refused the session ({}); not reconnecting", self.party);
+            log::warn!(
+                "CartesiaSTT: Cartesia refused the session ({}); not reconnecting",
+                self.party
+            );
             self.reconnect_blocked = true;
-            self.emit_status("error", Some("Cartesia refused the API key or account — check it in Settings → STT".to_string()));
+            self.emit_status(
+                "error",
+                Some(
+                    "Cartesia refused the API key or account — check it in Settings → STT"
+                        .to_string(),
+                ),
+            );
             return;
         }
-        log::warn!("CartesiaSTT: connection lost ({}), reconnecting in the background", self.party);
+        log::warn!(
+            "CartesiaSTT: connection lost ({}), reconnecting in the background",
+            self.party
+        );
         self.reconnect_attempt = 0;
         self.next_reconnect_at = None;
-        self.emit_status("reconnecting", Some("Connection lost — reconnecting".to_string()));
+        self.emit_status(
+            "reconnecting",
+            Some("Connection lost — reconnecting".to_string()),
+        );
     }
 
     /// Advance the background reconnect without waiting: pick up a finished
@@ -536,16 +589,26 @@ impl CartesiaSTT {
         if self.reconnect_blocked {
             return;
         }
-        let Some(result_tx) = self.result_tx.clone() else { return };
+        let Some(result_tx) = self.result_tx.clone() else {
+            return;
+        };
         if let Some(task) = self.reconnect_task.as_ref() {
             if !task.is_finished() {
                 return;
             }
             // Unconstrained: with the task's coop budget used up, polling a
             // finished JoinHandle can still return Pending (and drop the socket).
-            match self.reconnect_task.take().and_then(|t| tokio::task::unconstrained(t).now_or_never()) {
+            match self
+                .reconnect_task
+                .take()
+                .and_then(|t| tokio::task::unconstrained(t).now_or_never())
+            {
                 Some(Ok(Ok(socket))) => {
-                    log::info!("CartesiaSTT: reconnected ({}) after {} attempt(s)", self.party, self.reconnect_attempt + 1);
+                    log::info!(
+                        "CartesiaSTT: reconnected ({}) after {} attempt(s)",
+                        self.party,
+                        self.reconnect_attempt + 1
+                    );
                     self.install_session(socket, result_tx);
                     return;
                 }
@@ -555,15 +618,25 @@ impl CartesiaSTT {
                     self.emit_status("error", Some(msg));
                     return;
                 }
-                Some(Ok(Err(e))) => log::warn!("CartesiaSTT: reconnect failed ({}): {}", self.party, e),
-                Some(Err(e)) => log::warn!("CartesiaSTT: reconnect task ended ({}): {}", self.party, e),
+                Some(Ok(Err(e))) => {
+                    log::warn!("CartesiaSTT: reconnect failed ({}): {}", self.party, e)
+                }
+                Some(Err(e)) => {
+                    log::warn!("CartesiaSTT: reconnect task ended ({}): {}", self.party, e)
+                }
                 None => log::warn!("CartesiaSTT: reconnect result unavailable ({})", self.party),
             }
             self.reconnect_attempt += 1;
             let wait = reconnect_backoff(self.reconnect_attempt);
             self.next_reconnect_at = Some(Instant::now() + wait);
-            self.emit_status("reconnecting",
-                Some(format!("Reconnect attempt {} failed, retrying in {} s", self.reconnect_attempt, wait.as_secs())));
+            self.emit_status(
+                "reconnecting",
+                Some(format!(
+                    "Reconnect attempt {} failed, retrying in {} s",
+                    self.reconnect_attempt,
+                    wait.as_secs()
+                )),
+            );
             return;
         }
         if self.next_reconnect_at.is_some_and(|at| Instant::now() < at) {
@@ -589,15 +662,32 @@ fn spawn_reader_task(
             match message {
                 Ok(Message::Text(text)) => {
                     let Some(event) = ServerEvent::parse(&text) else {
-                        log::debug!("CartesiaSTT: ignored a message that isn't an event ({} bytes)", text.len());
+                        log::debug!(
+                            "CartesiaSTT: ignored a message that isn't an event ({} bytes)",
+                            text.len()
+                        );
                         continue;
                     };
                     match &event {
                         ServerEvent::Connected { request_id } => {
-                            log::info!("CartesiaSTT: session ready ({}), request_id={}", party, request_id);
+                            log::info!(
+                                "CartesiaSTT: session ready ({}), request_id={}",
+                                party,
+                                request_id
+                            );
                         }
-                        ServerEvent::Error { status_code, title, message } => {
-                            log::warn!("CartesiaSTT: error from Cartesia ({}): {:?} {}: {}", party, status_code, title, message);
+                        ServerEvent::Error {
+                            status_code,
+                            title,
+                            message,
+                        } => {
+                            log::warn!(
+                                "CartesiaSTT: error from Cartesia ({}): {:?} {}: {}",
+                                party,
+                                status_code,
+                                title,
+                                message
+                            );
                             if status_code.is_some_and(|c| FATAL_STATUS_CODES.contains(&c)) {
                                 fatal_error.store(true, Ordering::SeqCst);
                             }
@@ -608,7 +698,8 @@ fn spawn_reader_task(
                                     status: "error".to_string(),
                                     message: Some(format!("{}: {}", title, message)),
                                 };
-                                let _ = tauri::Emitter::emit(handle, "stt_connection_status", &event);
+                                let _ =
+                                    tauri::Emitter::emit(handle, "stt_connection_status", &event);
                             }
                         }
                         _ => {}
@@ -619,7 +710,11 @@ fn spawn_reader_task(
                         .on_event(&event, epoch_now_ms());
                     if let Some(result) = result {
                         if result.is_final {
-                            log::debug!("CartesiaSTT: final turn ({}, {} chars)", party, result.text.len());
+                            log::debug!(
+                                "CartesiaSTT: final turn ({}, {} chars)",
+                                party,
+                                result.text.len()
+                            );
                         }
                         if result_tx.send(result).await.is_err() {
                             log::warn!("CartesiaSTT: result channel closed");
@@ -628,7 +723,11 @@ fn spawn_reader_task(
                     }
                 }
                 Ok(Message::Close(frame)) => {
-                    log::info!("CartesiaSTT: closed by Cartesia ({}): {:?}", party, frame.map(|f| f.code));
+                    log::info!(
+                        "CartesiaSTT: closed by Cartesia ({}): {:?}",
+                        party,
+                        frame.map(|f| f.code)
+                    );
                     break;
                 }
                 Err(e) => {
@@ -643,7 +742,10 @@ fn spawn_reader_task(
             .unwrap_or_else(|e| e.into_inner())
             .finish_open_turn(epoch_now_ms());
         if let Some(result) = last {
-            log::info!("CartesiaSTT: connection ended mid-turn ({}); kept the turn's latest text", party);
+            log::info!(
+                "CartesiaSTT: connection ended mid-turn ({}); kept the turn's latest text",
+                party
+            );
             let _ = result_tx.send(result).await;
         }
         log::info!("CartesiaSTT: reader exiting ({})", party);
@@ -687,7 +789,11 @@ fn spawn_writer_task(
         }
         let close = serde_json::json!({"type": "close"}).to_string();
         if let Err(e) = write_half.send(Message::Text(close.into())).await {
-            log::warn!("CartesiaSTT: couldn't send the close command ({}): {}", party, e);
+            log::warn!(
+                "CartesiaSTT: couldn't send the close command ({}): {}",
+                party,
+                e
+            );
         }
         log::info!(
             "CartesiaSTT: writer exiting ({}); {:.1} s of silence filled in gaps",
@@ -724,8 +830,14 @@ impl STTProvider for CartesiaSTT {
         if self.paused {
             // Muted from the start: connect on the first unmute, not now.
             self.result_tx = Some(result_tx);
-            log::info!("CartesiaSTT: muted at start ({}); connecting on unmute", self.party);
-            self.emit_status("paused", Some("Muted: not streaming to Cartesia".to_string()));
+            log::info!(
+                "CartesiaSTT: muted at start ({}); connecting on unmute",
+                self.party
+            );
+            self.emit_status(
+                "paused",
+                Some("Muted: not streaming to Cartesia".to_string()),
+            );
             return Ok(());
         }
 
@@ -747,7 +859,11 @@ impl STTProvider for CartesiaSTT {
             Err(e) => {
                 // Network trouble at the start: keep the party and connect in
                 // the background instead of losing it for the whole meeting.
-                log::warn!("CartesiaSTT: couldn't connect ({}): {}; retrying in the background", self.party, e);
+                log::warn!(
+                    "CartesiaSTT: couldn't connect ({}): {}; retrying in the background",
+                    self.party,
+                    e
+                );
                 self.result_tx = Some(result_tx);
                 self.reconnect_attempt = 1;
                 self.next_reconnect_at = Some(Instant::now() + reconnect_backoff(1));
@@ -796,11 +912,18 @@ impl STTProvider for CartesiaSTT {
                 self.dropped_chunks += 1;
                 self.dropped_samples_streak += samples;
                 if self.dropped_chunks.is_power_of_two() {
-                    log::warn!("CartesiaSTT: sending is behind ({}); {} audio chunks dropped", self.party, self.dropped_chunks);
+                    log::warn!(
+                        "CartesiaSTT: sending is behind ({}); {} audio chunks dropped",
+                        self.party,
+                        self.dropped_chunks
+                    );
                 }
                 // The writer stopped taking audio (half-open socket): replace the connection.
                 if self.dropped_samples_streak > STALLED_SAMPLES {
-                    log::warn!("CartesiaSTT: writer stalled for 5 s of audio ({})", self.party);
+                    log::warn!(
+                        "CartesiaSTT: writer stalled for 5 s of audio ({})",
+                        self.party
+                    );
                     self.mark_disconnected();
                 }
             }
@@ -821,7 +944,10 @@ impl STTProvider for CartesiaSTT {
         self.audio_tx = None;
         if let Some(reader) = self.reader_task.take() {
             let abort = reader.abort_handle();
-            if tokio::time::timeout(FINAL_RESULTS_WAIT, reader).await.is_err() {
+            if tokio::time::timeout(FINAL_RESULTS_WAIT, reader)
+                .await
+                .is_err()
+            {
                 log::warn!("CartesiaSTT: Cartesia didn't close within 5 s ({}); keeping the open turn as it is", self.party);
                 abort.abort();
                 if let (Some(last), Some(tx)) = (self.take_open_turn(), self.result_tx.as_ref()) {
@@ -876,7 +1002,11 @@ impl STTProvider for CartesiaSTT {
         if language.eq_ignore_ascii_case("auto") {
             return;
         }
-        let base = language.split(['-', '_']).next().unwrap_or("").to_lowercase();
+        let base = language
+            .split(['-', '_'])
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
         if !SUPPORTED_LANGUAGES.contains(&base.as_str()) {
             log::warn!(
                 "CartesiaSTT: ink-2 transcribes English, French, Hindi, Japanese and Spanish; '{}' isn't one of them",
@@ -910,7 +1040,12 @@ mod tests {
     }
 
     fn chunk(samples: Vec<i16>) -> AudioChunk {
-        AudioChunk { pcm_data: samples, source: AudioSource::System, timestamp_ms: 0, is_speech: true }
+        AudioChunk {
+            pcm_data: samples,
+            source: AudioSource::System,
+            timestamp_ms: 0,
+            is_speech: true,
+        }
     }
 
     fn text(json: &str) -> Message {
@@ -920,7 +1055,10 @@ mod tests {
     /// A local WebSocket server standing in for Cartesia, and its endpoint URL.
     async fn local_server() -> (TcpListener, String) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = format!("ws://{}/stt/turns/websocket", listener.local_addr().unwrap());
+        let url = format!(
+            "ws://{}/stt/turns/websocket",
+            listener.local_addr().unwrap()
+        );
         (listener, url)
     }
 
@@ -940,25 +1078,49 @@ mod tests {
         let server = tokio::spawn(async move {
             let (socket, _) = listener.accept().await.unwrap();
             let handshake_seen = seen_tx.clone();
-            let mut ws = tokio_tungstenite::accept_hdr_async(socket, move |req: &Request, resp: Response| {
-                let key = req.headers().get("X-API-Key").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
-                let _ = handshake_seen.try_send(format!("key={key}"));
-                let _ = handshake_seen.try_send(format!("query={}", req.uri().query().unwrap_or("")));
-                Ok(resp)
-            })
+            let mut ws = tokio_tungstenite::accept_hdr_async(
+                socket,
+                move |req: &Request, resp: Response| {
+                    let key = req
+                        .headers()
+                        .get("X-API-Key")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let _ = handshake_seen.try_send(format!("key={key}"));
+                    let _ = handshake_seen
+                        .try_send(format!("query={}", req.uri().query().unwrap_or("")));
+                    Ok(resp)
+                },
+            )
             .await
             .unwrap();
-            ws.send(text(r#"{"type":"connected","request_id":"r1"}"#)).await.unwrap();
+            ws.send(text(r#"{"type":"connected","request_id":"r1"}"#))
+                .await
+                .unwrap();
             while let Some(Ok(message)) = ws.next().await {
                 match message {
                     // Gap-filling silence (a slow test run) isn't part of this check.
                     Message::Binary(bytes) if bytes.iter().all(|b| *b == 0) => {}
-                    Message::Binary(bytes) => seen_tx.send(format!("audio={:?}", bytes.to_vec())).await.unwrap(),
+                    Message::Binary(bytes) => seen_tx
+                        .send(format!("audio={:?}", bytes.to_vec()))
+                        .await
+                        .unwrap(),
                     Message::Text(t) => {
                         seen_tx.send(format!("text={t}")).await.unwrap();
-                        ws.send(text(r#"{"type":"turn.start","request_id":"r1"}"#)).await.unwrap();
-                        ws.send(text(r#"{"type":"turn.update","transcript":"Hello","request_id":"r1"}"#)).await.unwrap();
-                        ws.send(text(r#"{"type":"turn.end","transcript":"Hello there.","request_id":"r1"}"#)).await.unwrap();
+                        ws.send(text(r#"{"type":"turn.start","request_id":"r1"}"#))
+                            .await
+                            .unwrap();
+                        ws.send(text(
+                            r#"{"type":"turn.update","transcript":"Hello","request_id":"r1"}"#,
+                        ))
+                        .await
+                        .unwrap();
+                        ws.send(text(
+                            r#"{"type":"turn.end","transcript":"Hello there.","request_id":"r1"}"#,
+                        ))
+                        .await
+                        .unwrap();
                         ws.close(None).await.unwrap();
                         break;
                     }
@@ -981,12 +1143,18 @@ mod tests {
             seen.push(line);
         }
         assert_eq!(seen[0], "key=test-key");
-        assert_eq!(seen[1], "query=model=ink-2&encoding=pcm_s16le&sample_rate=16000&cartesia_version=2026-08-14");
-        assert_eq!(&seen[2..], [
-            "audio=[1, 0, 2, 0]".to_string(),
-            "audio=[255, 255]".to_string(),
-            r#"text={"type":"close"}"#.to_string(),
-        ]);
+        assert_eq!(
+            seen[1],
+            "query=model=ink-2&encoding=pcm_s16le&sample_rate=16000&cartesia_version=2026-08-14"
+        );
+        assert_eq!(
+            &seen[2..],
+            [
+                "audio=[1, 0, 2, 0]".to_string(),
+                "audio=[255, 255]".to_string(),
+                r#"text={"type":"close"}"#.to_string(),
+            ]
+        );
 
         let interim = next_result(&mut rx).await;
         assert_eq!((interim.text.as_str(), interim.is_final), ("Hello", false));
@@ -1004,7 +1172,11 @@ mod tests {
             let (socket, _) = listener.accept().await.unwrap();
             let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
             ws.send(text(r#"{"type":"turn.start"}"#)).await.unwrap();
-            ws.send(text(r#"{"type":"turn.update","transcript":"half a sente"}"#)).await.unwrap();
+            ws.send(text(
+                r#"{"type":"turn.update","transcript":"half a sente"}"#,
+            ))
+            .await
+            .unwrap();
             drop(ws);
         });
 
@@ -1024,10 +1196,15 @@ mod tests {
         tokio::spawn(async move {
             let (socket, _) = listener.accept().await.unwrap();
             let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
-            ws.send(text(r#"{"type":"connected","request_id":"r1"}"#)).await.unwrap();
+            ws.send(text(r#"{"type":"connected","request_id":"r1"}"#))
+                .await
+                .unwrap();
             // Any audio here would be billed: the test must not send any.
             while let Some(Ok(message)) = ws.next().await {
-                assert!(!matches!(message, Message::Binary(_)), "connection test sent audio");
+                assert!(
+                    !matches!(message, Message::Binary(_)),
+                    "connection test sent audio"
+                );
             }
         });
         let stt = CartesiaSTT::for_endpoint("test-key", &url);
@@ -1074,7 +1251,12 @@ mod tests {
     async fn no_key_means_no_connection_attempt() {
         let mut stt = CartesiaSTT::new();
         let (tx, _rx) = mpsc::channel(16);
-        assert!(stt.start_stream(tx).await.unwrap_err().to_string().contains("API key not configured"));
+        assert!(stt
+            .start_stream(tx)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("API key not configured"));
         assert!(stt.test_connection().await.is_err());
     }
 
@@ -1106,7 +1288,9 @@ mod tests {
             while let Some(Ok(message)) = ws.next().await {
                 match message {
                     Message::Binary(bytes) => {
-                        let _ = frames_tx.send((bytes.iter().all(|b| *b == 0), bytes.len() / 2)).await;
+                        let _ = frames_tx
+                            .send((bytes.iter().all(|b| *b == 0), bytes.len() / 2))
+                            .await;
                     }
                     Message::Text(_) => {
                         ws.close(None).await.unwrap();
@@ -1131,9 +1315,16 @@ mod tests {
         while let Ok(frame) = frames_rx.try_recv() {
             frames.push(frame);
         }
-        let first_audio = frames.iter().position(|(zero, _)| !zero).expect("real audio arrived");
+        let first_audio = frames
+            .iter()
+            .position(|(zero, _)| !zero)
+            .expect("real audio arrived");
         let silence: usize = frames[..first_audio].iter().map(|(_, n)| n).sum();
-        assert!((11_200..=18_400).contains(&silence), "{} samples of silence for a 1 s gap", silence);
+        assert!(
+            (11_200..=18_400).contains(&silence),
+            "{} samples of silence for a 1 s gap",
+            silence
+        );
         assert!(
             frames[first_audio..].iter().all(|(zero, _)| !zero),
             "silence was mixed into flowing audio"
@@ -1149,15 +1340,23 @@ mod tests {
             let (socket, _) = listener.accept().await.unwrap();
             let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
             ws.send(text(r#"{"type":"turn.start"}"#)).await.unwrap();
-            ws.send(text(r#"{"type":"turn.update","transcript":"lost words"}"#)).await.unwrap();
+            ws.send(text(r#"{"type":"turn.update","transcript":"lost words"}"#))
+                .await
+                .unwrap();
             loop {
-                if let Some(Ok(Message::Binary(_))) = ws.next().await { break; }
+                if let Some(Ok(Message::Binary(_))) = ws.next().await {
+                    break;
+                }
             }
             drop(ws);
             let (socket, _) = listener.accept().await.unwrap();
             let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
             ws.send(text(r#"{"type":"turn.start"}"#)).await.unwrap();
-            ws.send(text(r#"{"type":"turn.end","transcript":"after reconnect"}"#)).await.unwrap();
+            ws.send(text(
+                r#"{"type":"turn.end","transcript":"after reconnect"}"#,
+            ))
+            .await
+            .unwrap();
             while let Some(Ok(message)) = ws.next().await {
                 if let Message::Text(_) = message {
                     ws.close(None).await.unwrap();
@@ -1177,12 +1376,18 @@ mod tests {
             stt.feed_audio(chunk(vec![7; 160])).await.unwrap();
             slowest_feed = slowest_feed.max(started.elapsed());
             while let Ok(result) = rx.try_recv() {
-                if result.is_final { finals.push(result.text) }
+                if result.is_final {
+                    finals.push(result.text)
+                }
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         assert_eq!(finals, ["lost words", "after reconnect"]);
-        assert!(slowest_feed < Duration::from_millis(50), "feed_audio blocked for {:?}", slowest_feed);
+        assert!(
+            slowest_feed < Duration::from_millis(50),
+            "feed_audio blocked for {:?}",
+            slowest_feed
+        );
         assert!(stt.is_streaming);
         stt.stop_stream().await.unwrap();
     }
@@ -1211,7 +1416,11 @@ mod tests {
             stt.feed_audio(chunk(vec![7; 160])).await.unwrap();
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        assert_eq!(accepts.load(Ordering::SeqCst), 1, "reconnected after a fatal error");
+        assert_eq!(
+            accepts.load(Ordering::SeqCst),
+            1,
+            "reconnected after a fatal error"
+        );
         assert!(!stt.is_streaming && stt.reconnect_blocked);
     }
 
@@ -1225,7 +1434,9 @@ mod tests {
 
         let mut stt = CartesiaSTT::for_endpoint("test-key", &url);
         let (tx, mut rx) = mpsc::channel(16);
-        stt.start_stream(tx).await.expect("a network failure isn't fatal");
+        stt.start_stream(tx)
+            .await
+            .expect("a network failure isn't fatal");
         assert!(!stt.is_streaming);
 
         let listener = TcpListener::bind(address).await.unwrap();
@@ -1233,7 +1444,9 @@ mod tests {
             let (socket, _) = listener.accept().await.unwrap();
             let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
             ws.send(text(r#"{"type":"turn.start"}"#)).await.unwrap();
-            ws.send(text(r#"{"type":"turn.end","transcript":"back online"}"#)).await.unwrap();
+            ws.send(text(r#"{"type":"turn.end","transcript":"back online"}"#))
+                .await
+                .unwrap();
             while let Some(Ok(_)) = ws.next().await {}
         });
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -1308,7 +1521,11 @@ mod tests {
                     while let Some(Ok(message)) = ws.next().await {
                         if let Message::Text(_) = message {
                             ws.send(text(r#"{"type":"turn.start"}"#)).await.unwrap();
-                            ws.send(text(r#"{"type":"turn.end","transcript":"said before mute"}"#)).await.unwrap();
+                            ws.send(text(
+                                r#"{"type":"turn.end","transcript":"said before mute"}"#,
+                            ))
+                            .await
+                            .unwrap();
                             let _ = ws.close(None).await;
                             break;
                         }
@@ -1323,7 +1540,10 @@ mod tests {
         stt.feed_audio(chunk(vec![7; 160])).await.unwrap();
         stt.set_muted(true);
         let last = next_result(&mut rx).await;
-        assert_eq!((last.text.as_str(), last.is_final), ("said before mute", true));
+        assert_eq!(
+            (last.text.as_str(), last.is_final),
+            ("said before mute", true)
+        );
 
         for _ in 0..30 {
             stt.feed_audio(chunk(vec![7; 160])).await.unwrap();
@@ -1363,7 +1583,9 @@ mod tests {
                     if !answered {
                         answered = true;
                         ws.send(text(r#"{"type":"turn.start"}"#)).await.unwrap();
-                        ws.send(text(r#"{"type":"turn.end","transcript":"after unmute"}"#)).await.unwrap();
+                        ws.send(text(r#"{"type":"turn.end","transcript":"after unmute"}"#))
+                            .await
+                            .unwrap();
                     }
                 }
             }
@@ -1383,10 +1605,16 @@ mod tests {
             stt.feed_audio(chunk(vec![5; 160])).await.unwrap();
         }
 
-        let first = tokio::time::timeout(Duration::from_secs(5), first_rx.recv()).await.unwrap().unwrap();
+        let first = tokio::time::timeout(Duration::from_secs(5), first_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
         let mut expected = pcm_to_bytes(&vec![3; 160]);
         expected.extend(pcm_to_bytes(&vec![4; 160]));
-        assert!(first.starts_with(&expected), "the held first words weren't sent first");
+        assert!(
+            first.starts_with(&expected),
+            "the held first words weren't sent first"
+        );
         assert_eq!(next_result(&mut rx).await.text, "after unmute");
     }
 
@@ -1422,7 +1650,11 @@ mod tests {
         stt.set_muted(true);
         let started = Instant::now();
         stt.stop_stream().await.unwrap();
-        assert!(started.elapsed() < Duration::from_secs(2), "stop waited {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "stop waited {:?}",
+            started.elapsed()
+        );
         stt.set_muted(false);
         stt.feed_audio(chunk(vec![7; 160])).await.unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -1443,10 +1675,14 @@ mod tests {
                     let mut answered = false;
                     while let Some(Ok(message)) = ws.next().await {
                         match message {
-                            Message::Binary(bytes) if !answered && bytes.iter().any(|b| *b != 0) => {
+                            Message::Binary(bytes)
+                                if !answered && bytes.iter().any(|b| *b != 0) =>
+                            {
                                 answered = true;
                                 ws.send(text(r#"{"type":"turn.start"}"#)).await.unwrap();
-                                ws.send(text(r#"{"type":"turn.end","transcript":"once"}"#)).await.unwrap();
+                                ws.send(text(r#"{"type":"turn.end","transcript":"once"}"#))
+                                    .await
+                                    .unwrap();
                             }
                             Message::Text(_) => {
                                 let _ = ws.close(None).await;
@@ -1471,7 +1707,9 @@ mod tests {
         while Instant::now() < until {
             stt.feed_audio(chunk(vec![7; 160])).await.unwrap();
             while let Ok(result) = rx.try_recv() {
-                if result.is_final { finals.push(result.text) }
+                if result.is_final {
+                    finals.push(result.text)
+                }
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -1486,7 +1724,10 @@ mod tests {
             let size = u32::from_le_bytes(wav[pos + 4..pos + 8].try_into().unwrap()) as usize;
             if &wav[pos..pos + 4] == b"data" {
                 let end = (pos + 8 + size).min(wav.len());
-                return wav[pos + 8..end].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
+                return wav[pos + 8..end]
+                    .chunks_exact(2)
+                    .map(|b| i16::from_le_bytes([b[0], b[1]]))
+                    .collect();
             }
             pos += 8 + size + (size & 1);
         }
@@ -1500,7 +1741,8 @@ mod tests {
     #[ignore = "calls the Cartesia API; needs CARTESIA_API_KEY and CARTESIA_TEST_WAV"]
     async fn live_transcribes_the_test_clip() {
         let key = std::env::var("CARTESIA_API_KEY").expect("CARTESIA_API_KEY");
-        let wav = std::fs::read(std::env::var("CARTESIA_TEST_WAV").expect("CARTESIA_TEST_WAV")).unwrap();
+        let wav =
+            std::fs::read(std::env::var("CARTESIA_TEST_WAV").expect("CARTESIA_TEST_WAV")).unwrap();
         let samples = wav_samples(&wav);
 
         let mut stt = CartesiaSTT::with_api_key(&key);
@@ -1521,15 +1763,37 @@ mod tests {
             if let Some(turn) = result.turn {
                 *signals.entry(turn.as_str()).or_insert(0) += 1;
             }
-            if result.is_final { finals.push(result) } else { interims += 1 }
+            if result.is_final {
+                finals.push(result)
+            } else {
+                interims += 1
+            }
         }
-        println!("{} interim results, {} final turns, turn signals {:?}", interims, finals.len(), signals);
+        println!(
+            "{} interim results, {} final turns, turn signals {:?}",
+            interims,
+            finals.len(),
+            signals
+        );
         for f in &finals {
-            println!("final ({:?}): start {} ms, {:?} ms long: {}", f.turn, f.timestamp_ms % 100_000, f.duration_ms, f.text);
+            println!(
+                "final ({:?}): start {} ms, {:?} ms long: {}",
+                f.turn,
+                f.timestamp_ms % 100_000,
+                f.duration_ms,
+                f.text
+            );
         }
         assert!(!finals.is_empty(), "no final turn");
-        assert!(finals.iter().any(|f| f.turn == Some(TurnSignal::End)), "no final carried the End signal");
-        let all = finals.iter().map(|f| f.text.to_lowercase()).collect::<Vec<_>>().join(" ");
+        assert!(
+            finals.iter().any(|f| f.turn == Some(TurnSignal::End)),
+            "no final carried the End signal"
+        );
+        let all = finals
+            .iter()
+            .map(|f| f.text.to_lowercase())
+            .collect::<Vec<_>>()
+            .join(" ");
         assert!(all.contains("meeting"), "unexpected transcript: {all}");
     }
 
@@ -1539,7 +1803,8 @@ mod tests {
     #[ignore = "calls the Cartesia API; needs CARTESIA_API_KEY and CARTESIA_TEST_WAV"]
     async fn live_turn_ends_while_no_audio_is_fed() {
         let key = std::env::var("CARTESIA_API_KEY").expect("CARTESIA_API_KEY");
-        let wav = std::fs::read(std::env::var("CARTESIA_TEST_WAV").expect("CARTESIA_TEST_WAV")).unwrap();
+        let wav =
+            std::fs::read(std::env::var("CARTESIA_TEST_WAV").expect("CARTESIA_TEST_WAV")).unwrap();
         let samples = wav_samples(&wav);
         // The test clip's first sentence ends about 4.3 s in.
         let (first, rest) = samples.split_at(16_000 * 45 / 10);
@@ -1554,7 +1819,9 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(3)).await; // "muted": nothing fed
         let mut during_gap = Vec::new();
         while let Ok(result) = rx.try_recv() {
-            if result.is_final { during_gap.push(result.text) }
+            if result.is_final {
+                during_gap.push(result.text)
+            }
         }
         println!("finals during the gap: {:?}", during_gap);
         for frame in rest.chunks(1600) {
@@ -1564,10 +1831,16 @@ mod tests {
         stt.stop_stream().await.unwrap();
         let mut after = Vec::new();
         while let Ok(result) = rx.try_recv() {
-            if result.is_final { after.push(result.text) }
+            if result.is_final {
+                after.push(result.text)
+            }
         }
         println!("finals after the gap: {:?}", after);
-        assert_eq!(during_gap.len(), 1, "the first turn should end during the gap");
+        assert_eq!(
+            during_gap.len(),
+            1,
+            "the first turn should end during the gap"
+        );
         assert!(after.iter().any(|t| t.to_lowercase().contains("meeting")));
     }
 
@@ -1578,7 +1851,8 @@ mod tests {
     #[ignore = "calls the Cartesia API; needs CARTESIA_API_KEY and CARTESIA_TEST_WAV"]
     async fn live_mute_closes_and_unmute_resumes() {
         let key = std::env::var("CARTESIA_API_KEY").expect("CARTESIA_API_KEY");
-        let wav = std::fs::read(std::env::var("CARTESIA_TEST_WAV").expect("CARTESIA_TEST_WAV")).unwrap();
+        let wav =
+            std::fs::read(std::env::var("CARTESIA_TEST_WAV").expect("CARTESIA_TEST_WAV")).unwrap();
         let samples = wav_samples(&wav);
         let (first, rest) = samples.split_at(16_000 * 45 / 10);
 
@@ -1593,7 +1867,9 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(3)).await;
         let mut by_end_of_mute = Vec::new();
         while let Ok(result) = rx.try_recv() {
-            if result.is_final { by_end_of_mute.push(result.text) }
+            if result.is_final {
+                by_end_of_mute.push(result.text)
+            }
         }
         println!("finals by the end of the mute: {:?}", by_end_of_mute);
         assert!(!stt.is_streaming, "still streaming while muted");
@@ -1606,10 +1882,16 @@ mod tests {
         stt.stop_stream().await.unwrap();
         let mut after = Vec::new();
         while let Ok(result) = rx.try_recv() {
-            if result.is_final { after.push(result.text) }
+            if result.is_final {
+                after.push(result.text)
+            }
         }
         println!("finals after unmute: {:?}", after);
-        assert_eq!(by_end_of_mute.len(), 1, "the first sentence should come back at mute");
+        assert_eq!(
+            by_end_of_mute.len(),
+            1,
+            "the first sentence should come back at mute"
+        );
         assert!(after.iter().any(|t| t.to_lowercase().contains("meeting")));
     }
 
@@ -1617,31 +1899,54 @@ mod tests {
     fn parses_every_event_type() {
         assert_eq!(
             event(r#"{"type":"connected","request_id":"r1"}"#),
-            ServerEvent::Connected { request_id: "r1".into() }
+            ServerEvent::Connected {
+                request_id: "r1".into()
+            }
         );
-        assert_eq!(event(r#"{"type":"turn.start","request_id":"r1"}"#), ServerEvent::TurnStart {});
+        assert_eq!(
+            event(r#"{"type":"turn.start","request_id":"r1"}"#),
+            ServerEvent::TurnStart {}
+        );
         assert_eq!(
             event(r#"{"type":"turn.update","transcript":"Hi I","request_id":"r1"}"#),
-            ServerEvent::TurnUpdate { transcript: "Hi I".into() }
+            ServerEvent::TurnUpdate {
+                transcript: "Hi I".into()
+            }
         );
         assert_eq!(
             event(r#"{"type":"turn.eager_end","transcript":"Hi I need","request_id":"r1"}"#),
-            ServerEvent::TurnEagerEnd { transcript: "Hi I need".into() }
+            ServerEvent::TurnEagerEnd {
+                transcript: "Hi I need".into()
+            }
         );
-        assert_eq!(event(r#"{"type":"turn.resume","request_id":"r1"}"#), ServerEvent::TurnResume {});
+        assert_eq!(
+            event(r#"{"type":"turn.resume","request_id":"r1"}"#),
+            ServerEvent::TurnResume {}
+        );
         assert_eq!(
             event(r#"{"type":"turn.end","transcript":"Hi I need help.","request_id":"r1"}"#),
-            ServerEvent::TurnEnd { transcript: "Hi I need help.".into() }
+            ServerEvent::TurnEnd {
+                transcript: "Hi I need help.".into()
+            }
         );
         assert_eq!(
-            event(r#"{"type":"error","status_code":401,"title":"Unauthorized","message":"Invalid API key","error_code":"invalid_api_key"}"#),
-            ServerEvent::Error { status_code: Some(401), title: "Unauthorized".into(), message: "Invalid API key".into() }
+            event(
+                r#"{"type":"error","status_code":401,"title":"Unauthorized","message":"Invalid API key","error_code":"invalid_api_key"}"#
+            ),
+            ServerEvent::Error {
+                status_code: Some(401),
+                title: "Unauthorized".into(),
+                message: "Invalid API key".into()
+            }
         );
     }
 
     #[test]
     fn unknown_or_malformed_messages_are_harmless() {
-        assert_eq!(event(r#"{"type":"turn.something_new","x":1}"#), ServerEvent::Unknown);
+        assert_eq!(
+            event(r#"{"type":"turn.something_new","x":1}"#),
+            ServerEvent::Unknown
+        );
         assert_eq!(ServerEvent::parse("not json"), None);
         assert_eq!(ServerEvent::parse(r#"{"transcript":"no type"}"#), None);
         let mut turns = TurnTracker::new("Them");
@@ -1651,21 +1956,43 @@ mod tests {
     #[test]
     fn a_turn_becomes_interims_then_one_final() {
         let mut turns = TurnTracker::new("Them");
-        assert!(turns.on_event(&event(r#"{"type":"turn.start"}"#), 10_000).is_none());
+        assert!(turns
+            .on_event(&event(r#"{"type":"turn.start"}"#), 10_000)
+            .is_none());
 
-        let update = turns.on_event(&event(r#"{"type":"turn.update","transcript":"Hi I"}"#), 10_400).unwrap();
+        let update = turns
+            .on_event(
+                &event(r#"{"type":"turn.update","transcript":"Hi I"}"#),
+                10_400,
+            )
+            .unwrap();
         assert_eq!(update.text, "Hi I");
         assert!(!update.is_final);
         assert_eq!(update.timestamp_ms, 10_000);
         assert_eq!(update.speaker.as_deref(), Some("Them"));
 
-        let eager = turns.on_event(&event(r#"{"type":"turn.eager_end","transcript":"Hi I need to cancel"}"#), 11_000).unwrap();
+        let eager = turns
+            .on_event(
+                &event(r#"{"type":"turn.eager_end","transcript":"Hi I need to cancel"}"#),
+                11_000,
+            )
+            .unwrap();
         assert!(!eager.is_final);
         assert_eq!(eager.text, "Hi I need to cancel");
-        let resumed = turns.on_event(&event(r#"{"type":"turn.resume"}"#), 11_100).unwrap();
-        assert_eq!((resumed.text.as_str(), resumed.is_final), ("Hi I need to cancel", false));
+        let resumed = turns
+            .on_event(&event(r#"{"type":"turn.resume"}"#), 11_100)
+            .unwrap();
+        assert_eq!(
+            (resumed.text.as_str(), resumed.is_final),
+            ("Hi I need to cancel", false)
+        );
 
-        let end = turns.on_event(&event(r#"{"type":"turn.end","transcript":"Hi I need to cancel my plan. "}"#), 12_500).unwrap();
+        let end = turns
+            .on_event(
+                &event(r#"{"type":"turn.end","transcript":"Hi I need to cancel my plan. "}"#),
+                12_500,
+            )
+            .unwrap();
         assert!(end.is_final);
         assert_eq!(end.text, "Hi I need to cancel my plan.");
         assert_eq!(end.timestamp_ms, 10_000);
@@ -1678,18 +2005,44 @@ mod tests {
     fn turn_events_carry_cartesias_turn_signals() {
         let mut turns = TurnTracker::new("Them");
         turns.on_event(&event(r#"{"type":"turn.start"}"#), 10_000);
-        let update = turns.on_event(&event(r#"{"type":"turn.update","transcript":"What would you"}"#), 10_300).unwrap();
+        let update = turns
+            .on_event(
+                &event(r#"{"type":"turn.update","transcript":"What would you"}"#),
+                10_300,
+            )
+            .unwrap();
         assert_eq!(update.turn, None);
 
-        let eager = turns.on_event(&event(r#"{"type":"turn.eager_end","transcript":"What would you do"}"#), 10_800).unwrap();
-        assert_eq!((eager.turn, eager.is_final), (Some(TurnSignal::EagerEnd), false));
+        let eager = turns
+            .on_event(
+                &event(r#"{"type":"turn.eager_end","transcript":"What would you do"}"#),
+                10_800,
+            )
+            .unwrap();
+        assert_eq!(
+            (eager.turn, eager.is_final),
+            (Some(TurnSignal::EagerEnd), false)
+        );
 
         // turn.resume carries no text: it reports the turn's latest text again.
-        let resumed = turns.on_event(&event(r#"{"type":"turn.resume"}"#), 11_000).unwrap();
-        assert_eq!((resumed.turn, resumed.is_final), (Some(TurnSignal::Resumed), false));
-        assert_eq!((resumed.text.as_str(), resumed.timestamp_ms), ("What would you do", 10_000));
+        let resumed = turns
+            .on_event(&event(r#"{"type":"turn.resume"}"#), 11_000)
+            .unwrap();
+        assert_eq!(
+            (resumed.turn, resumed.is_final),
+            (Some(TurnSignal::Resumed), false)
+        );
+        assert_eq!(
+            (resumed.text.as_str(), resumed.timestamp_ms),
+            ("What would you do", 10_000)
+        );
 
-        let end = turns.on_event(&event(r#"{"type":"turn.end","transcript":"What would you do first?"}"#), 12_000).unwrap();
+        let end = turns
+            .on_event(
+                &event(r#"{"type":"turn.end","transcript":"What would you do first?"}"#),
+                12_000,
+            )
+            .unwrap();
         assert_eq!((end.turn, end.is_final), (Some(TurnSignal::End), true));
     }
 
@@ -1697,7 +2050,9 @@ mod tests {
     fn a_resume_before_any_text_reports_nothing() {
         let mut turns = TurnTracker::new("Them");
         turns.on_event(&event(r#"{"type":"turn.start"}"#), 1_000);
-        assert!(turns.on_event(&event(r#"{"type":"turn.resume"}"#), 1_100).is_none());
+        assert!(turns
+            .on_event(&event(r#"{"type":"turn.resume"}"#), 1_100)
+            .is_none());
     }
 
     #[test]
@@ -1706,7 +2061,10 @@ mod tests {
         // treat it as a turn end.
         let mut turns = TurnTracker::new("Them");
         turns.on_event(&event(r#"{"type":"turn.start"}"#), 1_000);
-        turns.on_event(&event(r#"{"type":"turn.eager_end","transcript":"What would"}"#), 1_500);
+        turns.on_event(
+            &event(r#"{"type":"turn.eager_end","transcript":"What would"}"#),
+            1_500,
+        );
         let last = turns.finish_open_turn(2_000).unwrap();
         assert_eq!((last.is_final, last.turn), (true, None));
     }
@@ -1715,17 +2073,31 @@ mod tests {
     fn empty_turns_produce_nothing() {
         let mut turns = TurnTracker::new("You");
         turns.on_event(&event(r#"{"type":"turn.start"}"#), 1_000);
-        assert!(turns.on_event(&event(r#"{"type":"turn.update","transcript":"  "}"#), 1_200).is_none());
-        assert!(turns.on_event(&event(r#"{"type":"turn.end","transcript":""}"#), 1_500).is_none());
+        assert!(turns
+            .on_event(&event(r#"{"type":"turn.update","transcript":"  "}"#), 1_200)
+            .is_none());
+        assert!(turns
+            .on_event(&event(r#"{"type":"turn.end","transcript":""}"#), 1_500)
+            .is_none());
         assert!(turns.finish_open_turn(2_000).is_none());
     }
 
     #[test]
     fn a_turn_without_turn_start_is_stamped_at_its_first_event() {
         let mut turns = TurnTracker::new("Them");
-        let update = turns.on_event(&event(r#"{"type":"turn.update","transcript":"Hello"}"#), 5_000).unwrap();
+        let update = turns
+            .on_event(
+                &event(r#"{"type":"turn.update","transcript":"Hello"}"#),
+                5_000,
+            )
+            .unwrap();
         assert_eq!(update.timestamp_ms, 5_000);
-        let end = turns.on_event(&event(r#"{"type":"turn.end","transcript":"Hello there"}"#), 6_000).unwrap();
+        let end = turns
+            .on_event(
+                &event(r#"{"type":"turn.end","transcript":"Hello there"}"#),
+                6_000,
+            )
+            .unwrap();
         assert_eq!((end.timestamp_ms, end.duration_ms), (5_000, Some(1_000)));
     }
 
@@ -1733,7 +2105,10 @@ mod tests {
     fn an_open_turn_is_finished_once_with_its_latest_text() {
         let mut turns = TurnTracker::new("Them");
         turns.on_event(&event(r#"{"type":"turn.start"}"#), 1_000);
-        turns.on_event(&event(r#"{"type":"turn.update","transcript":"half a sente"}"#), 1_600);
+        turns.on_event(
+            &event(r#"{"type":"turn.update","transcript":"half a sente"}"#),
+            1_600,
+        );
         let last = turns.finish_open_turn(2_000).unwrap();
         assert!(last.is_final);
         assert_eq!(last.text, "half a sente");
@@ -1758,9 +2133,15 @@ mod tests {
     /// The frontend selects the provider and stores its key by this id.
     #[test]
     fn registered_as_cartesia() {
-        assert_eq!(STTProviderType::from_str("cartesia"), Some(STTProviderType::Cartesia));
+        assert_eq!(
+            STTProviderType::from_str("cartesia"),
+            Some(STTProviderType::Cartesia)
+        );
         assert_eq!(STTProviderType::Cartesia.as_str(), "cartesia");
-        assert_eq!(CartesiaSTT::new().provider_type(), STTProviderType::Cartesia);
+        assert_eq!(
+            CartesiaSTT::new().provider_type(),
+            STTProviderType::Cartesia
+        );
         let info = crate::stt::provider::list_available_providers()
             .into_iter()
             .find(|p| p.provider_type == "cartesia")
@@ -1771,6 +2152,9 @@ mod tests {
 
     #[test]
     fn pcm_is_little_endian() {
-        assert_eq!(pcm_to_bytes(&[1, -2, 0x1234]), vec![0x01, 0x00, 0xFE, 0xFF, 0x34, 0x12]);
+        assert_eq!(
+            pcm_to_bytes(&[1, -2, 0x1234]),
+            vec![0x01, 0x00, 0xFE, 0xFF, 0x34, 0x12]
+        );
     }
 }

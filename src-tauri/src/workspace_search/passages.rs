@@ -80,7 +80,9 @@ fn make(
 
 fn clean(text: &str) -> String {
     let cut = super::cjk::truncate_chars(text, MAX_SOURCE_CHARS);
-    cut.replace("\r\n", "\n").replace('\r', "\n").replace('\0', "")
+    cut.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\0', "")
 }
 
 /// Rough speaking time of a line (400 ms a word, 250 ms a CJK character).
@@ -107,7 +109,10 @@ pub fn build_transcript_passages(
     segments: &[SegmentInput],
     total_ms: Option<i64>,
 ) -> Vec<NewPassage> {
-    let mut segs: Vec<&SegmentInput> = segments.iter().filter(|s| !s.text.trim().is_empty()).collect();
+    let mut segs: Vec<&SegmentInput> = segments
+        .iter()
+        .filter(|s| !s.text.trim().is_empty())
+        .collect();
     segs.sort_by_key(|s| s.start_ms);
 
     struct Turn {
@@ -137,7 +142,12 @@ pub fn build_transcript_passages(
                 t.text.push_str(&text);
                 t.end = end;
             }
-            _ => turns.push(Turn { speaker: s.speaker.clone(), text, start: s.start_ms, end }),
+            _ => turns.push(Turn {
+                speaker: s.speaker.clone(),
+                text,
+                start: s.start_ms,
+                end,
+            }),
         }
     }
 
@@ -146,7 +156,12 @@ pub fn build_transcript_passages(
     for t in turns {
         let units = unit_count(&t.text);
         if units <= MAX_UNITS {
-            pieces.push(Piece { speaker: t.speaker, text: t.text, start: t.start, end: t.end });
+            pieces.push(Piece {
+                speaker: t.speaker,
+                text: t.text,
+                start: t.start,
+                end: t.end,
+            });
             continue;
         }
         let chunks = chunk_text(&t.text, MAX_UNITS);
@@ -158,7 +173,12 @@ pub fn build_transcript_passages(
             let s = t.start + span * done as i64 / total_u as i64;
             done += u;
             let e = t.start + span * done as i64 / total_u as i64;
-            pieces.push(Piece { speaker: t.speaker.clone(), text: c, start: s, end: e });
+            pieces.push(Piece {
+                speaker: t.speaker.clone(),
+                text: c,
+                start: s,
+                end: e,
+            });
         }
     }
 
@@ -198,7 +218,12 @@ pub fn build_transcript_passages(
                     last_units = a.units;
                     flush(a, &mut out);
                 }
-                acc = Some(Acc { lines: vec![line], units: u, start: p.start, end: p.end });
+                acc = Some(Acc {
+                    lines: vec![line],
+                    units: u,
+                    start: p.start,
+                    end: p.end,
+                });
             }
         }
         if out.len() >= MAX_PASSAGES_PER_SOURCE {
@@ -210,7 +235,9 @@ pub fn build_transcript_passages(
         if a.units < 40
             && last_units > 0
             && last_units + a.units <= MAX_UNITS + 40
-            && out.last().map_or(false, |prev| a.end - prev.start_ms.unwrap_or(a.start) <= MAX_SPAN_MS)
+            && out.last().map_or(false, |prev| {
+                a.end - prev.start_ms.unwrap_or(a.start) <= MAX_SPAN_MS
+            })
         {
             if let Some(prev) = out.last_mut() {
                 prev.text.push('\n');
@@ -267,7 +294,10 @@ pub fn build_markdown_passages(
         path: Vec<String>,
         body: String,
     }
-    let mut sections: Vec<Section> = vec![Section { path: Vec::new(), body: String::new() }];
+    let mut sections: Vec<Section> = vec![Section {
+        path: Vec::new(),
+        body: String::new(),
+    }];
     let mut stack: Vec<(usize, String)> = Vec::new();
     let mut in_fence = false;
     for line in text.lines() {
@@ -314,7 +344,10 @@ pub fn build_markdown_passages(
                     let mut body = p.body;
                     body.push('\n');
                     body.push_str(&sec.body);
-                    pending = Some(Section { path: sec.path, body });
+                    pending = Some(Section {
+                        path: sec.path,
+                        body,
+                    });
                 } else {
                     merged.push(p);
                     pending = Some(sec);
@@ -358,11 +391,18 @@ mod tests {
     use super::*;
 
     fn seg(speaker: &str, text: &str, start_ms: i64) -> SegmentInput {
-        SegmentInput { speaker: speaker.into(), text: text.into(), start_ms }
+        SegmentInput {
+            speaker: speaker.into(),
+            text: text.into(),
+            start_ms,
+        }
     }
 
     fn words(n: usize, tag: &str) -> String {
-        (0..n).map(|i| format!("{tag}{i}")).collect::<Vec<_>>().join(" ")
+        (0..n)
+            .map(|i| format!("{tag}{i}"))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     #[test]
@@ -391,7 +431,15 @@ mod tests {
     #[test]
     fn a_ten_minute_meeting_of_short_lines_has_passages_of_a_minute_and_a_half_at_most() {
         // 8 words every 10 s: far fewer than 120 units a minute, so only the time limit cuts
-        let segs: Vec<SegmentInput> = (0..60).map(|i| seg(if i % 2 == 0 { "You" } else { "Them" }, &words(8, &format!("t{i}x")), i * 10_000)).collect();
+        let segs: Vec<SegmentInput> = (0..60)
+            .map(|i| {
+                seg(
+                    if i % 2 == 0 { "You" } else { "Them" },
+                    &words(8, &format!("t{i}x")),
+                    i * 10_000,
+                )
+            })
+            .collect();
         let p = build_transcript_passages("m1", "Weekly", Some(1), &segs, Some(600_000));
         assert!(p.len() >= 7, "{} passages", p.len());
         for x in &p {
@@ -417,8 +465,17 @@ mod tests {
 
     #[test]
     fn one_huge_turn_is_split_with_shared_out_times() {
-        let text = (0..160).map(|i| format!("Sentence number {i} is here.")).collect::<Vec<_>>().join(" ");
-        let p = build_transcript_passages("m", "t", None, &[seg("Them", &text, 0), seg("You", "ok", 120_000)], None);
+        let text = (0..160)
+            .map(|i| format!("Sentence number {i} is here."))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let p = build_transcript_passages(
+            "m",
+            "t",
+            None,
+            &[seg("Them", &text, 0), seg("You", "ok", 120_000)],
+            None,
+        );
         assert!(p.len() >= 3);
         assert!(p.iter().all(|x| unit_count(&x.text) <= MAX_UNITS + 5));
         let ends: Vec<_> = p.iter().map(|x| x.end_ms.unwrap()).collect();
@@ -439,7 +496,9 @@ mod tests {
     #[test]
     fn empty_and_blank_segments_give_no_passages() {
         assert!(build_transcript_passages("m", "t", None, &[], None).is_empty());
-        assert!(build_transcript_passages("m", "t", None, &[seg("You", "   ", 0)], None).is_empty());
+        assert!(
+            build_transcript_passages("m", "t", None, &[seg("You", "   ", 0)], None).is_empty()
+        );
     }
 
     #[test]
@@ -450,9 +509,15 @@ mod tests {
             words(100, "usage")
         );
         let p = build_markdown_passages("f1", "docs/guide.md", &md, None);
-        assert!(p.iter().any(|x| x.title == "guide > Guide > Setup"), "{:?}", p.iter().map(|x| &x.title).collect::<Vec<_>>());
+        assert!(
+            p.iter().any(|x| x.title == "guide > Guide > Setup"),
+            "{:?}",
+            p.iter().map(|x| &x.title).collect::<Vec<_>>()
+        );
         assert!(p.iter().any(|x| x.title == "guide > Guide > Usage"));
-        assert!(p.iter().all(|x| x.sub_ref.as_deref() == Some("docs/guide.md")));
+        assert!(p
+            .iter()
+            .all(|x| x.sub_ref.as_deref() == Some("docs/guide.md")));
         assert!(p.iter().any(|x| x.text.contains("# not a heading")));
     }
 

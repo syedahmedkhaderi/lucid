@@ -38,8 +38,8 @@ const SILENCE_TICK: Duration = Duration::from_millis(200);
 const HOST_START_LIMIT: Duration = Duration::from_secs(12);
 const HOST_IDLE_LIMIT: Duration = Duration::from_secs(6);
 const RESUME_BYTES: usize = 16_000; // last half-second captured after unmute
-// Reconnect after a launcher stall or a network/SDK failure, backing off
-// between attempts. Credential and model failures are not retried.
+                                    // Reconnect after a launcher stall or a network/SDK failure, backing off
+                                    // between attempts. Credential and model failures are not retried.
 const RETRY_FIRST: Duration = Duration::from_secs(2);
 const RETRY_MAX: Duration = Duration::from_secs(30);
 // A session that stayed up this long resets the backoff.
@@ -737,8 +737,20 @@ mod tests {
         assert!(!retry_due(false, start, Some(start), &mut at, &mut backoff));
         // The first call schedules, the attempt fires once the delay passes.
         assert!(!retry_due(true, start, Some(start), &mut at, &mut backoff));
-        assert!(!retry_due(true, start + Duration::from_secs(1), Some(start), &mut at, &mut backoff));
-        assert!(retry_due(true, start + RETRY_FIRST, Some(start), &mut at, &mut backoff));
+        assert!(!retry_due(
+            true,
+            start + Duration::from_secs(1),
+            Some(start),
+            &mut at,
+            &mut backoff
+        ));
+        assert!(retry_due(
+            true,
+            start + RETRY_FIRST,
+            Some(start),
+            &mut at,
+            &mut backoff
+        ));
         // Repeated failures double the wait up to the cap.
         let mut delays = vec![];
         for _ in 0..6 {

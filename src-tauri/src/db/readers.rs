@@ -16,7 +16,10 @@ pub struct ReaderPool {
 
 impl ReaderPool {
     pub fn new(path: PathBuf) -> Self {
-        Self { path, idle: Mutex::new(Vec::new()) }
+        Self {
+            path,
+            idle: Mutex::new(Vec::new()),
+        }
     }
 
     /// Runs `f` on a read-only connection. Err when none could be opened.
@@ -50,15 +53,31 @@ mod tests {
             c.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
             c
         });
-        w.execute_batch("CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1);").unwrap();
+        w.execute_batch("CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1);")
+            .unwrap();
         let pool = ReaderPool::new(path);
         w.execute_batch("BEGIN; INSERT INTO t VALUES (2);").unwrap();
-        let n: i64 = pool.with(|c| c.query_row("SELECT COUNT(*) FROM t", [], |r| r.get(0)).unwrap()).unwrap();
+        let n: i64 = pool
+            .with(|c| {
+                c.query_row("SELECT COUNT(*) FROM t", [], |r| r.get(0))
+                    .unwrap()
+            })
+            .unwrap();
         assert_eq!(n, 1, "an open write is not visible and does not block");
         w.execute_batch("COMMIT;").unwrap();
-        let n: i64 = pool.with(|c| c.query_row("SELECT COUNT(*) FROM t", [], |r| r.get(0)).unwrap()).unwrap();
+        let n: i64 = pool
+            .with(|c| {
+                c.query_row("SELECT COUNT(*) FROM t", [], |r| r.get(0))
+                    .unwrap()
+            })
+            .unwrap();
         assert_eq!(n, 2);
-        assert!(pool.with(|c| c.execute("DELETE FROM t", [])).unwrap().is_err(), "readers cannot write");
+        assert!(
+            pool.with(|c| c.execute("DELETE FROM t", []))
+                .unwrap()
+                .is_err(),
+            "readers cannot write"
+        );
         drop(pool);
         drop(w);
         let _ = std::fs::remove_dir_all(dir);

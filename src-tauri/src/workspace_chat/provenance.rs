@@ -27,7 +27,15 @@ pub const VERSION: u8 = 1;
 /// Every kind a run can draw on. `instructions` and `conversation` carry no
 /// access of their own (instructions are the workspace's own text, the history
 /// is covered through its own records).
-const KINDS: &[&str] = &["meeting", "document", "folder", "launch_folder", "talking_point", "server", "memory"];
+const KINDS: &[&str] = &[
+    "meeting",
+    "document",
+    "folder",
+    "launch_folder",
+    "talking_point",
+    "server",
+    "memory",
+];
 const NO_ACCESS_KINDS: &[&str] = &["instructions", "conversation"];
 
 fn key(kind: &str, id: &str) -> String {
@@ -55,7 +63,12 @@ pub struct Provenance {
 
 impl Default for Provenance {
     fn default() -> Self {
-        Provenance { v: VERSION, bad: Vec::new(), ids: BTreeSet::new(), capped: None }
+        Provenance {
+            v: VERSION,
+            bad: Vec::new(),
+            ids: BTreeSet::new(),
+            capped: None,
+        }
     }
 }
 
@@ -144,7 +157,10 @@ impl Universe {
 
     pub fn digest(&self) -> Capped {
         let joined = self.set.iter().cloned().collect::<Vec<_>>().join(",");
-        Capped { count: self.set.len(), digest: sha_hex(joined.as_bytes()) }
+        Capped {
+            count: self.set.len(),
+            digest: sha_hex(joined.as_bytes()),
+        }
     }
 }
 
@@ -170,7 +186,10 @@ mod tests {
         assert!(allowed(&p, &u), "nothing used: nothing to lose");
         p.add("instructions", "");
         p.add("conversation", "");
-        assert!(allowed(&p, &u), "kinds with no access of their own are fine");
+        assert!(
+            allowed(&p, &u),
+            "kinds with no access of their own are fine"
+        );
         let mut q = Provenance::new();
         q.add("hologram", "x");
         assert!(!allowed(&q, &u));
@@ -182,7 +201,10 @@ mod tests {
         assert!(!allowed(&q, &u));
         let mut merged = Provenance::new();
         merged.merge(&q);
-        assert!(!allowed(&merged, &u), "a record from another format poisons what includes it");
+        assert!(
+            !allowed(&merged, &u),
+            "a record from another format poisons what includes it"
+        );
     }
 
     #[test]

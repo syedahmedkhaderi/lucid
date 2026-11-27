@@ -35,7 +35,10 @@ pub struct WatchStatus(Arc<Mutex<BTreeSet<String>>>);
 
 impl WatchStatus {
     pub fn folders(&self) -> Vec<String> {
-        self.0.lock().map(|s| s.iter().cloned().collect()).unwrap_or_default()
+        self.0
+            .lock()
+            .map(|s| s.iter().cloned().collect())
+            .unwrap_or_default()
     }
 }
 
@@ -72,12 +75,21 @@ fn relevant(rel: &Path, private: Option<&Path>, abs: &Path) -> bool {
     for part in rel.components() {
         let name = part.as_os_str().to_string_lossy().into_owned();
         let lower = name.to_lowercase();
-        if name.starts_with('.') || is_secret_like(&name) || lower == "node_modules" || lower == "__pycache__" || name.ends_with('~') {
+        if name.starts_with('.')
+            || is_secret_like(&name)
+            || lower == "node_modules"
+            || lower == "__pycache__"
+            || name.ends_with('~')
+        {
             return false;
         }
         last = Some(name);
     }
-    match last.as_deref().and_then(|n| n.rsplit_once('.')).map(|(_, ext)| ext.to_lowercase()) {
+    match last
+        .as_deref()
+        .and_then(|n| n.rsplit_once('.'))
+        .map(|(_, ext)| ext.to_lowercase())
+    {
         Some(ext) => SUPPORTED_EXTENSIONS.contains(&ext.as_str()),
         None => true,
     }
@@ -108,7 +120,10 @@ impl FolderWatchers {
                     match rx.recv_timeout(next) {
                         Ok(Ev::Touched(id)) => {
                             let now = Instant::now();
-                            pending.entry(id).and_modify(|e| e.1 = now).or_insert((now, now));
+                            pending
+                                .entry(id)
+                                .and_modify(|e| e.1 = now)
+                                .or_insert((now, now));
                         }
                         Ok(Ev::Forget(id)) => {
                             pending.remove(&id);
@@ -119,7 +134,10 @@ impl FolderWatchers {
                     let now = Instant::now();
                     let due: Vec<String> = pending
                         .iter()
-                        .filter(|(_, (first, last))| now.duration_since(*last) >= debounce || now.duration_since(*first) >= MAX_WAIT)
+                        .filter(|(_, (first, last))| {
+                            now.duration_since(*last) >= debounce
+                                || now.duration_since(*first) >= MAX_WAIT
+                        })
                         .map(|(id, _)| id.clone())
                         .collect();
                     for id in due {
@@ -129,7 +147,13 @@ impl FolderWatchers {
                 }
             })
             .ok();
-        FolderWatchers { active: HashMap::new(), failed: HashMap::new(), status: WatchStatus::default(), tx, thread }
+        FolderWatchers {
+            active: HashMap::new(),
+            failed: HashMap::new(),
+            status: WatchStatus::default(),
+            tx,
+            thread,
+        }
     }
 
     pub fn status(&self) -> WatchStatus {
@@ -142,12 +166,19 @@ impl FolderWatchers {
     pub fn sync(&mut self, wanted: &[(String, PathBuf)]) {
         let keep: BTreeSet<&str> = wanted.iter().map(|(id, _)| id.as_str()).collect();
         self.failed.retain(|id, _| keep.contains(id.as_str()));
-        let gone: Vec<String> = self.active.keys().filter(|id| !keep.contains(id.as_str())).cloned().collect();
+        let gone: Vec<String> = self
+            .active
+            .keys()
+            .filter(|id| !keep.contains(id.as_str()))
+            .cloned()
+            .collect();
         for id in gone {
             self.stop_one(&id);
         }
         for (id, path) in wanted {
-            if self.active.get(id).is_some_and(|a| &a.path == path) || self.failed.get(id) == Some(path) && !path.is_dir() {
+            if self.active.get(id).is_some_and(|a| &a.path == path)
+                || self.failed.get(id) == Some(path) && !path.is_dir()
+            {
                 continue;
             }
             self.stop_one(id);
@@ -158,7 +189,10 @@ impl FolderWatchers {
                 }
                 Err(e) => {
                     if self.failed.insert(id.clone(), path.clone()).as_ref() != Some(path) {
-                        log::warn!("Folder {} is not watched ({e}); the periodic scan keeps it current", path.display());
+                        log::warn!(
+                            "Folder {} is not watched ({e}); the periodic scan keeps it current",
+                            path.display()
+                        );
                     }
                 }
             }
@@ -202,8 +236,13 @@ impl FolderWatchers {
             }
         })
         .map_err(|e| e.to_string())?;
-        watcher.watch(path, RecursiveMode::Recursive).map_err(|e| e.to_string())?;
-        Ok(Active { path: path.to_path_buf(), _watcher: watcher })
+        watcher
+            .watch(path, RecursiveMode::Recursive)
+            .map_err(|e| e.to_string())?;
+        Ok(Active {
+            path: path.to_path_buf(),
+            _watcher: watcher,
+        })
     }
 
     /// Stop every watcher and the debounce thread.
@@ -242,14 +281,36 @@ mod tests {
         let root = Path::new("C:/notes");
         let r = |rel: &str| relevant(Path::new(rel), None, &root.join(rel));
         assert!(r("plan.md") && r("sub/dir/plan.TXT") && r("report.pdf") && r("a.docx"));
-        assert!(r("a folder moved"), "a directory has no extension: its files moved");
-        assert!(!r(".git/index") && !r("sub/.hidden/a.md") && !r(".env") && !r("node_modules/x/readme.md"));
-        assert!(!r("my password list.txt") && !r("id_rsa") && !r("notes.md~") && !r("a.md.tmp") && !r("image.png"));
+        assert!(
+            r("a folder moved"),
+            "a directory has no extension: its files moved"
+        );
+        assert!(
+            !r(".git/index")
+                && !r("sub/.hidden/a.md")
+                && !r(".env")
+                && !r("node_modules/x/readme.md")
+        );
+        assert!(
+            !r("my password list.txt")
+                && !r("id_rsa")
+                && !r("notes.md~")
+                && !r("a.md.tmp")
+                && !r("image.png")
+        );
         // Lucid's own private folder is never a reason to index
         let private = Path::new("C:/private");
-        assert!(!relevant(Path::new("a.md"), Some(private), &private.join("a.md")));
-        assert!(!changes_content(&EventKind::Access(notify::event::AccessKind::Any)));
-        assert!(changes_content(&EventKind::Remove(notify::event::RemoveKind::Any)));
+        assert!(!relevant(
+            Path::new("a.md"),
+            Some(private),
+            &private.join("a.md")
+        ));
+        assert!(!changes_content(&EventKind::Access(
+            notify::event::AccessKind::Any
+        )));
+        assert!(changes_content(&EventKind::Remove(
+            notify::event::RemoveKind::Any
+        )));
     }
 
     #[test]
@@ -257,10 +318,13 @@ mod tests {
         let dir = temp("burst");
         let hits = Arc::new(AtomicUsize::new(0));
         let h2 = hits.clone();
-        let mut w = FolderWatchers::new(Duration::from_millis(250), Arc::new(move |id| {
-            assert_eq!(id, "f1");
-            h2.fetch_add(1, Ordering::SeqCst);
-        }));
+        let mut w = FolderWatchers::new(
+            Duration::from_millis(250),
+            Arc::new(move |id| {
+                assert_eq!(id, "f1");
+                h2.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
         w.sync(&[("f1".into(), dir.clone())]);
         assert_eq!(w.status().folders(), vec!["f1"]);
         // let the OS watch settle, then write several files quickly
@@ -275,13 +339,21 @@ mod tests {
         }
         assert!(hits.load(Ordering::SeqCst) >= 1, "the burst was noticed");
         std::thread::sleep(Duration::from_millis(600));
-        assert!(hits.load(Ordering::SeqCst) <= 2, "a burst is one request, not one per file: {}", hits.load(Ordering::SeqCst));
+        assert!(
+            hits.load(Ordering::SeqCst) <= 2,
+            "a burst is one request, not one per file: {}",
+            hits.load(Ordering::SeqCst)
+        );
         // junk is not a reason
         let before = hits.load(Ordering::SeqCst);
         fs::write(dir.join("photo.png"), "x").unwrap();
         fs::write(dir.join(".secret.md"), "x").unwrap();
         std::thread::sleep(Duration::from_millis(700));
-        assert_eq!(hits.load(Ordering::SeqCst), before, "an image and a hidden file do not count");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            before,
+            "an image and a hidden file do not count"
+        );
         // unlinked: the watcher is gone and nothing more arrives
         w.sync(&[]);
         assert!(w.status().folders().is_empty());
@@ -296,8 +368,15 @@ mod tests {
     fn a_folder_that_moves_is_watched_at_its_new_path_and_a_missing_one_is_left_to_the_sweep() {
         let (a, b) = (temp("a"), temp("b"));
         let mut w = FolderWatchers::new(Duration::from_millis(100), Arc::new(|_| {}));
-        w.sync(&[("f".into(), a.clone()), ("gone".into(), a.join("does-not-exist"))]);
-        assert_eq!(w.status().folders(), vec!["f"], "a path that does not exist is not watched, and nothing breaks");
+        w.sync(&[
+            ("f".into(), a.clone()),
+            ("gone".into(), a.join("does-not-exist")),
+        ]);
+        assert_eq!(
+            w.status().folders(),
+            vec!["f"],
+            "a path that does not exist is not watched, and nothing breaks"
+        );
         w.sync(&[("f".into(), b.clone())]);
         assert_eq!(w.status().folders(), vec!["f"]);
         w.stop();

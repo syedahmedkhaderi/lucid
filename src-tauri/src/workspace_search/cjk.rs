@@ -209,7 +209,10 @@ mod tests {
 
     #[test]
     fn split_units_respects_max_and_never_loses_text() {
-        let text = (0..50).map(|i| format!("w{i}")).collect::<Vec<_>>().join(" ");
+        let text = (0..50)
+            .map(|i| format!("w{i}"))
+            .collect::<Vec<_>>()
+            .join(" ");
         let parts = split_units(&text, 12);
         assert_eq!(parts.len(), 5);
         assert!(parts.iter().all(|p| unit_count(p) <= 12));

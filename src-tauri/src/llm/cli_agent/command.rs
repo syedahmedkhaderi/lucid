@@ -66,7 +66,10 @@ impl std::fmt::Debug for SourcesLaunch {
             .field("allowed_tools", &self.allowed_tools)
             .field("disallowed_tools", &self.disallowed_tools)
             .field("server_labels", &self.server_labels)
-            .field("system_prompt_addition_len", &self.system_prompt_addition.len())
+            .field(
+                "system_prompt_addition_len",
+                &self.system_prompt_addition.len(),
+            )
             .field("left_out", &self.left_out)
             .field("mcp_startup_timeout_ms", &self.mcp_startup_timeout_ms)
             .finish()
@@ -113,7 +116,8 @@ pub fn build_args(
 ) -> Vec<String> {
     let s = |x: &str| x.to_string();
     // A chat that cannot ask has its asking tools switched off right here.
-    let effective = super::approval::launch_sources(cfg.kind, cfg.sources.as_ref(), cfg.approvals.as_ref());
+    let effective =
+        super::approval::launch_sources(cfg.kind, cfg.sources.as_ref(), cfg.approvals.as_ref());
     let sources = effective.as_ref();
     let mut args = vec![
         s("-p"),
@@ -123,7 +127,11 @@ pub fn build_args(
         s("stream-json"),
         s("--verbose"),
         s("--include-partial-messages"),
-        s(if sources.is_some() { "--restricted" } else { "--safe-mode" }),
+        s(if sources.is_some() {
+            "--restricted"
+        } else {
+            "--safe-mode"
+        }),
         s("--tools"),
         s(match sources {
             Some(src) if !src.add_dirs.is_empty() => SOURCES_BUILTIN_TOOLS,
@@ -140,17 +148,29 @@ pub fn build_args(
     }
     // A workspace chat that can ask hands its prompts to Lucid (`host`: the CLI
     // sends a `can_use_tool` control request); everyone else is never asked.
-    let ask = cfg.approvals.as_ref().filter(|a| a.can_ask && sources.is_some());
-    args.extend([s("--permission-prompts"), s(if ask.is_some() { "host" } else { "none" }), s("--no-session-persistence")]);
+    let ask = cfg
+        .approvals
+        .as_ref()
+        .filter(|a| a.can_ask && sources.is_some());
+    args.extend([
+        s("--permission-prompts"),
+        s(if ask.is_some() { "host" } else { "none" }),
+        s("--no-session-persistence"),
+    ]);
     if ask.is_some() {
         // How a host (the Agent SDK) takes the questions: over stdio, as control requests.
         args.extend([s("--permission-prompt-tool"), s("stdio")]);
     }
     if let Some(src) = sources {
         // A tool that asks is left out of the allow list: only then does the CLI ask.
-        let asks: std::collections::HashSet<String> =
-            ask.map(|a| a.policy.ask_tools().into_iter().collect()).unwrap_or_default();
-        let allowed: Vec<&String> = src.allowed_tools.iter().filter(|t| !asks.contains(*t)).collect();
+        let asks: std::collections::HashSet<String> = ask
+            .map(|a| a.policy.ask_tools().into_iter().collect())
+            .unwrap_or_default();
+        let allowed: Vec<&String> = src
+            .allowed_tools
+            .iter()
+            .filter(|t| !asks.contains(*t))
+            .collect();
         if !allowed.is_empty() {
             args.push(s("--allowedTools"));
             args.extend(allowed.into_iter().cloned());
@@ -182,7 +202,10 @@ pub fn sandbox_dir() -> PathBuf {
 /// Apply cwd (created if missing), stripped env and CREATE_NO_WINDOW.
 pub fn configure_command(cmd: &mut std::process::Command, sandbox: &Path) {
     if let Err(e) = std::fs::create_dir_all(sandbox) {
-        log::warn!("cli_agent: cannot create sandbox dir {}: {e}", sandbox.display());
+        log::warn!(
+            "cli_agent: cannot create sandbox dir {}: {e}",
+            sandbox.display()
+        );
     }
     cmd.current_dir(sandbox);
     for key in STRIPPED_ENV {
@@ -210,9 +233,12 @@ pub fn configure_session_command(cmd: &mut std::process::Command, sandbox: &Path
 /// constants above); a plain session has no MCP servers and gets none.
 pub fn configure_sources_env(cmd: &mut std::process::Command, startup_timeout_ms: Option<u32>) {
     let startup = startup_timeout_ms.map(|ms| ms.to_string());
-    cmd.env("MCP_TIMEOUT", startup.as_deref().unwrap_or(MCP_STARTUP_TIMEOUT_MS))
-        .env("MCP_TOOL_TIMEOUT", MCP_TOOL_TIMEOUT_MS)
-        .env("MAX_MCP_OUTPUT_TOKENS", MCP_MAX_OUTPUT_TOKENS);
+    cmd.env(
+        "MCP_TIMEOUT",
+        startup.as_deref().unwrap_or(MCP_STARTUP_TIMEOUT_MS),
+    )
+    .env("MCP_TOOL_TIMEOUT", MCP_TOOL_TIMEOUT_MS)
+    .env("MAX_MCP_OUTPUT_TOKENS", MCP_MAX_OUTPUT_TOKENS);
 }
 
 #[cfg(test)]
@@ -224,7 +250,9 @@ mod tests {
         let mut cmd = std::process::Command::new("claude.exe");
         configure_sources_env(&mut cmd, None);
         let env = |cmd: &std::process::Command, key: &str| {
-            cmd.get_envs().find(|(k, _)| *k == key).and_then(|(_, v)| v.map(|v| v.to_string_lossy().into_owned()))
+            cmd.get_envs()
+                .find(|(k, _)| *k == key)
+                .and_then(|(_, v)| v.map(|v| v.to_string_lossy().into_owned()))
         };
         assert_eq!(env(&cmd, "MCP_TIMEOUT").as_deref(), Some("20000"));
         // A Check waits longer, for a first download.
@@ -288,7 +316,12 @@ mod tests {
         ] {
             assert!(joined.contains(&seq.join("\u{1}")), "missing {seq:?}");
         }
-        for flag in ["--verbose", "--include-partial-messages", "--safe-mode", "--no-session-persistence"] {
+        for flag in [
+            "--verbose",
+            "--include-partial-messages",
+            "--safe-mode",
+            "--no-session-persistence",
+        ] {
             assert!(args.iter().any(|a| a == flag), "missing {flag}");
         }
         assert!(!args.iter().any(|a| a == "--bare"));
@@ -300,7 +333,12 @@ mod tests {
         SourcesLaunch {
             add_dirs: vec!["D:\\Vault\\@ObsidianVault\\DePaul notes".into()],
             mcp_config_json: Some("{}".into()),
-            allowed_tools: vec!["Read".into(), "Grep".into(), "Glob".into(), "mcp__mira__kb_search".into()],
+            allowed_tools: vec![
+                "Read".into(),
+                "Grep".into(),
+                "Glob".into(),
+                "mcp__mira__kb_search".into(),
+            ],
             disallowed_tools: vec!["mcp__mira__add_task".into()],
             ..Default::default()
         }
@@ -312,12 +350,33 @@ mod tests {
 
     #[test]
     fn plain_args_are_unchanged_by_the_sources_field() {
-        let args = build_args(&cfg(), Path::new("C:\\t\\sp.txt"), Some(Path::new("C:\\t\\ignored.json")));
+        let args = build_args(
+            &cfg(),
+            Path::new("C:\\t\\sp.txt"),
+            Some(Path::new("C:\\t\\ignored.json")),
+        );
         let expected = [
-            "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-            "--include-partial-messages", "--safe-mode", "--tools", "", "--disallowedTools", "*",
-            "--permission-prompts", "none", "--no-session-persistence", "--model", "haiku",
-            "--effort", "low", "--system-prompt-file", "C:\\t\\sp.txt",
+            "-p",
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-partial-messages",
+            "--safe-mode",
+            "--tools",
+            "",
+            "--disallowedTools",
+            "*",
+            "--permission-prompts",
+            "none",
+            "--no-session-persistence",
+            "--model",
+            "haiku",
+            "--effort",
+            "low",
+            "--system-prompt-file",
+            "C:\\t\\sp.txt",
         ];
         assert_eq!(args, expected);
     }
@@ -325,22 +384,37 @@ mod tests {
     #[test]
     fn sources_args_notes_and_tools() {
         let args = build_args(
-            &SessionConfig { sources: Some(sources()), ..cfg() },
+            &SessionConfig {
+                sources: Some(sources()),
+                ..cfg()
+            },
             Path::new("C:\\t\\sp.txt"),
             Some(Path::new("C:\\t\\mcp.json")),
         );
         assert_eq!(after(&args, "--tools"), "Read,Grep,Glob");
         // A path with spaces and `@` is a single argv entry.
-        assert_eq!(after(&args, "--add-dir"), "D:\\Vault\\@ObsidianVault\\DePaul notes");
+        assert_eq!(
+            after(&args, "--add-dir"),
+            "D:\\Vault\\@ObsidianVault\\DePaul notes"
+        );
         assert_eq!(after(&args, "--mcp-config"), "C:\\t\\mcp.json");
         assert_eq!(after(&args, "--disallowedTools"), "mcp__mira__add_task");
         assert_eq!(after(&args, "--allowedTools"), "Read");
         assert!(args.iter().any(|a| a == "--restricted"));
         assert!(!args.iter().any(|a| a == "--safe-mode"));
         assert!(args.iter().any(|a| a == "--strict-mcp-config"));
-        assert!(args.iter().any(|a| a == "--permission-prompts") && args.iter().any(|a| a == "--no-session-persistence"));
-        assert!(args.iter().any(|a| a == "mcp__mira__kb_search") && args.iter().any(|a| a == "mcp__mira__add_task"));
-        assert!(!args.iter().any(|a| a == "*" || a == "--bare" || a.contains("dangerously") || a.contains("bypass")));
+        assert!(
+            args.iter().any(|a| a == "--permission-prompts")
+                && args.iter().any(|a| a == "--no-session-persistence")
+        );
+        assert!(
+            args.iter().any(|a| a == "mcp__mira__kb_search")
+                && args.iter().any(|a| a == "mcp__mira__add_task")
+        );
+        assert!(!args.iter().any(|a| a == "*"
+            || a == "--bare"
+            || a.contains("dangerously")
+            || a.contains("bypass")));
         let pos = |f: &str| args.iter().position(|a| a == f).unwrap();
         assert!(pos("--no-session-persistence") < pos("--allowedTools"));
         assert!(pos("--add-dir") < pos("--model") && pos("--model") < pos("--system-prompt-file"));
@@ -354,7 +428,14 @@ mod tests {
             disallowed_tools: vec![],
             ..sources()
         };
-        let args = build_args(&SessionConfig { sources: Some(src), ..cfg() }, Path::new("C:\\t\\sp.txt"), Some(Path::new("C:\\t\\mcp.json")));
+        let args = build_args(
+            &SessionConfig {
+                sources: Some(src),
+                ..cfg()
+            },
+            Path::new("C:\\t\\sp.txt"),
+            Some(Path::new("C:\\t\\mcp.json")),
+        );
         assert_eq!(after(&args, "--tools"), "");
         assert!(!args.iter().any(|a| a == "--add-dir"));
         // Nothing switched off: no deny list, and never `*`.
@@ -363,8 +444,19 @@ mod tests {
 
     #[test]
     fn sources_args_notes_only_has_no_mcp_config() {
-        let src = SourcesLaunch { mcp_config_json: None, disallowed_tools: vec![], ..sources() };
-        let args = build_args(&SessionConfig { sources: Some(src), ..cfg() }, Path::new("C:\\t\\sp.txt"), None);
+        let src = SourcesLaunch {
+            mcp_config_json: None,
+            disallowed_tools: vec![],
+            ..sources()
+        };
+        let args = build_args(
+            &SessionConfig {
+                sources: Some(src),
+                ..cfg()
+            },
+            Path::new("C:\\t\\sp.txt"),
+            None,
+        );
         assert!(!args.iter().any(|a| a == "--mcp-config"));
         // Still strict, so no other MCP server loads.
         assert!(args.iter().any(|a| a == "--strict-mcp-config"));
@@ -372,30 +464,57 @@ mod tests {
 
     #[test]
     fn each_folder_gets_its_own_add_dir() {
-        let src = SourcesLaunch { add_dirs: vec!["D:\\a b".into(), "E:\\c".into()], ..sources() };
-        let args = build_args(&SessionConfig { sources: Some(src), ..cfg() }, Path::new("C:\\t\\sp.txt"), None);
-        let dirs: Vec<&String> = args.windows(2).filter(|w| w[0] == "--add-dir").map(|w| &w[1]).collect();
+        let src = SourcesLaunch {
+            add_dirs: vec!["D:\\a b".into(), "E:\\c".into()],
+            ..sources()
+        };
+        let args = build_args(
+            &SessionConfig {
+                sources: Some(src),
+                ..cfg()
+            },
+            Path::new("C:\\t\\sp.txt"),
+            None,
+        );
+        let dirs: Vec<&String> = args
+            .windows(2)
+            .filter(|w| w[0] == "--add-dir")
+            .map(|w| &w[1])
+            .collect();
         assert_eq!(dirs, ["D:\\a b", "E:\\c"]);
     }
 
     #[test]
     fn sources_launch_debug_redacts_secrets() {
         let src = SourcesLaunch {
-            mcp_config_json: Some(r#"{"mcpServers":{"a":{"env":{"API_KEY":"sk-live-123"}}}}"#.into()),
+            mcp_config_json: Some(
+                r#"{"mcpServers":{"a":{"env":{"API_KEY":"sk-live-123"}}}}"#.into(),
+            ),
             ..Default::default()
         };
         let shown = format!("{src:?}");
-        assert!(shown.contains("redacted") && !shown.contains("sk-live-123"), "{shown}");
-        let cfg = SessionConfig { sources: Some(src), ..cfg() };
+        assert!(
+            shown.contains("redacted") && !shown.contains("sk-live-123"),
+            "{shown}"
+        );
+        let cfg = SessionConfig {
+            sources: Some(src),
+            ..cfg()
+        };
         assert!(!format!("{cfg:?}").contains("sk-live-123"));
     }
 
     #[test]
     fn build_args_omits_effort_when_unsupported() {
-        let no_effort = SessionConfig { effort: None, ..cfg() };
+        let no_effort = SessionConfig {
+            effort: None,
+            ..cfg()
+        };
         let args = build_args(&no_effort, Path::new("C:\\t\\sp.txt"), None);
         assert!(!args.iter().any(|a| a == "--effort"), "{args:?}");
-        assert!(args.windows(2).any(|w| w[0] == "--model" && w[1] == "haiku"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--model" && w[1] == "haiku"));
         assert!(args.iter().any(|a| a == "--system-prompt-file"));
     }
 
@@ -417,7 +536,8 @@ mod tests {
     }
 
     #[test]
-    fn only_a_chat_that_can_ask_launches_with_host_prompts_and_its_asking_tools_left_out_of_the_allow_list() {
+    fn only_a_chat_that_can_ask_launches_with_host_prompts_and_its_asking_tools_left_out_of_the_allow_list(
+    ) {
         use crate::llm::cli_agent::approval::{ApprovalPolicy, ChatApprovals, WorkspaceApprovals};
         use crate::sources::config::{McpServer, McpTool};
         let tool = |n: &str, ro: Option<bool>| McpTool {
@@ -428,15 +548,27 @@ mod tests {
             destructive_hint: None,
         };
         let policy = ApprovalPolicy::from_servers(
-            &[McpServer { key: "m".into(), tools: vec![tool("kb_search", Some(true)), tool("send_mail", None)], ..Default::default() }],
+            &[McpServer {
+                key: "m".into(),
+                tools: vec![tool("kb_search", Some(true)), tool("send_mail", None)],
+                ..Default::default()
+            }],
             vec![],
         );
         let src = SourcesLaunch {
             add_dirs: vec!["C:\\t".into()],
-            allowed_tools: vec!["mcp__m__kb_search".into(), "mcp__m__send_mail".into(), "Read".into()],
+            allowed_tools: vec![
+                "mcp__m__kb_search".into(),
+                "mcp__m__send_mail".into(),
+                "Read".into(),
+            ],
             ..Default::default()
         };
-        let value_of = |args: &[String], flag: &str| args.iter().position(|a| a == flag).map(|i| args[i + 1].clone());
+        let value_of = |args: &[String], flag: &str| {
+            args.iter()
+                .position(|a| a == flag)
+                .map(|i| args[i + 1].clone())
+        };
         let approvals = |can_ask| ChatApprovals {
             can_ask,
             chat_id: "c".into(),
@@ -444,25 +576,58 @@ mod tests {
             policy: std::sync::Arc::new(policy.clone()),
         };
         let build = |a: Option<ChatApprovals>| {
-            build_args(&SessionConfig { sources: Some(src.clone()), approvals: a, ..cfg() }, Path::new("sp.txt"), None)
+            build_args(
+                &SessionConfig {
+                    sources: Some(src.clone()),
+                    approvals: a,
+                    ..cfg()
+                },
+                Path::new("sp.txt"),
+                None,
+            )
         };
 
         let asking = build(Some(approvals(true)));
-        assert_eq!(value_of(&asking, "--permission-prompts").as_deref(), Some("host"));
+        assert_eq!(
+            value_of(&asking, "--permission-prompts").as_deref(),
+            Some("host")
+        );
         // Found live: without this the CLI never asks, it denies by itself.
-        assert_eq!(value_of(&asking, "--permission-prompt-tool").as_deref(), Some("stdio"));
+        assert_eq!(
+            value_of(&asking, "--permission-prompt-tool").as_deref(),
+            Some("stdio")
+        );
         let at = asking.iter().position(|a| a == "--allowedTools").unwrap();
-        assert!(asking[at + 1..].contains(&"mcp__m__kb_search".to_string()) && asking[at + 1..].contains(&"Read".to_string()));
-        assert!(!asking.contains(&"mcp__m__send_mail".to_string()), "a tool that asks must not be pre-allowed");
+        assert!(
+            asking[at + 1..].contains(&"mcp__m__kb_search".to_string())
+                && asking[at + 1..].contains(&"Read".to_string())
+        );
+        assert!(
+            !asking.contains(&"mcp__m__send_mail".to_string()),
+            "a tool that asks must not be pre-allowed"
+        );
 
         // Everyone else: exactly as before.
         for other in [build(None), build(Some(approvals(false)))] {
-            assert_eq!(value_of(&other, "--permission-prompts").as_deref(), Some("none"));
+            assert_eq!(
+                value_of(&other, "--permission-prompts").as_deref(),
+                Some("none")
+            );
             assert_eq!(value_of(&other, "--permission-prompt-tool"), None);
             assert!(other.contains(&"mcp__m__send_mail".to_string()));
         }
         // A plain session (no sources) never asks, whatever it is given.
-        let plain = build_args(&SessionConfig { approvals: Some(approvals(true)), ..cfg() }, Path::new("sp.txt"), None);
-        assert_eq!(value_of(&plain, "--permission-prompts").as_deref(), Some("none"));
+        let plain = build_args(
+            &SessionConfig {
+                approvals: Some(approvals(true)),
+                ..cfg()
+            },
+            Path::new("sp.txt"),
+            None,
+        );
+        assert_eq!(
+            value_of(&plain, "--permission-prompts").as_deref(),
+            Some("none")
+        );
     }
 }

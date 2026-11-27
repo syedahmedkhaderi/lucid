@@ -150,7 +150,11 @@ impl IntelligenceEngine {
         if !question_detector::looks_like_new_question(text) {
             return;
         }
-        if self.last_detected_question.as_ref().is_some_and(|q| q.source == "Them") {
+        if self
+            .last_detected_question
+            .as_ref()
+            .is_some_and(|q| q.source == "Them")
+        {
             if let Some(q) = self.last_detected_question.take() {
                 self.dismissed_paragraph = Some(q.timestamp_ms);
             }
@@ -219,11 +223,13 @@ impl IntelligenceEngine {
         }
 
         // Extract actual messages for the call log
-        let system_msg = messages.iter()
+        let system_msg = messages
+            .iter()
             .find(|m| m.role == "system")
             .map(|m| m.content.clone())
             .unwrap_or_default();
-        let user_msg = messages.iter()
+        let user_msg = messages
+            .iter()
             .find(|m| m.role == "user")
             .map(|m| m.content.clone())
             .unwrap_or_default();
@@ -379,7 +385,9 @@ mod tests {
     #[test]
     fn guard_blocks_second_generation_until_dropped() {
         let engine = IntelligenceEngine::new();
-        let guard = engine.begin_generation("req-1").expect("first claim succeeds");
+        let guard = engine
+            .begin_generation("req-1")
+            .expect("first claim succeeds");
         assert!(engine.is_generating());
         assert!(engine.begin_generation("req-2").is_none());
         drop(guard);
@@ -463,7 +471,12 @@ mod tests {
 
     #[test]
     fn talk_that_is_not_a_question_keeps_the_detected_question() {
-        for text in ["Mm-hmm.", "Take your time with that.", "Yeah, that makes sense.", "Okay"] {
+        for text in [
+            "Mm-hmm.",
+            "Take your time with that.",
+            "Yeah, that makes sense.",
+            "Okay",
+        ] {
             let mut engine = IntelligenceEngine::new();
             them_final(&mut engine, "acc_1", "Why do you want this job?", 1_000);
             engine.note_them_line("acc_2", text, false);
@@ -513,11 +526,22 @@ mod tests {
         let mut engine = IntelligenceEngine::new();
         them_final(&mut engine, "acc_1", "Why do you want this job?", 1_000);
         them_final(&mut engine, "acc_1", "Why do you want this job?", 1_000);
-        assert!(engine.last_detected_question().is_some(), "a re-send changes nothing");
+        assert!(
+            engine.last_detected_question().is_some(),
+            "a re-send changes nothing"
+        );
         engine.note_them_line("acc_2", "So why did you choose Rust.", true);
         assert!(engine.last_detected_question().is_none());
-        engine.push_transcript("So why did you choose Rust.".to_string(), "Them".to_string(), 62_000, true);
-        assert!(engine.last_detected_question().is_none(), "no detected question in a plain sentence");
+        engine.push_transcript(
+            "So why did you choose Rust.".to_string(),
+            "Them".to_string(),
+            62_000,
+            true,
+        );
+        assert!(
+            engine.last_detected_question().is_none(),
+            "no detected question in a plain sentence"
+        );
         // The old paragraph re-sent by the next final stays dropped.
         them_final(&mut engine, "acc_2", "So why did you choose Rust.", 62_000);
         assert!(engine.last_detected_question().is_none());
@@ -532,7 +556,12 @@ mod tests {
     fn a_final_that_starts_a_line_with_a_question_becomes_the_new_question() {
         let mut engine = IntelligenceEngine::new();
         them_final(&mut engine, "acc_1", "Why do you want this job?", 1_000);
-        them_final(&mut engine, "acc_2", "What is your salary expectation?", 62_000);
+        them_final(
+            &mut engine,
+            "acc_2",
+            "What is your salary expectation?",
+            62_000,
+        );
         assert_eq!(
             engine.last_detected_question().map(|q| q.text.as_str()),
             Some("What is your salary expectation?")
@@ -542,7 +571,12 @@ mod tests {
     #[test]
     fn a_question_from_you_is_kept_when_them_starts_a_question() {
         let mut engine = IntelligenceEngine::new();
-        engine.push_transcript("Can I ask about the team?".to_string(), "You".to_string(), 1_000, true);
+        engine.push_transcript(
+            "Can I ask about the team?".to_string(),
+            "You".to_string(),
+            1_000,
+            true,
+        );
         engine.note_them_line("acc_1", "Why?", false);
         assert!(engine.last_detected_question().is_some());
     }

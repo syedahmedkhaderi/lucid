@@ -11,8 +11,9 @@ use super::rules::WindowInfo;
 pub fn capturing_processes() -> Vec<String> {
     use windows::core::Interface;
     use windows::Win32::Media::Audio::{
-        eCapture, AudioSessionStateActive, IAudioSessionControl, IAudioSessionControl2, IAudioSessionEnumerator,
-        IAudioSessionManager2, IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE,
+        eCapture, AudioSessionStateActive, IAudioSessionControl, IAudioSessionControl2,
+        IAudioSessionEnumerator, IAudioSessionManager2, IMMDeviceEnumerator, MMDeviceEnumerator,
+        DEVICE_STATE,
     };
     use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
 
@@ -27,7 +28,9 @@ pub fn capturing_processes() -> Vec<String> {
     fn session_managers() -> Vec<IAudioSessionManager2> {
         let mut managers = Vec::new();
         unsafe {
-            let Ok(enumerator) = CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL) else {
+            let Ok(enumerator) =
+                CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
+            else {
                 return managers;
             };
             // DEVICE_STATE_ACTIVE
@@ -35,7 +38,10 @@ pub fn capturing_processes() -> Vec<String> {
                 return managers;
             };
             for i in 0..devices.GetCount().unwrap_or(0) {
-                if let Ok(mgr) = devices.Item(i).and_then(|d| d.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None)) {
+                if let Ok(mgr) = devices
+                    .Item(i)
+                    .and_then(|d| d.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None))
+                {
                     managers.push(mgr);
                 }
             }
@@ -52,7 +58,9 @@ pub fn capturing_processes() -> Vec<String> {
             names
                 .borrow_mut()
                 .entry(pid)
-                .or_insert_with(|| crate::audio::session_monitor::process_exe_name(pid).map(|e| e.to_lowercase()))
+                .or_insert_with(|| {
+                    crate::audio::session_monitor::process_exe_name(pid).map(|e| e.to_lowercase())
+                })
                 .clone()
         })
     }
@@ -70,15 +78,21 @@ pub fn capturing_processes() -> Vec<String> {
     let mut exes = Vec::new();
     unsafe {
         for mgr in &managers {
-            let Ok(sessions) = mgr.GetSessionEnumerator() else { continue };
+            let Ok(sessions) = mgr.GetSessionEnumerator() else {
+                continue;
+            };
             let sessions: IAudioSessionEnumerator = sessions;
             for j in 0..sessions.GetCount().unwrap_or(0) {
-                let Ok(control) = sessions.GetSession(j) else { continue };
+                let Ok(control) = sessions.GetSession(j) else {
+                    continue;
+                };
                 let control: IAudioSessionControl = control;
                 if control.GetState().ok() != Some(AudioSessionStateActive) {
                     continue;
                 }
-                let Ok(control2) = control.cast::<IAudioSessionControl2>() else { continue };
+                let Ok(control2) = control.cast::<IAudioSessionControl2>() else {
+                    continue;
+                };
                 let pid = control2.GetProcessId().unwrap_or(0);
                 if pid == 0 || pid == own_pid {
                     continue;
@@ -101,7 +115,8 @@ pub fn visible_windows() -> Vec<WindowInfo> {
     use windows::core::BOOL;
     use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetClassNameW, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+        EnumWindows, GetClassNameW, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
+        IsWindowVisible,
     };
 
     unsafe extern "system" fn collect(hwnd: HWND, lparam: LPARAM) -> BOOL {
@@ -112,7 +127,10 @@ pub fn visible_windows() -> Vec<WindowInfo> {
 
     let mut handles: Vec<HWND> = Vec::new();
     unsafe {
-        let _ = EnumWindows(Some(collect), LPARAM(&mut handles as *mut Vec<HWND> as isize));
+        let _ = EnumWindows(
+            Some(collect),
+            LPARAM(&mut handles as *mut Vec<HWND> as isize),
+        );
     }
 
     let mut exe_by_pid: HashMap<u32, Option<String>> = HashMap::new();
@@ -132,7 +150,9 @@ pub fn visible_windows() -> Vec<WindowInfo> {
             GetWindowThreadProcessId(hwnd, Some(&mut pid));
             let exe = exe_by_pid
                 .entry(pid)
-                .or_insert_with(|| crate::audio::session_monitor::process_exe_name(pid).map(|e| e.to_lowercase()))
+                .or_insert_with(|| {
+                    crate::audio::session_monitor::process_exe_name(pid).map(|e| e.to_lowercase())
+                })
                 .clone();
             if let Some(exe) = exe {
                 out.push(WindowInfo { exe, title, class });
@@ -159,15 +179,22 @@ mod tests {
     #[ignore]
     fn live_probe() {
         unsafe {
-            let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
+            let _ = windows::Win32::System::Com::CoInitializeEx(
+                None,
+                windows::Win32::System::Com::COINIT_MULTITHREADED,
+            );
         }
         println!("capturing: {:?}", super::capturing_processes());
         let n = 50;
         let t = std::time::Instant::now();
-        for _ in 0..n { let _ = super::capturing_processes(); }
+        for _ in 0..n {
+            let _ = super::capturing_processes();
+        }
         let cap = t.elapsed() / n;
         let t = std::time::Instant::now();
-        for _ in 0..n { let _ = super::visible_windows(); }
+        for _ in 0..n {
+            let _ = super::visible_windows();
+        }
         let win = t.elapsed() / n;
         println!("per pass: mic sessions {:?}, windows {:?}", cap, win);
         for w in super::visible_windows().iter().take(40) {

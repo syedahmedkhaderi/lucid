@@ -35,7 +35,10 @@ pub struct SentLine {
 
 impl SentLine {
     pub fn held(text: &str) -> Self {
-        Self { text: text.trim().to_string(), held: true }
+        Self {
+            text: text.trim().to_string(),
+            held: true,
+        }
     }
 }
 
@@ -78,7 +81,10 @@ impl DeltaCursor {
             };
             if let Some(delta_text) = delta_text {
                 self.sent.insert(seg.id.clone(), SentLine::held(text));
-                new.push(Seg { text: delta_text, ..seg.clone() });
+                new.push(Seg {
+                    text: delta_text,
+                    ..seg.clone()
+                });
             } else if let Some(prev) = self.sent.get_mut(&seg.id) {
                 // Whitespace-only growth: nothing to say, but remember the text.
                 prev.text = text.to_string();
@@ -338,18 +344,33 @@ mod tests {
     #[test]
     fn delta_lines_render_continuation_and_correction_markers() {
         let mut cursor = DeltaCursor::default();
-        let line = Seg { id: "them_1".into(), ..seg("Hi", "Them", 65_000) };
+        let line = Seg {
+            id: "them_1".into(),
+            ..seg("Hi", "Them", 65_000)
+        };
         cursor.take_new(&[line.clone()]);
-        let new = cursor.take_new(&[Seg { text: "Hi there".into(), ..line }]);
-        assert_eq!(transcript_lines(&new, true), "[01:05] [them_1] Them: …there");
+        let new = cursor.take_new(&[Seg {
+            text: "Hi there".into(),
+            ..line
+        }]);
+        assert_eq!(
+            transcript_lines(&new, true),
+            "[01:05] [them_1] Them: …there"
+        );
     }
 
     #[test]
     fn cursor_sends_only_new() {
         let (a, b, c) = (seg("a", "You", 0), seg("b", "Them", 1), seg("c", "You", 2));
         let mut cursor = DeltaCursor::default();
-        assert_eq!(cursor.take_new(&[a.clone(), b.clone()]), vec![a.clone(), b.clone()]);
-        assert_eq!(cursor.take_new(&[a.clone(), b.clone(), c.clone()]), vec![c.clone()]);
+        assert_eq!(
+            cursor.take_new(&[a.clone(), b.clone()]),
+            vec![a.clone(), b.clone()]
+        );
+        assert_eq!(
+            cursor.take_new(&[a.clone(), b.clone(), c.clone()]),
+            vec![c.clone()]
+        );
         assert_eq!(cursor.sent(), 3);
         assert!(cursor.take_new(&[a, b, c]).is_empty());
     }
@@ -362,13 +383,20 @@ mod tests {
         let you2 = seg("Go ahead", "You", 7_000);
         let question = seg("What is your notice period?", "Them", 4_000);
         let mut cursor = DeltaCursor::default();
-        assert_eq!(cursor.take_new(&[you1.clone(), you2.clone()]), vec![you1.clone(), you2.clone()]);
+        assert_eq!(
+            cursor.take_new(&[you1.clone(), you2.clone()]),
+            vec![you1.clone(), you2.clone()]
+        );
         // The store keeps the question at its original position, before the sent lines.
         let finals = vec![question.clone(), you1.clone(), you2.clone()];
         assert_eq!(cursor.take_new(&finals), vec![question.clone()]);
         let later = seg("Two weeks", "You", 9_000);
         let finals = vec![question, you1, you2, later.clone()];
-        assert_eq!(cursor.take_new(&finals), vec![later], "nothing duplicated or skipped");
+        assert_eq!(
+            cursor.take_new(&finals),
+            vec![later],
+            "nothing duplicated or skipped"
+        );
     }
 
     #[test]
@@ -385,11 +413,17 @@ mod tests {
     fn cursor_new_segments_come_oldest_first_and_once() {
         let (a, b) = (seg("a", "You", 2_000), seg("b", "Them", 1_000));
         let mut cursor = DeltaCursor::default();
-        assert_eq!(cursor.take_new(&[a.clone(), b.clone(), a.clone()]), vec![b, a]);
+        assert_eq!(
+            cursor.take_new(&[a.clone(), b.clone(), a.clone()]),
+            vec![b, a]
+        );
     }
 
     fn with_text(seg: &Seg, text: &str) -> Seg {
-        Seg { text: text.into(), ..seg.clone() }
+        Seg {
+            text: text.into(),
+            ..seg.clone()
+        }
     }
 
     #[test]
@@ -399,10 +433,19 @@ mod tests {
         assert_eq!(cursor.take_new(&[line.clone()]), vec![line.clone()]);
         // The STT merged the next final into the same line (same id).
         let grown = with_text(&line, "We should ship on Friday.");
-        assert_eq!(cursor.take_new(&[grown.clone()]), vec![with_text(&line, "…on Friday.")]);
-        assert!(cursor.take_new(&[grown.clone()]).is_empty(), "nothing resent when unchanged");
+        assert_eq!(
+            cursor.take_new(&[grown.clone()]),
+            vec![with_text(&line, "…on Friday.")]
+        );
+        assert!(
+            cursor.take_new(&[grown.clone()]).is_empty(),
+            "nothing resent when unchanged"
+        );
         let grown2 = with_text(&line, "We should ship on Friday. Agreed?");
-        assert_eq!(cursor.take_new(&[grown2]), vec![with_text(&line, "…Agreed?")]);
+        assert_eq!(
+            cursor.take_new(&[grown2]),
+            vec![with_text(&line, "…Agreed?")]
+        );
         assert_eq!(cursor.sent(), 1);
     }
 
@@ -428,18 +471,43 @@ mod tests {
 
     #[test]
     fn cursor_dropped_line_is_resent_whole_only_when_it_changes() {
-        let (old, growing) = (seg("Old line", "You", 1_000), seg("Still talking", "Them", 2_000));
+        let (old, growing) = (
+            seg("Old line", "You", 1_000),
+            seg("Still talking", "Them", 2_000),
+        );
         let mut sent = HashMap::new();
-        sent.insert(old.id.clone(), SentLine { held: false, ..SentLine::held("Old line") });
-        sent.insert(growing.id.clone(), SentLine { held: false, ..SentLine::held("Still talking") });
+        sent.insert(
+            old.id.clone(),
+            SentLine {
+                held: false,
+                ..SentLine::held("Old line")
+            },
+        );
+        sent.insert(
+            growing.id.clone(),
+            SentLine {
+                held: false,
+                ..SentLine::held("Still talking")
+            },
+        );
         let mut cursor = DeltaCursor::with_sent(sent);
-        assert!(cursor.take_new(&[old.clone(), growing.clone()]).is_empty(), "dropped context is not resent");
+        assert!(
+            cursor.take_new(&[old.clone(), growing.clone()]).is_empty(),
+            "dropped context is not resent"
+        );
         let grown = with_text(&growing, "Still talking about it");
-        assert_eq!(cursor.take_new(&[old.clone(), grown.clone()]), vec![grown.clone()], "whole, unmarked");
+        assert_eq!(
+            cursor.take_new(&[old.clone(), grown.clone()]),
+            vec![grown.clone()],
+            "whole, unmarked"
+        );
         assert!(cursor.sent_lines()[&growing.id].held);
         assert!(!cursor.sent_lines()[&old.id].held);
         let more = with_text(&growing, "Still talking about it now");
-        assert_eq!(cursor.take_new(&[old, more]), vec![with_text(&growing, "…now")]);
+        assert_eq!(
+            cursor.take_new(&[old, more]),
+            vec![with_text(&growing, "…now")]
+        );
     }
 
     #[test]
@@ -475,15 +543,30 @@ mod tests {
 
     #[test]
     fn transcript_lines_with_and_without_ids() {
-        let segs = [seg("Hi", "You", 1_000), Seg { id: String::new(), ..seg("Yo", "Them", 2_000) }];
-        assert_eq!(transcript_lines(&segs, false), "[00:01] You: Hi\n[00:02] Them: Yo");
-        assert_eq!(transcript_lines(&segs, true), "[00:01] [You-1000] You: Hi\n[00:02] Them: Yo");
+        let segs = [
+            seg("Hi", "You", 1_000),
+            Seg {
+                id: String::new(),
+                ..seg("Yo", "Them", 2_000)
+            },
+        ];
+        assert_eq!(
+            transcript_lines(&segs, false),
+            "[00:01] You: Hi\n[00:02] Them: Yo"
+        );
+        assert_eq!(
+            transcript_lines(&segs, true),
+            "[00:01] [You-1000] You: Hi\n[00:02] Them: Yo"
+        );
     }
 
     #[test]
     fn preload_with_ids_cites_segments() {
         let msgs = build_preload_messages(&[seg("Hello", "You", 65_400)], None, 100_000, true);
-        assert_eq!(msgs, vec!["## Meeting transcript\n[01:05] [You-65400] You: Hello"]);
+        assert_eq!(
+            msgs,
+            vec!["## Meeting transcript\n[01:05] [You-65400] You: Hello"]
+        );
     }
 
     #[test]
@@ -537,28 +620,49 @@ mod tests {
 
     #[test]
     fn document_preload_chunks_under_header() {
-        assert!(build_document_preload(" 
- ", 1_000).is_empty());
-        let docs = (0..50).map(|i| format!("line {i:02} of the doc")).collect::<Vec<_>>().join("
-");
+        assert!(build_document_preload(
+            "
+ ", 1_000
+        )
+        .is_empty());
+        let docs = (0..50)
+            .map(|i| format!("line {i:02} of the doc"))
+            .collect::<Vec<_>>()
+            .join(
+                "
+",
+            );
         let msgs = build_document_preload(&docs, 300);
         assert!(msgs.len() > 1);
         assert!(msgs.iter().all(|m| m.chars().count() <= 300));
         assert!(msgs[0].starts_with("## Context documents (part 1 of "));
         let body: Vec<&str> = msgs.iter().flat_map(|m| m.lines().skip(1)).collect();
-        assert_eq!(body.join("
-"), docs);
+        assert_eq!(
+            body.join(
+                "
+"
+            ),
+            docs
+        );
     }
 
     #[test]
     fn pack_messages_joins_up_to_the_cap() {
         let m = |s: &str| s.to_string();
         assert!(pack_messages(&[], 10).is_empty());
-        assert_eq!(pack_messages(&[m("aaa"), m("bbb"), m("ccc")], 8), vec!["aaa
+        assert_eq!(
+            pack_messages(&[m("aaa"), m("bbb"), m("ccc")], 8),
+            vec![
+                "aaa
 
-bbb", "ccc"]);
+bbb", "ccc"
+            ]
+        );
         // A message longer than the cap is kept whole.
-        assert_eq!(pack_messages(&[m("a"), m("0123456789"), m("b")], 5), vec!["a", "0123456789", "b"]);
+        assert_eq!(
+            pack_messages(&[m("a"), m("0123456789"), m("b")], 5),
+            vec!["a", "0123456789", "b"]
+        );
     }
 
     #[test]

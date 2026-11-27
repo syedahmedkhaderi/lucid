@@ -120,7 +120,11 @@ pub async fn set_stealth_mode(app: AppHandle, enabled: bool) -> Result<(), Strin
             STEALTH.store(enabled, Ordering::SeqCst);
             log::info!(
                 "Stealth mode {}",
-                if enabled { "on: windows hidden from screen capture" } else { "off" }
+                if enabled {
+                    "on: windows hidden from screen capture"
+                } else {
+                    "off"
+                }
             );
 
             // Overlay + launcher: their Windows taskbar buttons follow
@@ -134,8 +138,13 @@ pub async fn set_stealth_mode(app: AppHandle, enabled: bool) -> Result<(), Strin
         result
     };
 
-    let meeting_active = app.state::<AppState>().meeting_active.load(Ordering::SeqCst);
-    if let Err(e) = crate::commands::tray_commands::rebuild_tray_menu(app.clone(), meeting_active).await {
+    let meeting_active = app
+        .state::<AppState>()
+        .meeting_active
+        .load(Ordering::SeqCst);
+    if let Err(e) =
+        crate::commands::tray_commands::rebuild_tray_menu(app.clone(), meeting_active).await
+    {
         log::warn!("Failed to refresh the tray menu after a stealth change: {e}");
     }
     result
@@ -156,7 +165,11 @@ fn transition<W>(
                 .filter(|(_, w)| apply(w, previous).is_err())
                 .map(|(l, _)| l.as_str())
                 .collect();
-            let state = if previous { "hidden from" } else { "visible in" };
+            let state = if previous {
+                "hidden from"
+            } else {
+                "visible in"
+            };
             return Err(if not_restored.is_empty() {
                 format!("Couldn't change screen-share visibility ({label}: {e}); Lucid is still {state} screen share")
             } else {
@@ -177,7 +190,10 @@ pub fn apply_to_new_window<R: Runtime>(window: &Window<R>) {
     track_visibility(window);
     if stealth_enabled() {
         if let Err(e) = apply_setting(window, true) {
-            log::warn!("Stealth mode: couldn't hide window '{}': {e}", window.label());
+            log::warn!(
+                "Stealth mode: couldn't hide window '{}': {e}",
+                window.label()
+            );
         }
         // A window that's already on screen when its page loads (the
         // launcher at startup) gets no show event: sync its button now.
@@ -231,7 +247,10 @@ fn track_visibility<R: Runtime>(window: &Window<R>) {
     // A subclass must be installed from the thread that owns the window.
     let installed = window.run_on_main_thread(move || {
         if let Err(e) = visibility_hook::install(hwnd) {
-            log::warn!("Stealth mode: can't follow visibility of '{}': {e}", target.label());
+            log::warn!(
+                "Stealth mode: can't follow visibility of '{}': {e}",
+                target.label()
+            );
         }
         if arrow_edges {
             visibility_hook::keep_arrow_at_edges(hwnd);
@@ -295,7 +314,10 @@ pub fn float_over_full_screen<R: Runtime>(window: &Window<R>) {
     let queued = window.run_on_main_thread(move || match target.ns_window() {
         // SAFETY: `ptr` is the live NSWindow backing this Tauri window.
         Ok(ptr) if !ptr.is_null() => unsafe { macos_spaces::join_all_spaces(ptr) },
-        Ok(_) => log::warn!("Full screen: NSWindow pointer was null for '{}'", target.label()),
+        Ok(_) => log::warn!(
+            "Full screen: NSWindow pointer was null for '{}'",
+            target.label()
+        ),
         Err(e) => log::warn!("Full screen: no NSWindow for '{}': {e}", target.label()),
     });
     if let Err(e) = queued {
@@ -323,7 +345,8 @@ mod macos_spaces {
     pub unsafe fn join_all_spaces(ns_window: *mut std::ffi::c_void) {
         let ns_window: &AnyObject = &*(ns_window as *const AnyObject);
         let current: usize = msg_send![ns_window, collectionBehavior];
-        let wanted = (current & !MOVE_TO_ACTIVE_SPACE) | CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY;
+        let wanted =
+            (current & !MOVE_TO_ACTIVE_SPACE) | CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY;
         let _: () = msg_send![ns_window, setCollectionBehavior: wanted];
     }
 }
@@ -366,15 +389,15 @@ mod visibility_hook {
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         IsWindowVisible, KillTimer, LoadCursorW, RegisterWindowMessageA, SetCursor, SetTimer,
-        SetWindowDisplayAffinity, HTBOTTOMRIGHT, HTLEFT, IDC_ARROW, SWP_HIDEWINDOW, SWP_SHOWWINDOW, WINDOWPOS,
-        WINDOW_DISPLAY_AFFINITY, WM_NCDESTROY, WM_SETCURSOR, WM_TIMER, WM_WINDOWPOSCHANGED,
-        WM_WINDOWPOSCHANGING,
+        SetWindowDisplayAffinity, HTBOTTOMRIGHT, HTLEFT, IDC_ARROW, SWP_HIDEWINDOW, SWP_SHOWWINDOW,
+        WINDOWPOS, WINDOW_DISPLAY_AFFINITY, WM_NCDESTROY, WM_SETCURSOR, WM_TIMER,
+        WM_WINDOWPOSCHANGED, WM_WINDOWPOSCHANGING,
     };
 
     use super::TabAction;
 
     const SUBCLASS_ID: usize = 0x4E58_5153; // "NXQS"
-    // WDA_EXCLUDEFROMCAPTURE = 0x11 (Windows 10 v2004+), WDA_NONE = 0.
+                                            // WDA_EXCLUDEFROMCAPTURE = 0x11 (Windows 10 v2004+), WDA_NONE = 0.
     const WDA_EXCLUDEFROMCAPTURE: u32 = 0x0000_0011;
     const WDA_NONE: u32 = 0;
 
@@ -396,7 +419,10 @@ mod visibility_hook {
     }
 
     fn keeps_arrow_at_edges(hwnd: HWND) -> bool {
-        ARROW_EDGES.lock().unwrap_or_else(|e| e.into_inner()).contains(&(hwnd.0 as isize))
+        ARROW_EDGES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&(hwnd.0 as isize))
     }
 
     /// Windows whose taskbar button follows stealth (the overlay, the launcher).
@@ -422,7 +448,10 @@ mod visibility_hook {
     }
 
     fn is_taskbar_managed(hwnd: HWND) -> bool {
-        TASKBAR_MANAGED.lock().unwrap_or_else(|e| e.into_inner()).contains(&(hwnd.0 as isize))
+        TASKBAR_MANAGED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&(hwnd.0 as isize))
     }
 
     /// Line `hwnd`'s taskbar button up with stealth (main thread only: COM).
@@ -436,7 +465,10 @@ mod visibility_hook {
             return;
         }
         let visible = unsafe { IsWindowVisible(handle) }.as_bool();
-        let removed = TABS_REMOVED.lock().unwrap_or_else(|e| e.into_inner()).contains(&hwnd);
+        let removed = TABS_REMOVED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&hwnd);
         match super::taskbar_action(super::stealth_enabled(), visible, removed) {
             TabAction::Remove => match set_tab(handle, false) {
                 Ok(()) => {
@@ -448,7 +480,10 @@ mod visibility_hook {
                 Err(e) => log::warn!("Stealth mode: couldn't remove a taskbar button: {e}"),
             },
             TabAction::Restore => match set_tab(handle, true) {
-                Ok(()) => TABS_REMOVED.lock().unwrap_or_else(|e| e.into_inner()).retain(|&h| h != hwnd),
+                Ok(()) => TABS_REMOVED
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .retain(|&h| h != hwnd),
                 Err(e) => log::warn!("Stealth mode: couldn't put a taskbar button back: {e}"),
             },
             TabAction::Leave => {}
@@ -479,7 +514,10 @@ mod visibility_hook {
     }
 
     fn wants_blur(hwnd: HWND) -> bool {
-        BLURRED.lock().unwrap_or_else(|e| e.into_inner()).contains(&(hwnd.0 as isize))
+        BLURRED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&(hwnd.0 as isize))
     }
 
     /// Live blur of what's behind the window, via the undocumented
@@ -519,14 +557,19 @@ mod visibility_hook {
             let Ok(module) = GetModuleHandleA(PCSTR(b"user32.dll\0".as_ptr())) else {
                 return;
             };
-            let Some(proc) = GetProcAddress(module, PCSTR(b"SetWindowCompositionAttribute\0".as_ptr()))
+            let Some(proc) =
+                GetProcAddress(module, PCSTR(b"SetWindowCompositionAttribute\0".as_ptr()))
             else {
                 return;
             };
             let set_window_composition_attribute: SetWindowCompositionAttributeFn =
                 std::mem::transmute(proc);
             let mut policy = AccentPolicy {
-                accent_state: if on { ACCENT_ENABLE_BLURBEHIND } else { ACCENT_DISABLED },
+                accent_state: if on {
+                    ACCENT_ENABLE_BLURBEHIND
+                } else {
+                    ACCENT_DISABLED
+                },
                 accent_flags: 0,
                 gradient_color: if on { 0x0100_0000 } else { 0 },
                 animation_id: 0,
@@ -546,7 +589,8 @@ mod visibility_hook {
         if hooked.contains(&hwnd) {
             return Ok(());
         }
-        let ok = unsafe { SetWindowSubclass(HWND(hwnd as *mut _), Some(subclass_proc), SUBCLASS_ID, 0) };
+        let ok =
+            unsafe { SetWindowSubclass(HWND(hwnd as *mut _), Some(subclass_proc), SUBCLASS_ID, 0) };
         if !ok.as_bool() {
             return Err("SetWindowSubclass failed".into());
         }
@@ -557,7 +601,11 @@ mod visibility_hook {
     /// Exclude a window from capture or not (any thread), and remember it:
     /// `GetWindowDisplayAffinity` reports no exclusion for a hidden window.
     pub fn set_excluded(hwnd: HWND, excluded: bool) -> windows::core::Result<()> {
-        let affinity = WINDOW_DISPLAY_AFFINITY(if excluded { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE });
+        let affinity = WINDOW_DISPLAY_AFFINITY(if excluded {
+            WDA_EXCLUDEFROMCAPTURE
+        } else {
+            WDA_NONE
+        });
         unsafe { SetWindowDisplayAffinity(hwnd, affinity) }?;
         let mut list = EXCLUDED.lock().unwrap_or_else(|e| e.into_inner());
         list.retain(|&h| h != hwnd.0 as isize);
@@ -568,7 +616,10 @@ mod visibility_hook {
     }
 
     fn is_excluded(hwnd: HWND) -> bool {
-        EXCLUDED.lock().unwrap_or_else(|e| e.into_inner()).contains(&(hwnd.0 as isize))
+        EXCLUDED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&(hwnd.0 as isize))
     }
 
     unsafe extern "system" fn subclass_proc(
@@ -642,11 +693,26 @@ mod visibility_hook {
                 let mut hooked = HOOKED.lock().unwrap_or_else(|e| e.into_inner());
                 hooked.retain(|&h| h != hwnd.0 as isize);
                 drop(hooked);
-                BLURRED.lock().unwrap_or_else(|e| e.into_inner()).retain(|&h| h != hwnd.0 as isize);
-                EXCLUDED.lock().unwrap_or_else(|e| e.into_inner()).retain(|&h| h != hwnd.0 as isize);
-                ARROW_EDGES.lock().unwrap_or_else(|e| e.into_inner()).retain(|&h| h != hwnd.0 as isize);
-                TASKBAR_MANAGED.lock().unwrap_or_else(|e| e.into_inner()).retain(|&h| h != hwnd.0 as isize);
-                TABS_REMOVED.lock().unwrap_or_else(|e| e.into_inner()).retain(|&h| h != hwnd.0 as isize);
+                BLURRED
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .retain(|&h| h != hwnd.0 as isize);
+                EXCLUDED
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .retain(|&h| h != hwnd.0 as isize);
+                ARROW_EDGES
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .retain(|&h| h != hwnd.0 as isize);
+                TASKBAR_MANAGED
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .retain(|&h| h != hwnd.0 as isize);
+                TABS_REMOVED
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .retain(|&h| h != hwnd.0 as isize);
             }
             _ => {}
         }
@@ -707,7 +773,9 @@ fn saved_stealth(store_json: &str) -> bool {
 fn set_capture_excluded<R: Runtime>(window: &Window<R>, excluded: bool) -> Result<(), String> {
     use windows::Win32::Foundation::HWND;
 
-    let hwnd = window.hwnd().map_err(|e| format!("no window handle: {e}"))?;
+    let hwnd = window
+        .hwnd()
+        .map_err(|e| format!("no window handle: {e}"))?;
     visibility_hook::set_excluded(HWND(hwnd.0 as *mut _), excluded)
         .map_err(|e| format!("SetWindowDisplayAffinity failed: {e}"))
 }
@@ -728,7 +796,10 @@ fn set_capture_excluded<R: Runtime>(window: &Window<R>, excluded: bool) -> Resul
                 let ns_window: &AnyObject = unsafe { &*(ptr as *const AnyObject) };
                 let _: () = unsafe { msg_send![ns_window, setSharingType: sharing_type] };
             }
-            Ok(_) => log::warn!("Stealth mode: NSWindow pointer was null for '{}'", target.label()),
+            Ok(_) => log::warn!(
+                "Stealth mode: NSWindow pointer was null for '{}'",
+                target.label()
+            ),
             Err(e) => log::warn!("Stealth mode: no NSWindow for '{}': {e}", target.label()),
         })
         .map_err(|e| format!("couldn't reach the main thread: {e}"))

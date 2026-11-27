@@ -83,10 +83,10 @@ impl ModelWindows {
     }
 
     pub fn store(&self, provider: &str, model: &str, window: Option<u64>) {
-        self.entries
-            .lock()
-            .unwrap()
-            .insert((provider.to_string(), model.to_string()), (window, Instant::now()));
+        self.entries.lock().unwrap().insert(
+            (provider.to_string(), model.to_string()),
+            (window, Instant::now()),
+        );
     }
 
     /// Was `provider`'s listing fetched recently?
@@ -99,7 +99,10 @@ impl ModelWindows {
     }
 
     pub fn mark_listed(&self, provider: &str) {
-        self.listed.lock().unwrap().insert(provider.to_string(), Instant::now());
+        self.listed
+            .lock()
+            .unwrap()
+            .insert(provider.to_string(), Instant::now());
     }
 
     /// Forget everything (the user changed a key or an endpoint).
@@ -136,7 +139,11 @@ mod tests {
         assert_eq!(bucket_context(100, None), 4096);
         assert_eq!(bucket_context(4097, None), 8192);
         assert_eq!(bucket_context(9000, Some(131072)), 16384);
-        assert_eq!(bucket_context(9000, Some(10000)), 10000, "never above the model's window");
+        assert_eq!(
+            bucket_context(9000, Some(10000)),
+            10000,
+            "never above the model's window"
+        );
         assert_eq!(bucket_context(3000, Some(2048)), 2048);
     }
 
@@ -148,7 +155,11 @@ mod tests {
         let cjk = "会议记录".repeat(3); // 12 chars
         assert_eq!(estimate_tokens(&cjk), 8);
         let mixed = format!("{}{}", "会", "a".repeat(11));
-        assert_eq!(estimate_tokens(&mixed), crate::text_kit::estimate_tokens(&mixed) as u64, "the same estimate as everywhere");
+        assert_eq!(
+            estimate_tokens(&mixed),
+            crate::text_kit::estimate_tokens(&mixed) as u64,
+            "the same estimate as everywhere"
+        );
         assert_eq!(estimate_tokens(&mixed), 4);
     }
 

@@ -6,7 +6,6 @@
 //! meeting, the live-answer gate, the scope generation) comes in through
 //! `Deps`, so the whole thing runs in tests with fakes.
 
-
 pub mod app;
 pub mod brief;
 pub mod cheapest;
@@ -28,7 +27,10 @@ use crate::live_runtime::brief::{BriefCmd, BriefHandle, BriefParams};
 use crate::live_runtime::db::{LiveDb, LiveScope};
 use crate::live_runtime::llm::LlmFactory;
 use crate::live_runtime::notes::{NoteEdit, NotesCmd, NotesHandle, NotesParams};
-use crate::live_runtime::settings::{merge, BriefSettings, MemorySettings, NotetakerSettings, Validate, BRIEF_KEY, MEMORY_KEY, NOTETAKER_KEY};
+use crate::live_runtime::settings::{
+    merge, BriefSettings, MemorySettings, NotetakerSettings, Validate, BRIEF_KEY, MEMORY_KEY,
+    NOTETAKER_KEY,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
@@ -113,15 +115,30 @@ pub fn init(rt: Arc<LiveRuntimes>) {
 pub const NOTES_MODES: &[&str] = &["Recap", "FollowUp"];
 /// Most tokens of the notes outline an answer carries.
 const ANSWER_NOTES_TOKENS: u32 = 700;
-pub const ANSWER_MODES: &[&str] = &["Assist", "WhatToSay", "Shorten", "FollowUp", "Recap", "AskQuestion"];
+pub const ANSWER_MODES: &[&str] = &[
+    "Assist",
+    "WhatToSay",
+    "Shorten",
+    "FollowUp",
+    "Recap",
+    "AskQuestion",
+];
 
 impl LiveRuntimes {
     pub fn new(deps: Deps) -> Arc<Self> {
-        let mut notetaker: NotetakerSettings = deps.db.kv_get(NOTETAKER_KEY).and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
+        let mut notetaker: NotetakerSettings = deps
+            .db
+            .kv_get(NOTETAKER_KEY)
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default();
         if notetaker.validate().is_err() {
             notetaker = NotetakerSettings::default();
         }
-        let brief = deps.db.kv_get(BRIEF_KEY).and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
+        let brief = deps
+            .db
+            .kv_get(BRIEF_KEY)
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default();
         deps.db.mark_interrupted();
         Arc::new(Self {
             deps,
@@ -153,13 +170,23 @@ impl LiveRuntimes {
     /// Merges a patch atomically, saves, tells the webview, and, when turned off,
     /// stops every active run (one in flight included).
     pub fn patch_notetaker(&self, patch: &Value) -> Result<NotetakerSettings, String> {
-        let (merged, stop): (NotetakerSettings, Vec<tokio::sync::mpsc::UnboundedSender<NotesCmd>>) = {
+        let (merged, stop): (
+            NotetakerSettings,
+            Vec<tokio::sync::mpsc::UnboundedSender<NotesCmd>>,
+        ) = {
             let mut g = self.inner.lock().unwrap();
             let merged = merge(&g.notetaker, patch)?;
-            self.deps.db.kv_set(NOTETAKER_KEY, &serde_json::to_string(&merged).map_err(|e| e.to_string())?)?;
+            self.deps.db.kv_set(
+                NOTETAKER_KEY,
+                &serde_json::to_string(&merged).map_err(|e| e.to_string())?,
+            )?;
             let turning_off = g.notetaker.enabled && !merged.enabled;
             g.notetaker = merged.clone();
-            let stop = if turning_off { g.notes.values().map(|h| h.tx.clone()).collect() } else { Vec::new() };
+            let stop = if turning_off {
+                g.notes.values().map(|h| h.tx.clone()).collect()
+            } else {
+                Vec::new()
+            };
             (merged, stop)
         };
         for tx in stop {
@@ -171,21 +198,34 @@ impl LiveRuntimes {
                 let _ = h.tx.send(NotesCmd::Reconfigure(merged.clone()));
             }
         }
-        self.deps.emitter.emit("notetaker_settings_changed", serde_json::to_value(&merged).unwrap_or(Value::Null));
+        self.deps.emitter.emit(
+            "notetaker_settings_changed",
+            serde_json::to_value(&merged).unwrap_or(Value::Null),
+        );
         Ok(merged)
     }
 
     pub fn memory_settings(&self) -> MemorySettings {
-        self.deps.db.kv_get(MEMORY_KEY).and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default()
+        self.deps
+            .db
+            .kv_get(MEMORY_KEY)
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default()
     }
 
     /// Which model proposes memory (shared by the button and auto-suggest).
     pub fn patch_memory(&self, patch: &Value) -> Result<MemorySettings, String> {
         let _g = self.inner.lock().unwrap();
         let merged = merge(&self.memory_settings(), patch)?;
-        self.deps.db.kv_set(MEMORY_KEY, &serde_json::to_string(&merged).map_err(|e| e.to_string())?)?;
+        self.deps.db.kv_set(
+            MEMORY_KEY,
+            &serde_json::to_string(&merged).map_err(|e| e.to_string())?,
+        )?;
         drop(_g);
-        self.deps.emitter.emit("memory_settings_changed", serde_json::to_value(&merged).unwrap_or(Value::Null));
+        self.deps.emitter.emit(
+            "memory_settings_changed",
+            serde_json::to_value(&merged).unwrap_or(Value::Null),
+        );
         Ok(merged)
     }
 
@@ -199,14 +239,20 @@ impl LiveRuntimes {
         let merged = {
             let mut g = self.inner.lock().unwrap();
             let merged = merge(&g.brief, &patch)?;
-            self.deps.db.kv_set(BRIEF_KEY, &serde_json::to_string(&merged).map_err(|e| e.to_string())?)?;
+            self.deps.db.kv_set(
+                BRIEF_KEY,
+                &serde_json::to_string(&merged).map_err(|e| e.to_string())?,
+            )?;
             g.brief = merged.clone();
             for h in g.briefs.values() {
                 let _ = h.tx.send(BriefCmd::Reconfigure(merged.clone()));
             }
             merged
         };
-        self.deps.emitter.emit("brief_settings_changed", serde_json::to_value(&merged).unwrap_or(Value::Null));
+        self.deps.emitter.emit(
+            "brief_settings_changed",
+            serde_json::to_value(&merged).unwrap_or(Value::Null),
+        );
         Ok(merged)
     }
 
@@ -225,7 +271,12 @@ impl LiveRuntimes {
             let base = match g.bases.get(meeting_id) {
                 Some(b) => *b,
                 None => {
-                    let b = self.deps.db.meeting_start_ms(meeting_id).filter(|s| crate::live_common::is_epoch_ms(*s)).or(Some(ms as i64));
+                    let b = self
+                        .deps
+                        .db
+                        .meeting_start_ms(meeting_id)
+                        .filter(|s| crate::live_common::is_epoch_ms(*s))
+                        .or(Some(ms as i64));
                     g.bases.insert(meeting_id.to_string(), b);
                     b
                 }
@@ -237,13 +288,26 @@ impl LiveRuntimes {
         if let Some(h) = g.notes.get(meeting_id) {
             let q = h.queued.fetch_add(1, Ordering::SeqCst) + 1;
             h.max_queued.fetch_max(q, Ordering::SeqCst);
-            if h.tx.send(NotesCmd::Line(TranscriptLine { ms, speaker: speaker.to_string(), text: text.to_string() })).is_err() {
+            if h.tx
+                .send(NotesCmd::Line(TranscriptLine {
+                    ms,
+                    speaker: speaker.to_string(),
+                    text: text.to_string(),
+                }))
+                .is_err()
+            {
                 h.queued.fetch_sub(1, Ordering::SeqCst);
             }
         }
         if let Some(h) = g.briefs.get(meeting_id) {
             h.queued.fetch_add(1, Ordering::SeqCst);
-            if h.tx.send(BriefCmd::Line { ms, text: text.to_string() }).is_err() {
+            if h.tx
+                .send(BriefCmd::Line {
+                    ms,
+                    text: text.to_string(),
+                })
+                .is_err()
+            {
                 h.queued.fetch_sub(1, Ordering::SeqCst);
             }
         }
@@ -271,11 +335,18 @@ impl LiveRuntimes {
     /// The meeting is being deleted: its actors stop at once and save
     /// nothing, and suggestions still in flight for it are dropped.
     fn guarded_emitter(&self) -> Arc<dyn Emitter> {
-        Arc::new(GuardedEmitter { inner: self.deps.emitter.clone(), deleted: self.deps.deleted.clone() })
+        Arc::new(GuardedEmitter {
+            inner: self.deps.emitter.clone(),
+            deleted: self.deps.deleted.clone(),
+        })
     }
 
     pub fn meeting_deleted(&self, meeting_id: &str) {
-        self.deps.deleted.lock().unwrap().insert(meeting_id.to_string());
+        self.deps
+            .deleted
+            .lock()
+            .unwrap()
+            .insert(meeting_id.to_string());
         // a memory run in flight for it is stopped too, not only checked between its calls
         memory::cancel_runs_of_meeting(meeting_id);
         let mut g = self.inner.lock().unwrap();
@@ -286,7 +357,8 @@ impl LiveRuntimes {
             h.shared.invalidate();
             let _ = h.tx.send(BriefCmd::Discard);
         }
-        g.session_tokens.retain(|k, _| !k.starts_with(&format!("{meeting_id}|")));
+        g.session_tokens
+            .retain(|k, _| !k.starts_with(&format!("{meeting_id}|")));
         g.bases.remove(meeting_id);
     }
 
@@ -299,10 +371,18 @@ impl LiveRuntimes {
         let close = self.deps.close_sessions.clone();
         Arc::new(move |id: &str| {
             let mut g = inner.lock().unwrap();
-            if g.notes.get(id).map(|h| h.finished.load(Ordering::SeqCst)).unwrap_or(false) {
+            if g.notes
+                .get(id)
+                .map(|h| h.finished.load(Ordering::SeqCst))
+                .unwrap_or(false)
+            {
                 g.notes.remove(id);
             }
-            if g.briefs.get(id).map(|h| h.finished.load(Ordering::SeqCst)).unwrap_or(false) {
+            if g.briefs
+                .get(id)
+                .map(|h| h.finished.load(Ordering::SeqCst))
+                .unwrap_or(false)
+            {
                 g.briefs.remove(id);
             }
             if !g.notes.contains_key(id) && !g.briefs.contains_key(id) {
@@ -326,7 +406,11 @@ impl LiveRuntimes {
             if !g.notetaker.enabled {
                 return Err("Live notes are turned off".into());
             }
-            if let Some(h) = g.notes.get(meeting_id).filter(|h| !h.finished.load(Ordering::SeqCst)) {
+            if let Some(h) = g
+                .notes
+                .get(meeting_id)
+                .filter(|h| !h.finished.load(Ordering::SeqCst))
+            {
                 // start / try again on a paused or failed actor: it runs again with the current settings
                 let _ = h.tx.send(NotesCmd::Reconfigure(g.notetaker.clone()));
                 let _ = h.tx.send(NotesCmd::TryAgain);
@@ -354,7 +438,11 @@ impl LiveRuntimes {
             one_shot: false,
             live_meeting: self.deps.live_meeting.clone(),
         })?;
-        self.inner.lock().unwrap().notes.insert(meeting_id.to_string(), handle);
+        self.inner
+            .lock()
+            .unwrap()
+            .notes
+            .insert(meeting_id.to_string(), handle);
         Ok(())
     }
 
@@ -369,7 +457,13 @@ impl LiveRuntimes {
     }
 
     fn notes_alive(&self, meeting_id: &str) -> bool {
-        self.inner.lock().unwrap().notes.get(meeting_id).map(|h| !h.finished.load(Ordering::SeqCst)).unwrap_or(false)
+        self.inner
+            .lock()
+            .unwrap()
+            .notes
+            .get(meeting_id)
+            .map(|h| !h.finished.load(Ordering::SeqCst))
+            .unwrap_or(false)
     }
 
     /// "Update now": never a silent no-op. With no actor (after Stop, or never
@@ -399,7 +493,11 @@ impl LiveRuntimes {
     }
 
     /// What the notes of an ended meeting never covered, from the saved coverage and the saved transcript.
-    fn ended_uncovered(&self, meeting_id: &str, stored: &crate::live_notes::StoredNotes) -> Option<(u64, u64)> {
+    fn ended_uncovered(
+        &self,
+        meeting_id: &str,
+        stored: &crate::live_notes::StoredNotes,
+    ) -> Option<(u64, u64)> {
         let (lines, _) = self.deps.db.meeting_lines(meeting_id);
         if stored.doc.started_at.is_none() {
             // notes that never took a line and wrote nothing: the whole transcript is still open
@@ -421,7 +519,9 @@ impl LiveRuntimes {
     fn update_ended(&self, meeting_id: &str) -> Result<(), String> {
         if let Some(live) = (self.deps.live_meeting)() {
             if live != meeting_id {
-                return Err("Another meeting is live right now. Update these notes after it ends".into());
+                return Err(
+                    "Another meeting is live right now. Update these notes after it ends".into(),
+                );
             }
         }
         // asked for by the person on notes that exist: it does not need the live switch ("this meeting" turns it off at the end)
@@ -442,7 +542,11 @@ impl LiveRuntimes {
         let preload: Vec<TranscriptLine> = lines
             .into_iter()
             .filter(|l| l.ms >= from && l.ms <= to)
-            .map(|l| TranscriptLine { ms: l.ms, speaker: l.speaker, text: l.text })
+            .map(|l| TranscriptLine {
+                ms: l.ms,
+                speaker: l.speaker,
+                text: l.text,
+            })
             .collect();
         if preload.is_empty() {
             return Err("The saved transcript has nothing in the part that was not covered".into());
@@ -465,7 +569,11 @@ impl LiveRuntimes {
             one_shot: true,
             live_meeting: self.deps.live_meeting.clone(),
         })?;
-        self.inner.lock().unwrap().notes.insert(meeting_id.to_string(), handle);
+        self.inner
+            .lock()
+            .unwrap()
+            .notes
+            .insert(meeting_id.to_string(), handle);
         Ok(())
     }
 
@@ -503,7 +611,13 @@ impl LiveRuntimes {
         };
         let base = self.notetaker_settings().cap;
         let raised = stored.cap.max(base).max(stored.tokens_used) + base;
-        self.deps.db.save_notes(meeting_id, &stored.doc, &stored.status, stored.tokens_used, raised)?;
+        self.deps.db.save_notes(
+            meeting_id,
+            &stored.doc,
+            &stored.status,
+            stored.tokens_used,
+            raised,
+        )?;
         self.update_ended(meeting_id)
     }
 
@@ -522,7 +636,13 @@ impl LiveRuntimes {
 
     /// The state the UI shows, for a running or a stopped feature (same payload as the events).
     pub async fn notetaker_state(&self, meeting_id: &str) -> Value {
-        let tx = self.inner.lock().unwrap().notes.get(meeting_id).map(|h| h.tx.clone());
+        let tx = self
+            .inner
+            .lock()
+            .unwrap()
+            .notes
+            .get(meeting_id)
+            .map(|h| h.tx.clone());
         if let Some(tx) = tx {
             let (r, rx) = oneshot::channel();
             if tx.send(NotesCmd::State(r)).is_ok() {
@@ -533,42 +653,72 @@ impl LiveRuntimes {
         }
         let settings = self.notetaker_settings();
         let stored = self.deps.db.load_notes(meeting_id);
-        let (mut status, used, cap) = stored.as_ref().map(|s| (Some(s.status.clone()), s.tokens_used, s.cap)).unwrap_or((None, 0, settings.cap));
+        let (mut status, used, cap) = stored
+            .as_ref()
+            .map(|s| (Some(s.status.clone()), s.tokens_used, s.cap))
+            .unwrap_or((None, 0, settings.cap));
         // An ended meeting with nothing running: whatever the switch says and however the notes ended
         // (done, interrupted by a crash or a quit mid-pass), the part of the transcript no run
         // folded in is worked out now from what was saved.
         let ended = (self.deps.live_meeting)().as_deref() != Some(meeting_id);
-        let not_covered = if ended { stored.as_ref().and_then(|s| self.ended_uncovered(meeting_id, s)) } else { None };
+        let not_covered = if ended {
+            stored
+                .as_ref()
+                .and_then(|s| self.ended_uncovered(meeting_id, s))
+        } else {
+            None
+        };
         if ended && stored.is_some() {
             status = Some("done".to_string());
         }
-        let over_cap = stored.as_ref().is_some_and(|s| ended && not_covered.is_some() && s.tokens_used >= s.cap.max(settings.cap).max(1));
+        let over_cap = stored.as_ref().is_some_and(|s| {
+            ended && not_covered.is_some() && s.tokens_used >= s.cap.max(settings.cap).max(1)
+        });
         // covered but empty: the runs found nothing to write, or nothing was said at all (then there is no box)
-        let nothing_written = ended && not_covered.is_none() && stored.as_ref().is_some_and(|s| s.doc.blocks.is_empty());
-        let no_speech = nothing_written && stored.as_ref().is_some_and(|s| s.doc.covered_to.is_none());
+        let nothing_written = ended
+            && not_covered.is_none()
+            && stored.as_ref().is_some_and(|s| s.doc.blocks.is_empty());
+        let no_speech =
+            nothing_written && stored.as_ref().is_some_and(|s| s.doc.covered_to.is_none());
         let ended_info = if !ended || no_speech {
             None
         } else {
-            stored.as_ref().map(|s| match (not_covered, s.status.as_str(), &s.doc.ended) {
-                (None, _, _) if nothing_written => ("nothing_to_note".to_string(), None),
-                (None, _, _) => ("covered".to_string(), None),
-                // the person stopped them, or turned them off, during the meeting
-                (Some(_), "stopped", _) => ("stopped".to_string(), None),
-                (Some(_), "done", Some((k, d))) if k != "covered" => (k.clone(), d.clone()),
-                (Some(_), "done", _) if over_cap => ("limit".to_string(), None),
-                // the app closed or crashed before the end pass could save how it went
-                (Some(_), _, _) => ("interrupted".to_string(), None),
-            })
+            stored
+                .as_ref()
+                .map(|s| match (not_covered, s.status.as_str(), &s.doc.ended) {
+                    (None, _, _) if nothing_written => ("nothing_to_note".to_string(), None),
+                    (None, _, _) => ("covered".to_string(), None),
+                    // the person stopped them, or turned them off, during the meeting
+                    (Some(_), "stopped", _) => ("stopped".to_string(), None),
+                    (Some(_), "done", Some((k, d))) if k != "covered" => (k.clone(), d.clone()),
+                    (Some(_), "done", _) if over_cap => ("limit".to_string(), None),
+                    // the app closed or crashed before the end pass could save how it went
+                    (Some(_), _, _) => ("interrupted".to_string(), None),
+                })
         };
         let reason = if let Some((from, to)) = not_covered {
-            Some(format!("Not covered: {} to {}", crate::live_common::fmt_clock(from), crate::live_common::fmt_clock(to)))
+            Some(format!(
+                "Not covered: {} to {}",
+                crate::live_common::fmt_clock(from),
+                crate::live_common::fmt_clock(to)
+            ))
         } else if !settings.enabled {
             Some("Live notes are turned off".to_string())
         } else {
             None
         };
         let model = self.model_label(&notes::selection_of(&settings));
-        let mut snap = state::idle_snapshot(meeting_id, status.as_deref(), used, cap.max(1), reason, model, not_covered, ended_info, over_cap);
+        let mut snap = state::idle_snapshot(
+            meeting_id,
+            status.as_deref(),
+            used,
+            cap.max(1),
+            reason,
+            model,
+            not_covered,
+            ended_info,
+            over_cap,
+        );
         if ended && stored.is_none() {
             // a meeting that never had notes says so; nothing can be started on it
             snap.can.clear();
@@ -583,7 +733,13 @@ impl LiveRuntimes {
 
     /// The saved notes (live or not) in the contract's shape.
     pub async fn get_notes(&self, meeting_id: &str) -> Option<Value> {
-        let tx = self.inner.lock().unwrap().notes.get(meeting_id).map(|h| h.tx.clone());
+        let tx = self
+            .inner
+            .lock()
+            .unwrap()
+            .notes
+            .get(meeting_id)
+            .map(|h| h.tx.clone());
         if let Some(tx) = tx {
             let (r, rx) = oneshot::channel();
             if tx.send(NotesCmd::Get(r)).is_ok() {
@@ -592,12 +748,22 @@ impl LiveRuntimes {
                 }
             }
         }
-        self.deps.db.load_notes(meeting_id).map(|s| notes::doc_to_contract(&s.doc))
+        self.deps
+            .db
+            .load_notes(meeting_id)
+            .map(|s| notes::doc_to_contract(&s.doc))
     }
 
     /// A user edit: through the running actor when there is one, else on the saved notes.
     pub async fn edit_notes(&self, meeting_id: &str, edit: NoteEdit) -> Result<Value, String> {
-        let tx = self.inner.lock().unwrap().notes.get(meeting_id).filter(|h| !h.finished.load(Ordering::SeqCst)).map(|h| h.tx.clone());
+        let tx = self
+            .inner
+            .lock()
+            .unwrap()
+            .notes
+            .get(meeting_id)
+            .filter(|h| !h.finished.load(Ordering::SeqCst))
+            .map(|h| h.tx.clone());
         if let Some(tx) = tx {
             let (r, rx) = oneshot::channel();
             if tx.send(NotesCmd::Edit(edit.clone(), r)).is_ok() {
@@ -609,10 +775,17 @@ impl LiveRuntimes {
         let stored = self.deps.db.load_notes(meeting_id);
         let (mut doc, status, used, cap) = match stored {
             Some(s) => (s.doc, s.status, s.tokens_used, s.cap),
-            None => (crate::live_notes::doc::NoteDoc::new(), "idle".into(), 0, self.notetaker_settings().cap),
+            None => (
+                crate::live_notes::doc::NoteDoc::new(),
+                "idle".into(),
+                0,
+                self.notetaker_settings().cap,
+            ),
         };
         notes::apply_edit(&mut doc, &edit)?;
-        self.deps.db.save_notes(meeting_id, &doc, &status, used, cap)?;
+        self.deps
+            .db
+            .save_notes(meeting_id, &doc, &status, used, cap)?;
         Ok(notes::doc_to_contract(&doc))
     }
 
@@ -622,7 +795,11 @@ impl LiveRuntimes {
         self.require_live(meeting_id)?;
         let settings = {
             let g = self.inner.lock().unwrap();
-            if let Some(h) = g.briefs.get(meeting_id).filter(|h| !h.finished.load(Ordering::SeqCst)) {
+            if let Some(h) = g
+                .briefs
+                .get(meeting_id)
+                .filter(|h| !h.finished.load(Ordering::SeqCst))
+            {
                 let _ = h.tx.send(BriefCmd::Reconfigure(g.brief.clone()));
                 let _ = h.tx.send(BriefCmd::TryAgain);
                 let _ = h.tx.send(BriefCmd::Resume);
@@ -630,13 +807,18 @@ impl LiveRuntimes {
             }
             g.brief.clone()
         };
-        let mut scope = self.deps.db.scope_result(meeting_id).map_err(|e| format!("The brief cannot start: {e}"))?;
+        let mut scope = self
+            .deps
+            .db
+            .scope_result(meeting_id)
+            .map_err(|e| format!("The brief cannot start: {e}"))?;
         scope.generation = (self.deps.generation)(meeting_id, true);
         if !scope.brief_enabled {
             return Err("The brief is off in this workspace".into());
         }
         let on_exit = self.exit_closure();
-        let still: Arc<dyn Fn(&LiveScope) -> bool + Send + Sync> = Arc::new(move |s: &LiveScope| s.brief_enabled);
+        let still: Arc<dyn Fn(&LiveScope) -> bool + Send + Sync> =
+            Arc::new(move |s: &LiveScope| s.brief_enabled);
         let handle = brief::spawn(BriefParams {
             meeting_id: meeting_id.to_string(),
             settings,
@@ -652,7 +834,11 @@ impl LiveRuntimes {
             scope_check: self.deps.scope_check,
             still_enabled: still,
         })?;
-        self.inner.lock().unwrap().briefs.insert(meeting_id.to_string(), handle);
+        self.inner
+            .lock()
+            .unwrap()
+            .briefs
+            .insert(meeting_id.to_string(), handle);
         Ok(())
     }
 
@@ -667,7 +853,13 @@ impl LiveRuntimes {
     }
 
     fn brief_alive(&self, meeting_id: &str) -> bool {
-        self.inner.lock().unwrap().briefs.get(meeting_id).map(|h| !h.finished.load(Ordering::SeqCst)).unwrap_or(false)
+        self.inner
+            .lock()
+            .unwrap()
+            .briefs
+            .get(meeting_id)
+            .map(|h| !h.finished.load(Ordering::SeqCst))
+            .unwrap_or(false)
     }
 
     /// "Refresh": never a silent no-op (it starts the brief when it may, or says why not).
@@ -706,7 +898,13 @@ impl LiveRuntimes {
     }
 
     pub async fn brief_state(&self, meeting_id: &str) -> Value {
-        let tx = self.inner.lock().unwrap().briefs.get(meeting_id).map(|h| h.tx.clone());
+        let tx = self
+            .inner
+            .lock()
+            .unwrap()
+            .briefs
+            .get(meeting_id)
+            .map(|h| h.tx.clone());
         if let Some(tx) = tx {
             let (r, rx) = oneshot::channel();
             if tx.send(BriefCmd::State(r)).is_ok() {
@@ -722,9 +920,27 @@ impl LiveRuntimes {
             Ok(_) => None,
             Err(e) => Some(format!("The brief cannot run: {e}")),
         };
-        let (status, used, cap) = stored.as_ref().map(|s| (Some(s.status.clone()), s.tokens_used, s.cap)).unwrap_or((None, 0, settings.cap));
-        let model = self.model_label(&llm::Selection { provider: settings.provider.clone(), model: settings.model.clone(), effort: settings.effort.clone() });
-        serde_json::to_value(state::idle_snapshot(meeting_id, status.as_deref(), used, cap.max(1), reason, model, None, None, false)).unwrap_or(Value::Null)
+        let (status, used, cap) = stored
+            .as_ref()
+            .map(|s| (Some(s.status.clone()), s.tokens_used, s.cap))
+            .unwrap_or((None, 0, settings.cap));
+        let model = self.model_label(&llm::Selection {
+            provider: settings.provider.clone(),
+            model: settings.model.clone(),
+            effort: settings.effort.clone(),
+        });
+        serde_json::to_value(state::idle_snapshot(
+            meeting_id,
+            status.as_deref(),
+            used,
+            cap.max(1),
+            reason,
+            model,
+            None,
+            None,
+            false,
+        ))
+        .unwrap_or(Value::Null)
     }
 
     /// What "Automatic" means for a provider (None = the active one): the model and
@@ -734,7 +950,13 @@ impl LiveRuntimes {
     }
 
     pub async fn get_brief(&self, meeting_id: &str) -> Option<Value> {
-        let tx = self.inner.lock().unwrap().briefs.get(meeting_id).map(|h| h.tx.clone());
+        let tx = self
+            .inner
+            .lock()
+            .unwrap()
+            .briefs
+            .get(meeting_id)
+            .map(|h| h.tx.clone());
         if let Some(tx) = tx {
             let (r, rx) = oneshot::channel();
             if tx.send(BriefCmd::Get(r)).is_ok() {
@@ -788,7 +1010,11 @@ impl LiveRuntimes {
             (self.deps.close_sessions)(meeting_id.to_string());
         }
         // memory suggestions come only after the meeting, and only where the workspace asked for them
-        memory::auto_suggest_after(Arc::new(self.deps.clone()), meeting_id.to_string(), Duration::from_secs(5));
+        memory::auto_suggest_after(
+            Arc::new(self.deps.clone()),
+            meeting_id.to_string(),
+            Duration::from_secs(5),
+        );
         if scope_meeting {
             // "This meeting" ends with the meeting: off for the next one (running actors are left alone).
             let mut g = self.inner.lock().unwrap();
@@ -800,7 +1026,11 @@ impl LiveRuntimes {
             drop(g);
             self.deps.emitter.emit("notetaker_settings_changed", v);
         }
-        self.inner.lock().unwrap().session_tokens.retain(|k, _| !k.starts_with(&format!("{meeting_id}|")));
+        self.inner
+            .lock()
+            .unwrap()
+            .session_tokens
+            .retain(|k, _| !k.starts_with(&format!("{meeting_id}|")));
     }
 
     /// The app is closing: running notes are saved as interrupted (resumable).
@@ -813,7 +1043,11 @@ impl LiveRuntimes {
             for h in g.briefs.values() {
                 let _ = h.tx.send(BriefCmd::Quit);
             }
-            g.notes.values().map(|h| h.finished.clone()).chain(g.briefs.values().map(|h| h.finished.clone())).collect()
+            g.notes
+                .values()
+                .map(|h| h.finished.clone())
+                .chain(g.briefs.values().map(|h| h.finished.clone()))
+                .collect()
         };
         let until = Instant::now() + wait;
         while Instant::now() < until && flags.iter().any(|f| !f.load(Ordering::SeqCst)) {
@@ -827,7 +1061,12 @@ impl LiveRuntimes {
     /// each fenced as data. None for modes that are not answers, when nothing
     /// is there, or (for a CLI session) when the session already has it.
     /// Never waits for the brief and never calls a model.
-    pub fn answer_extras(&self, meeting_id: &str, mode: &str, session: Option<&str>) -> Option<String> {
+    pub fn answer_extras(
+        &self,
+        meeting_id: &str,
+        mode: &str,
+        session: Option<&str>,
+    ) -> Option<String> {
         match session {
             None => self.build_extras(meeting_id, mode).map(|e| e.text),
             Some(key) => self.session_extras(meeting_id, mode, key).map(|e| e.text),
@@ -838,27 +1077,38 @@ impl LiveRuntimes {
     /// them. `session_key` names the session and its generation (a restart gives
     /// it a new one, so a restarted session gets everything again). Nothing is
     /// recorded until the turn succeeded: `mark_session_sent`.
-    pub fn session_extras(&self, meeting_id: &str, mode: &str, session_key: &str) -> Option<SessionExtras> {
+    pub fn session_extras(
+        &self,
+        meeting_id: &str,
+        mode: &str,
+        session_key: &str,
+    ) -> Option<SessionExtras> {
         let e = self.build_extras(meeting_id, mode)?;
         let key = format!("{meeting_id}|{session_key}");
         let g = self.inner.lock().ok()?;
         if g.session_tokens.get(&key) == Some(&e.token) {
             return None;
         }
-        Some(SessionExtras { text: e.text, token: e.token, key })
+        Some(SessionExtras {
+            text: e.text,
+            token: e.token,
+            key,
+        })
     }
 
     /// The turn that carried `extras` succeeded: this session now has them.
     pub fn mark_session_sent(&self, extras: &SessionExtras) {
         if let Ok(mut g) = self.inner.lock() {
-            g.session_tokens.insert(extras.key.clone(), extras.token.clone());
+            g.session_tokens
+                .insert(extras.key.clone(), extras.token.clone());
         }
     }
 
     /// A meeting's sessions restarted: they get the brief and memory again.
     pub fn forget_sessions(&self, meeting_id: &str) {
         if let Ok(mut g) = self.inner.lock() {
-            g.session_tokens.retain(|k, _| !k.starts_with(&format!("{meeting_id}|")));
+            g.session_tokens
+                .retain(|k, _| !k.starts_with(&format!("{meeting_id}|")));
         }
     }
 
@@ -874,7 +1124,11 @@ impl LiveRuntimes {
             let g = self.inner.lock().ok()?;
             match g.briefs.get(meeting_id) {
                 Some(h) if !h.finished.load(Ordering::SeqCst) => {
-                    let key = brief::scope_key(&fresh.fingerprint, h.shared.counter.load(Ordering::SeqCst), generation);
+                    let key = brief::scope_key(
+                        &fresh.fingerprint,
+                        h.shared.counter.load(Ordering::SeqCst),
+                        generation,
+                    );
                     let found = h.shared.holder.lock().ok()?.changed_since(now, &key, None);
                     match found {
                         Some((t, r)) => (Some(t), r, h.shared.nonce.clone()),
@@ -913,7 +1167,11 @@ impl LiveRuntimes {
             out.push('\n');
             out.push_str(&crate::prompt_data::wrap(&nonce, "notes", &notes));
         }
-        Some(SessionExtras { text: out, token, key: String::new() })
+        Some(SessionExtras {
+            text: out,
+            token,
+            key: String::new(),
+        })
     }
 }
 
@@ -933,4 +1191,3 @@ fn fnv(s: &str) -> u64 {
     }
     h
 }
-

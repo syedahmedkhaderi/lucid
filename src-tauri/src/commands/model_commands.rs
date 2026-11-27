@@ -46,8 +46,7 @@ pub async fn list_local_stt_engines(app: AppHandle) -> Result<String, String> {
     } else {
         Vec::new()
     };
-    serde_json::to_string(&engines)
-        .map_err(|e| format!("Failed to serialize engine list: {}", e))
+    serde_json::to_string(&engines).map_err(|e| format!("Failed to serialize engine list: {}", e))
 }
 
 /// Start downloading a local STT model. Progress emitted via `model_download_progress` events.
@@ -129,9 +128,18 @@ mod tests {
     #[test]
     fn only_requested_local_models_are_downloadable() {
         assert!(is_supported_model("whisper_cpp", "large-v3-turbo"));
-        assert!(is_supported_model("parakeet_tdt", "parakeet-tdt-0.6b-v3-int8"));
+        assert!(is_supported_model(
+            "parakeet_tdt",
+            "parakeet-tdt-0.6b-v3-int8"
+        ));
         assert!(!is_supported_model("whisper_cpp", "base"));
-        assert!(!is_supported_model("parakeet_tdt", "parakeet-tdt-ctc-110m-int8"));
-        assert!(!is_supported_model("sherpa_onnx", "streaming-zipformer-en-20M"));
+        assert!(!is_supported_model(
+            "parakeet_tdt",
+            "parakeet-tdt-ctc-110m-int8"
+        ));
+        assert!(!is_supported_model(
+            "sherpa_onnx",
+            "streaming-zipformer-en-20M"
+        ));
     }
 }

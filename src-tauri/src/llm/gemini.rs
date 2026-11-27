@@ -5,8 +5,9 @@ use serde_json::json;
 use std::time::Instant;
 
 use super::provider::{
-    CompletionStats, GenerationParams, LLMError, LLMMessage, LLMProvider, ModelInfo,
-    cancellable, check_cancelled, is_cancelled, emit_end_with_stats, emit_error, emit_sources, emit_token, StreamSource, TokenSink,
+    cancellable, check_cancelled, emit_end_with_stats, emit_error, emit_sources, emit_token,
+    is_cancelled, CompletionStats, GenerationParams, LLMError, LLMMessage, LLMProvider, ModelInfo,
+    StreamSource, TokenSink,
 };
 use super::stream_parser::{LineBuffer, SSEParser};
 use super::thinking::{self, RequestOptions, Sent, ThinkingSetting};
@@ -85,9 +86,7 @@ impl GeminiClient {
 
     /// Convert standard LLM messages to Gemini format.
     /// Gemini uses "user" and "model" roles, with a separate systemInstruction field.
-    fn convert_messages(
-        messages: &[LLMMessage],
-    ) -> (Option<String>, Vec<serde_json::Value>) {
+    fn convert_messages(messages: &[LLMMessage]) -> (Option<String>, Vec<serde_json::Value>) {
         let mut system_instruction: Option<String> = None;
         let mut contents: Vec<serde_json::Value> = Vec::new();
 
@@ -123,13 +122,15 @@ impl LLMProvider for GeminiClient {
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, LLMError> {
-        let url = format!(
-            "{}/v1beta/models",
-            self.base_url
-        );
+        let url = format!("{}/v1beta/models", self.base_url);
 
         // The key travels in a header: a URL ends up in error text and logs.
-        let response = self.client.get(&url).header("x-goog-api-key", &self.api_key).send().await?;
+        let response = self
+            .client
+            .get(&url)
+            .header("x-goog-api-key", &self.api_key)
+            .send()
+            .await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -178,14 +179,9 @@ impl LLMProvider for GeminiClient {
                         }
 
                         // Extract model ID from "models/gemini-pro" -> "gemini-pro"
-                        let id = name
-                            .strip_prefix("models/")
-                            .unwrap_or(&name)
-                            .to_string();
+                        let id = name.strip_prefix("models/").unwrap_or(&name).to_string();
 
-                        let context_window = m
-                            .get("inputTokenLimit")
-                            .and_then(|c| c.as_u64());
+                        let context_window = m.get("inputTokenLimit").and_then(|c| c.as_u64());
 
                         Some(ModelInfo {
                             id,
@@ -229,30 +225,50 @@ impl LLMProvider for GeminiClient {
         // NOTE: llm_stream_start is emitted by IntelligenceEngine::generate_assist()
         // with the correct mode. Do NOT emit it here — it would overwrite the mode.
 
-        let (_, would_send) =
-            build_request_body(system_instruction.clone(), contents.clone(), model, &params, setting, true);
-        let send_thinking = would_send && thinking::should_send("gemini", &self.base_url, model, setting);
-        let sent = thinking::send_with_fallback("gemini", &self.base_url, model, send_thinking, &params, |with_thinking| {
-            let (body, _) =
-                build_request_body(system_instruction.clone(), contents.clone(), model, &params, setting, with_thinking);
-            let request = self
-                .client
-                .post(&url)
-                .header("Content-Type", "application/json")
-                .header("x-goog-api-key", &self.api_key)
-                .json(&body)
-                .send();
-            let (params, app_handle) = (&params, &app_handle);
-            async move {
-                cancellable(params, request).await?.map_err(|e| {
-                    if is_cancelled(params) {
-                        return LLMError::Cancelled;
-                    }
-                    emit_error(app_handle, params, &super::provider::error_text(&e));
-                    LLMError::HttpError(e)
-                })
-            }
-        })
+        let (_, would_send) = build_request_body(
+            system_instruction.clone(),
+            contents.clone(),
+            model,
+            &params,
+            setting,
+            true,
+        );
+        let send_thinking =
+            would_send && thinking::should_send("gemini", &self.base_url, model, setting);
+        let sent = thinking::send_with_fallback(
+            "gemini",
+            &self.base_url,
+            model,
+            send_thinking,
+            &params,
+            |with_thinking| {
+                let (body, _) = build_request_body(
+                    system_instruction.clone(),
+                    contents.clone(),
+                    model,
+                    &params,
+                    setting,
+                    with_thinking,
+                );
+                let request = self
+                    .client
+                    .post(&url)
+                    .header("Content-Type", "application/json")
+                    .header("x-goog-api-key", &self.api_key)
+                    .json(&body)
+                    .send();
+                let (params, app_handle) = (&params, &app_handle);
+                async move {
+                    cancellable(params, request).await?.map_err(|e| {
+                        if is_cancelled(params) {
+                            return LLMError::Cancelled;
+                        }
+                        emit_error(app_handle, params, &super::provider::error_text(&e));
+                        LLMError::HttpError(e)
+                    })
+                }
+            },
+        )
         .await?;
 
         let response = match sent {
@@ -304,7 +320,8 @@ impl LLMProvider for GeminiClient {
                             }
 
                             if params.enable_web_search {
-                                grounding_sources.extend(SSEParser::extract_gemini_grounding(&data));
+                                grounding_sources
+                                    .extend(SSEParser::extract_gemini_grounding(&data));
                             }
 
                             // Extract usage metadata if available
@@ -383,7 +400,12 @@ mod thinking_tests {
     use super::*;
     use crate::llm::thinking::ThinkingSetting::*;
 
-    fn body(model: &str, setting: ThinkingSetting, params: GenerationParams, with: bool) -> (serde_json::Value, bool) {
+    fn body(
+        model: &str,
+        setting: ThinkingSetting,
+        params: GenerationParams,
+        with: bool,
+    ) -> (serde_json::Value, bool) {
         let contents = vec![json!({ "role": "user", "parts": [{ "text": "hi" }] })];
         build_request_body(Some("sys".into()), contents, model, &params, setting, with)
     }
@@ -400,21 +422,34 @@ mod thinking_tests {
     #[test]
     fn off_low_high_set_thinking_config() {
         let p = GenerationParams::default;
-        assert_eq!(body("gemini-2.5-flash", Off, p(), true).0["generationConfig"]["thinkingConfig"]["thinkingBudget"], 0);
-        assert_eq!(body("gemini-2.5-flash", Low, p(), true).0["generationConfig"]["thinkingConfig"]["thinkingBudget"], 1024);
         assert_eq!(
-            body("gemini-3-pro-preview", High, p(), true).0["generationConfig"]["thinkingConfig"]["thinkingLevel"],
+            body("gemini-2.5-flash", Off, p(), true).0["generationConfig"]["thinkingConfig"]
+                ["thinkingBudget"],
+            0
+        );
+        assert_eq!(
+            body("gemini-2.5-flash", Low, p(), true).0["generationConfig"]["thinkingConfig"]
+                ["thinkingBudget"],
+            1024
+        );
+        assert_eq!(
+            body("gemini-3-pro-preview", High, p(), true).0["generationConfig"]["thinkingConfig"]
+                ["thinkingLevel"],
             "high"
         );
         assert_eq!(
-            body("gemini-3-flash-preview", Off, p(), true).0["generationConfig"]["thinkingConfig"]["thinkingLevel"],
+            body("gemini-3-flash-preview", Off, p(), true).0["generationConfig"]["thinkingConfig"]
+                ["thinkingLevel"],
             "minimal"
         );
     }
 
     #[test]
     fn it_works_with_a_context_cache_and_the_retry_drops_it() {
-        let cached = GenerationParams { cache_name: Some("cachedContents/abc".into()), ..Default::default() };
+        let cached = GenerationParams {
+            cache_name: Some("cachedContents/abc".into()),
+            ..Default::default()
+        };
         let (b, sent) = body("gemini-2.5-flash", Off, cached.clone(), true);
         assert!(sent);
         assert_eq!(b["cachedContent"], "cachedContents/abc");

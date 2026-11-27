@@ -156,7 +156,7 @@ describe("F25 the Start dialog names its workspace and lets you change it", () =
     await userEvent.click(screen.getByRole("radio", { name: "Biology" }));
     expect(screen.getByText("Goes to Biology")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Start Meeting" }));
-    expect(onStart).toHaveBeenCalledWith("online", "team_meeting", { workspaceId: "bio", borrowed: [], documentIds: [] });
+    expect(onStart).toHaveBeenCalledWith("online", "team_meeting", { workspaceId: "bio", borrowed: [], documentIds: [], meetingContext: "" });
   });
 
   it("names General too when it is the only workspace", () => {
@@ -247,7 +247,7 @@ describe("the Start dialog keeps its buttons in view", () => {
     expect(screen.getByText("Goes to Workspace 17")).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Also use" }).querySelector(".max-h-28")).not.toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Start Meeting" }));
-    expect(onStart).toHaveBeenCalledWith("online", expect.any(String), { workspaceId: "w17", borrowed: [], documentIds: [] });
+    expect(onStart).toHaveBeenCalledWith("online", expect.any(String), { workspaceId: "w17", borrowed: [], documentIds: [], meetingContext: "" });
   });
 });
 

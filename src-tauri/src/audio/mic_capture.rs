@@ -7,7 +7,9 @@ use std::sync::mpsc::SyncSender;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
-use super::capture_supervisor::{self, CaptureOpener, CaptureSide, DeviceChoice, Opened, SideMessage};
+use super::capture_supervisor::{
+    self, CaptureOpener, CaptureSide, DeviceChoice, Opened, SideMessage,
+};
 use super::resampler::StreamResampler;
 use super::{AudioChunk, AudioSource};
 
@@ -43,10 +45,20 @@ impl CaptureOpener for InputOpener {
             DeviceChoice::Default => "default",
         };
         let device = super::device_manager::find_input_device(device_id)?;
-        let device_name = super::device_manager::device_name(&device).unwrap_or_else(|_| "unknown".into());
+        let device_name =
+            super::device_manager::device_name(&device).unwrap_or_else(|_| "unknown".into());
         let err_fn = capture_supervisor::error_callback(self.errors.clone(), self.side, generation);
-        let stream = open_input_stream(&device, &device_name, self.tx.clone(), self.tags.clone(), err_fn)?;
-        Ok(Opened { stream, device: device_name })
+        let stream = open_input_stream(
+            &device,
+            &device_name,
+            self.tx.clone(),
+            self.tags.clone(),
+            err_fn,
+        )?;
+        Ok(Opened {
+            stream,
+            device: device_name,
+        })
     }
 }
 
@@ -62,7 +74,8 @@ pub fn start_mic_capture(
     source: AudioSource,
 ) -> Result<Stream, String> {
     let device = super::device_manager::find_input_device(device_id)?;
-    let device_name = super::device_manager::device_name(&device).unwrap_or_else(|_| "unknown".into());
+    let device_name =
+        super::device_manager::device_name(&device).unwrap_or_else(|_| "unknown".into());
     let err_fn = |err: cpal::Error| {
         super::capture_common::log_stream_error("Mic capture stream error", &err);
     };
@@ -78,7 +91,11 @@ fn open_input_stream(
     tags: InputTags,
     err_fn: impl FnMut(cpal::Error) + Send + 'static,
 ) -> Result<Stream, String> {
-    log::info!("Starting input capture on device: {} ({:?})", device_name, tags);
+    log::info!(
+        "Starting input capture on device: {} ({:?})",
+        device_name,
+        tags
+    );
 
     let config = device
         .default_input_config()
@@ -87,7 +104,12 @@ fn open_input_stream(
     let sample_rate = config.sample_rate();
     let channels = config.channels();
     let sample_format = config.sample_format();
-    log::info!("Input capture config: {}Hz, {} channels, {:?}", sample_rate, channels, sample_format);
+    log::info!(
+        "Input capture config: {}Hz, {} channels, {:?}",
+        sample_rate,
+        channels,
+        sample_format
+    );
 
     // Lives in the stream callback: keeps its place across chunks.
     let mut resampler = StreamResampler::new(sample_rate, TARGET_SAMPLE_RATE, channels);
@@ -181,7 +203,10 @@ mod tests {
         let mut resampler = StreamResampler::new(16_000, TARGET_SAMPLE_RATE, 1);
         send_tagged(&[7; 160], &mut resampler, &tx, &InputTags::Both);
         let (mic, system) = (rx.try_recv().unwrap(), rx.try_recv().unwrap());
-        assert_eq!((mic.source, system.source), (AudioSource::Mic, AudioSource::System));
+        assert_eq!(
+            (mic.source, system.source),
+            (AudioSource::Mic, AudioSource::System)
+        );
         assert_eq!(mic.pcm_data, system.pcm_data);
         assert_eq!(mic.timestamp_ms, system.timestamp_ms);
     }

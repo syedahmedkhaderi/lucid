@@ -78,7 +78,9 @@ fn config_from_args(args: &[String]) -> Config {
             continue;
         }
         let Some(pair) = it.next() else { break };
-        let Some((k, v)) = pair.split_once('=') else { continue };
+        let Some((k, v)) = pair.split_once('=') else {
+            continue;
+        };
         match k {
             "fake_mode" => c.mode = v.into(),
             "fake_account" => c.account = v.into(),
@@ -99,7 +101,11 @@ fn config_from_args(args: &[String]) -> Config {
 
 fn record(c: &Config, line: &str) {
     if let Some(path) = &c.record {
-        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
         writeln!(f, "{line}").unwrap();
     }
 }
@@ -124,7 +130,9 @@ fn main() {
 
     // One-shot subcommands.
     if args.iter().any(|a| a == "mcp") && args.iter().any(|a| a == "list") {
-        println!(r#"[{{"name":"mira","enabled":true,"transport":{{"type":"stdio","command":"x","env":{{"TOKEN":"secret"}}}}}},{{"name":"web search","enabled":true}}]"#);
+        println!(
+            r#"[{{"name":"mira","enabled":true,"transport":{{"type":"stdio","command":"x","env":{{"TOKEN":"secret"}}}}}},{{"name":"web search","enabled":true}}]"#
+        );
         return;
     }
     if args.iter().any(|a| a == "login") {
@@ -179,9 +187,14 @@ fn main() {
                 let account = match cfg.account.as_str() {
                     "apikey" => json!({ "type": "apiKey" }),
                     "none" => Value::Null,
-                    _ => json!({ "type": "chatgpt", "email": "fake@example.com", "planType": "pro" }),
+                    _ => {
+                        json!({ "type": "chatgpt", "email": "fake@example.com", "planType": "pro" })
+                    }
                 };
-                respond(&id, json!({ "account": account, "requiresOpenaiAuth": true }));
+                respond(
+                    &id,
+                    json!({ "account": account, "requiresOpenaiAuth": true }),
+                );
             }
             Some("model/list") => respond(
                 &id,
@@ -194,20 +207,37 @@ fn main() {
                 ], "nextCursor": null }),
             ),
             Some("thread/start") => {
-                let model = msg["params"]["model"].as_str().unwrap_or("fake-default").to_string();
-                respond(&id, json!({ "thread": { "id": "thread-1" }, "model": model }));
+                let model = msg["params"]["model"]
+                    .as_str()
+                    .unwrap_or("fake-default")
+                    .to_string();
+                respond(
+                    &id,
+                    json!({ "thread": { "id": "thread-1" }, "model": model }),
+                );
                 note("thread/started", json!({ "thread": { "id": "thread-1" } }));
                 for (name, status) in &cfg.mcp {
-                    note("mcpServer/startupStatus/updated", json!({ "threadId": "thread-1", "name": name, "status": "starting", "error": null }));
+                    note(
+                        "mcpServer/startupStatus/updated",
+                        json!({ "threadId": "thread-1", "name": name, "status": "starting", "error": null }),
+                    );
                     let error = (status == "failed").then(|| "MCP startup failed".to_string());
-                    note("mcpServer/startupStatus/updated", json!({ "threadId": "thread-1", "name": name, "status": status, "error": error }));
+                    note(
+                        "mcpServer/startupStatus/updated",
+                        json!({ "threadId": "thread-1", "name": name, "status": status, "error": error }),
+                    );
                 }
             }
             Some("turn/start") => {
                 turns += 1;
                 let text = msg["params"]["input"][0]["text"].as_str().unwrap_or("");
                 // The question is the last line when context was prepended.
-                let q = text.rsplit("Now answer this:\n").next().unwrap_or(text).trim().to_string();
+                let q = text
+                    .rsplit("Now answer this:\n")
+                    .next()
+                    .unwrap_or(text)
+                    .trim()
+                    .to_string();
                 run_turn(&cfg, &rx, &mut backlog, &id, &q, turns);
             }
             Some("turn/interrupt") => respond(&id, json!({})),
@@ -227,8 +257,14 @@ fn run_turn(
     turn_no: u64,
 ) {
     let turn_id = format!("turn-{turn_no}");
-    respond(start_id, json!({ "turn": turn_obj(&turn_id, "inProgress", Value::Null) }));
-    note("turn/started", json!({ "threadId": "thread-1", "turn": turn_obj(&turn_id, "inProgress", Value::Null) }));
+    respond(
+        start_id,
+        json!({ "turn": turn_obj(&turn_id, "inProgress", Value::Null) }),
+    );
+    note(
+        "turn/started",
+        json!({ "threadId": "thread-1", "turn": turn_obj(&turn_id, "inProgress", Value::Null) }),
+    );
     let item = |t: &str, extra: Value| {
         let mut base = json!({ "type": t, "id": format!("{t}-{turn_no}") });
         if let (Some(b), Some(e)) = (base.as_object_mut(), extra.as_object()) {
@@ -238,10 +274,23 @@ fn run_turn(
         }
         base
     };
-    let started = |it: Value| note("item/started", json!({ "threadId": "thread-1", "turnId": turn_id, "startedAtMs": 1, "item": it }));
-    let completed = |it: Value| note("item/completed", json!({ "threadId": "thread-1", "turnId": turn_id, "completedAtMs": 2, "item": it }));
+    let started = |it: Value| {
+        note(
+            "item/started",
+            json!({ "threadId": "thread-1", "turnId": turn_id, "startedAtMs": 1, "item": it }),
+        )
+    };
+    let completed = |it: Value| {
+        note(
+            "item/completed",
+            json!({ "threadId": "thread-1", "turnId": turn_id, "completedAtMs": 2, "item": it }),
+        )
+    };
     let finish = |status: &str, error: Value| {
-        note("turn/completed", json!({ "threadId": "thread-1", "turn": turn_obj(&turn_id, status, error) }));
+        note(
+            "turn/completed",
+            json!({ "threadId": "thread-1", "turn": turn_obj(&turn_id, status, error) }),
+        );
     };
 
     if q == "usage" {
@@ -249,26 +298,48 @@ fn run_turn(
             "message": "You've hit your usage limit. Visit https://chatgpt.com/settings/usage to purchase more credits or try again at Nov 26th, 2026 9:15 AM.",
             "codexErrorInfo": "usageLimitExceeded",
         });
-        note("error", json!({ "error": error, "willRetry": false, "threadId": "thread-1", "turnId": turn_id }));
+        note(
+            "error",
+            json!({ "error": error, "willRetry": false, "threadId": "thread-1", "turnId": turn_id }),
+        );
         finish("failed", error);
         return;
     }
     if let Some(message) = q.strip_prefix("fail:") {
         let error = json!({ "message": message, "codexErrorInfo": null });
-        note("error", json!({ "error": error, "willRetry": false, "threadId": "thread-1", "turnId": turn_id }));
+        note(
+            "error",
+            json!({ "error": error, "willRetry": false, "threadId": "thread-1", "turnId": turn_id }),
+        );
         finish("failed", error);
         return;
     }
 
     // Thinking, then narration that is not part of the answer.
     started(item("reasoning", json!({})));
-    note("item/reasoning/summaryTextDelta", json!({ "threadId": "thread-1", "turnId": turn_id, "itemId": "reasoning", "summaryIndex": 0, "delta": "Thinking" }));
-    let narration = item("agentMessage", json!({ "id": "msg-narration", "text": "", "phase": "commentary" }));
+    note(
+        "item/reasoning/summaryTextDelta",
+        json!({ "threadId": "thread-1", "turnId": turn_id, "itemId": "reasoning", "summaryIndex": 0, "delta": "Thinking" }),
+    );
+    let narration = item(
+        "agentMessage",
+        json!({ "id": "msg-narration", "text": "", "phase": "commentary" }),
+    );
     started(narration.clone());
-    note("item/agentMessage/delta", json!({ "threadId": "thread-1", "turnId": turn_id, "itemId": narration["id"], "delta": "Let me look." }));
-    completed(item("agentMessage", json!({ "id": "msg-narration", "text": "Let me look.", "phase": "commentary" })));
+    note(
+        "item/agentMessage/delta",
+        json!({ "threadId": "thread-1", "turnId": turn_id, "itemId": narration["id"], "delta": "Let me look." }),
+    );
+    completed(item(
+        "agentMessage",
+        json!({ "id": "msg-narration", "text": "Let me look.", "phase": "commentary" }),
+    ));
 
-    let answer = if q == "hello" { "Hello world".to_string() } else { format!("answer:{q}") };
+    let answer = if q == "hello" {
+        "Hello world".to_string()
+    } else {
+        format!("answer:{q}")
+    };
     let mut answer = answer;
 
     if q == "mcp" {
@@ -302,7 +373,8 @@ fn run_turn(
         completed(it);
     }
     if q == "write" {
-        let change = json!({ "type": "fileChange", "id": "fc-0", "changes": [], "status": "inProgress" });
+        let change =
+            json!({ "type": "fileChange", "id": "fc-0", "changes": [], "status": "inProgress" });
         started(change.clone());
         let mut done = change;
         done["status"] = json!("completed");
@@ -350,7 +422,11 @@ fn run_turn(
         // Wait for the client's reply to that request.
         let reply = loop {
             match rx.recv() {
-                Ok(Some(m)) if m.get("method").is_none() && m.get("id") == Some(&json!(9000 + turn_no)) => break m,
+                Ok(Some(m))
+                    if m.get("method").is_none() && m.get("id") == Some(&json!(9000 + turn_no)) =>
+                {
+                    break m
+                }
                 Ok(Some(m)) => backlog.push_back(m),
                 _ => return,
             }
@@ -364,7 +440,10 @@ fn run_turn(
         answer = format!("decision:{decision}");
     }
 
-    let msg = item("agentMessage", json!({ "id": "msg-answer", "text": "", "phase": "final_answer" }));
+    let msg = item(
+        "agentMessage",
+        json!({ "id": "msg-answer", "text": "", "phase": "final_answer" }),
+    );
     started(msg.clone());
     let chars: Vec<char> = answer.chars().collect();
     let pieces: Vec<String> = if q == "hello" {
@@ -375,7 +454,10 @@ fn run_turn(
         chars.chunks(3).map(|c| c.iter().collect()).collect()
     };
     for (i, piece) in pieces.iter().enumerate() {
-        note("item/agentMessage/delta", json!({ "threadId": "thread-1", "turnId": turn_id, "itemId": msg["id"], "delta": piece }));
+        note(
+            "item/agentMessage/delta",
+            json!({ "threadId": "thread-1", "turnId": turn_id, "itemId": msg["id"], "delta": piece }),
+        );
         if i == 0 && cfg.mode == "crash" {
             std::process::exit(1);
         }
@@ -387,7 +469,9 @@ fn run_turn(
         if cfg.mode == "slow" {
             // Interruptible: an `turn/interrupt` ends the turn.
             match rx.recv_timeout(Duration::from_millis(100)) {
-                Ok(Some(m)) if m.get("method").and_then(Value::as_str) == Some("turn/interrupt") => {
+                Ok(Some(m))
+                    if m.get("method").and_then(Value::as_str) == Some("turn/interrupt") =>
+                {
                     record(cfg, &m.to_string());
                     respond(&m["id"], json!({}));
                     finish("interrupted", Value::Null);
@@ -402,9 +486,12 @@ fn run_turn(
     let mut full = msg;
     full["text"] = json!(answer);
     completed(full);
-    note("thread/tokenUsage/updated", json!({
-        "threadId": "thread-1", "turnId": turn_id,
-        "tokenUsage": { "total": usage_obj(turn_no), "last": usage_obj(1), "modelContextWindow": 272000 },
-    }));
+    note(
+        "thread/tokenUsage/updated",
+        json!({
+            "threadId": "thread-1", "turnId": turn_id,
+            "tokenUsage": { "total": usage_obj(turn_no), "last": usage_obj(1), "modelContextWindow": 272000 },
+        }),
+    );
     finish("completed", Value::Null);
 }

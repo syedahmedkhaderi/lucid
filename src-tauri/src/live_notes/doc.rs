@@ -36,7 +36,9 @@ impl BlockKind {
             "summary" | "overview" | "recap" => Some(BlockKind::Summary),
             "bullet" | "point" | "note" | "item" | "key_point" | "fact" => Some(BlockKind::Bullet),
             "decision" | "decided" => Some(BlockKind::Decision),
-            "task" | "todo" | "action" | "action_item" | "followup" | "follow_up" => Some(BlockKind::Task),
+            "task" | "todo" | "action" | "action_item" | "followup" | "follow_up" => {
+                Some(BlockKind::Task)
+            }
             "question" | "open_question" | "q" | "unanswered" => Some(BlockKind::Question),
             _ => None,
         }
@@ -107,7 +109,15 @@ pub struct NoteDoc {
 
 impl Default for NoteDoc {
     fn default() -> Self {
-        Self { version: DOC_VERSION, blocks: Vec::new(), next_id: 1, uncovered: None, started_at: None, covered_to: None, ended: None }
+        Self {
+            version: DOC_VERSION,
+            blocks: Vec::new(),
+            next_id: 1,
+            uncovered: None,
+            started_at: None,
+            covered_to: None,
+            ended: None,
+        }
     }
 }
 
@@ -120,8 +130,13 @@ impl NoteDoc {
     /// never covered: lines from where the notes began that no run folded in. Falls back to the
     /// range saved at the end for notes that predate the coverage fields.
     pub fn uncovered_in(&self, line_times: &[u64]) -> Option<(u64, u64)> {
-        let Some(start) = self.started_at else { return self.uncovered };
-        let missed = line_times.iter().copied().filter(|t| *t >= start && self.covered_to.map_or(true, |c| *t > c));
+        let Some(start) = self.started_at else {
+            return self.uncovered;
+        };
+        let missed = line_times
+            .iter()
+            .copied()
+            .filter(|t| *t >= start && self.covered_to.map_or(true, |c| *t > c));
         let (mut lo, mut hi, mut any) = (u64::MAX, 0u64, false);
         for t in missed {
             lo = lo.min(t);
@@ -153,12 +168,21 @@ impl NoteDoc {
     }
 
     pub fn next_order(&self) -> u32 {
-        self.blocks.iter().map(|b| b.order).max().map(|o| o + 1).unwrap_or(0)
+        self.blocks
+            .iter()
+            .map(|b| b.order)
+            .max()
+            .map(|o| o + 1)
+            .unwrap_or(0)
     }
 
     /// Topics in creation order.
     pub fn topics(&self) -> Vec<&Block> {
-        let mut t: Vec<&Block> = self.blocks.iter().filter(|b| b.kind == BlockKind::Topic).collect();
+        let mut t: Vec<&Block> = self
+            .blocks
+            .iter()
+            .filter(|b| b.kind == BlockKind::Topic)
+            .collect();
         t.sort_by_key(|b| b.order);
         t
     }
@@ -222,18 +246,37 @@ impl NoteDoc {
         true
     }
 
-    pub fn user_add(&mut self, kind: BlockKind, parent: Option<&str>, text: &str, at_ms: u64) -> Option<String> {
+    pub fn user_add(
+        &mut self,
+        kind: BlockKind,
+        parent: Option<&str>,
+        text: &str,
+        at_ms: u64,
+    ) -> Option<String> {
         self.user_add_with_id(None, kind, parent, text, None, at_ms)
     }
 
     /// A block the user adds. `id` is the webview's own id when it is usable
     /// and free; `after` puts it right after that block.
-    pub fn user_add_with_id(&mut self, id: Option<&str>, kind: BlockKind, parent: Option<&str>, text: &str, after: Option<&str>, at_ms: u64) -> Option<String> {
+    pub fn user_add_with_id(
+        &mut self,
+        id: Option<&str>,
+        kind: BlockKind,
+        parent: Option<&str>,
+        text: &str,
+        after: Option<&str>,
+        at_ms: u64,
+    ) -> Option<String> {
         let cleaned = crate::live_notes::reducer::clean_text(kind, text);
         if cleaned.is_empty() {
             return None;
         }
-        let usable = |i: &&str| !i.is_empty() && i.len() <= 40 && i.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        let usable = |i: &&str| {
+            !i.is_empty()
+                && i.len() <= 40
+                && i.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        };
         let id = match id.filter(usable) {
             Some(i) if self.get(i).is_none() => i.to_string(),
             _ => self.alloc_id(),
@@ -252,7 +295,11 @@ impl NoteDoc {
         self.blocks.push(Block {
             id: id.clone(),
             kind,
-            parent: if kind == BlockKind::Topic { None } else { parent.map(|s| s.to_string()) },
+            parent: if kind == BlockKind::Topic {
+                None
+            } else {
+                parent.map(|s| s.to_string())
+            },
             text: cleaned,
             start_ms: at_ms,
             end_ms: at_ms,
@@ -268,7 +315,13 @@ impl NoteDoc {
     /// Markdown for copy/export: entity tags stripped.
     pub fn to_markdown(&self, with_times: bool) -> String {
         let mut out = String::new();
-        let time = |b: &Block| if with_times { format!(" ({})", fmt_clock(b.start_ms)) } else { String::new() };
+        let time = |b: &Block| {
+            if with_times {
+                format!(" ({})", fmt_clock(b.start_ms))
+            } else {
+                String::new()
+            }
+        };
         let line = |b: &Block| -> String {
             let t = strip_tags(&b.text);
             match b.kind {
@@ -286,7 +339,10 @@ impl NoteDoc {
                 out.push_str(&line(b));
             }
         }
-        let loose: Vec<&&Block> = top.iter().filter(|b| b.kind != BlockKind::Summary).collect();
+        let loose: Vec<&&Block> = top
+            .iter()
+            .filter(|b| b.kind != BlockKind::Summary)
+            .collect();
         for b in &loose {
             out.push_str(&line(b));
         }
@@ -329,15 +385,25 @@ impl NoteDoc {
         }
         let mut recent: Vec<(String, Vec<String>)> = Vec::new();
         for t in &topics[recent_from..] {
-            let kids: Vec<String> = self.children_of(Some(&t.id)).iter().map(|k| outline_line(k, 1)).collect();
+            let kids: Vec<String> = self
+                .children_of(Some(&t.id))
+                .iter()
+                .map(|k| outline_line(k, 1))
+                .collect();
             recent.push((outline_line(t, 0), kids));
         }
 
-        let render = |head: &[String], older_n: usize, older: &[String], recent: &[(String, Vec<String>)]| {
+        let render = |head: &[String],
+                      older_n: usize,
+                      older: &[String],
+                      recent: &[(String, Vec<String>)]| {
             let mut lines: Vec<String> = Vec::new();
             lines.extend(head.iter().cloned());
             if older_n > older.len() {
-                lines.push(format!("(… {} earlier topics not shown)", older_n - older.len()));
+                lines.push(format!(
+                    "(… {} earlier topics not shown)",
+                    older_n - older.len()
+                ));
             }
             lines.extend(older.iter().cloned());
             for (t, kids) in recent {
@@ -384,7 +450,14 @@ impl NoteDoc {
 fn outline_line(b: &Block, depth: usize) -> String {
     let lock = if b.locked() { "*" } else { "" };
     let indent = "  ".repeat(depth);
-    format!("{indent}[{}{}] {} {}: {}", b.id, lock, fmt_clock(b.start_ms), b.kind.as_str(), crate::prompt_data::clean_line_max(&b.text, 300))
+    format!(
+        "{indent}[{}{}] {} {}: {}",
+        b.id,
+        lock,
+        fmt_clock(b.start_ms),
+        b.kind.as_str(),
+        crate::prompt_data::clean_line_max(&b.text, 300)
+    )
 }
 
 // ---------------------------------------------------------------- spans
@@ -437,7 +510,10 @@ pub fn parse_spans(text: &str) -> Vec<Span> {
     let mut plain = String::new();
     let push_plain = |plain: &mut String, spans: &mut Vec<Span>| {
         if !plain.is_empty() {
-            spans.push(Span { kind: SpanKind::Plain, text: std::mem::take(plain) });
+            spans.push(Span {
+                kind: SpanKind::Plain,
+                text: std::mem::take(plain),
+            });
         }
     };
     let mut i = 0;
@@ -466,7 +542,10 @@ pub fn parse_spans(text: &str) -> Vec<Span> {
                         match known {
                             Some(kind) => {
                                 push_plain(&mut plain, &mut spans);
-                                spans.push(Span { kind, text: inner_trim });
+                                spans.push(Span {
+                                    kind,
+                                    text: inner_trim,
+                                });
                             }
                             None => plain.push_str(&inner_trim),
                         }
@@ -539,8 +618,17 @@ mod tests {
     fn spans_parse_and_strip() {
         let s = parse_spans("Ask {{p:Ana}} about {{l:Madrid}} on {{d:Friday}}, {{n:12k}}.");
         assert_eq!(s.len(), 9);
-        assert_eq!(s[1], Span { kind: SpanKind::Person, text: "Ana".into() });
-        assert_eq!(strip_tags("Ask {{p:Ana}} now {{x:bad}} {{o:}}"), "Ask Ana now bad ");
+        assert_eq!(
+            s[1],
+            Span {
+                kind: SpanKind::Person,
+                text: "Ana".into()
+            }
+        );
+        assert_eq!(
+            strip_tags("Ask {{p:Ana}} now {{x:bad}} {{o:}}"),
+            "Ask Ana now bad "
+        );
         assert_eq!(normalize_tags("a {{p:Ana}} {{p:Bo"), "a {{p:Ana}} p:Bo");
         assert_eq!(strip_tags("{{o:Acme}} 来月"), "Acme 来月");
     }
@@ -564,10 +652,19 @@ mod tests {
     #[test]
     fn markdown_has_no_tags() {
         let mut d = NoteDoc::new();
-        d.blocks.push(blk("b1", BlockKind::Topic, None, "Hiring {{o:Acme}}", 0));
-        d.blocks.push(blk("b2", BlockKind::Bullet, Some("b1"), "{{p:Ana}} starts {{d:Monday}}", 1));
-        d.blocks.push(blk("b3", BlockKind::Task, Some("b1"), "Send offer", 2));
-        d.blocks.push(blk("b4", BlockKind::Decision, Some("b1"), "Go ahead", 3));
+        d.blocks
+            .push(blk("b1", BlockKind::Topic, None, "Hiring {{o:Acme}}", 0));
+        d.blocks.push(blk(
+            "b2",
+            BlockKind::Bullet,
+            Some("b1"),
+            "{{p:Ana}} starts {{d:Monday}}",
+            1,
+        ));
+        d.blocks
+            .push(blk("b3", BlockKind::Task, Some("b1"), "Send offer", 2));
+        d.blocks
+            .push(blk("b4", BlockKind::Decision, Some("b1"), "Go ahead", 3));
         let md = d.to_markdown(false);
         assert!(md.contains("## Hiring Acme"));
         assert!(md.contains("- Ana starts Monday"));
@@ -581,8 +678,20 @@ mod tests {
         let mut d = NoteDoc::new();
         for i in 0..5u32 {
             let tid = format!("t{i}");
-            d.blocks.push(blk(&tid, BlockKind::Topic, None, &format!("Topic {i}"), i * 10));
-            d.blocks.push(blk(&format!("k{i}"), BlockKind::Bullet, Some(&tid), &format!("detail {i} here"), i * 10 + 1));
+            d.blocks.push(blk(
+                &tid,
+                BlockKind::Topic,
+                None,
+                &format!("Topic {i}"),
+                i * 10,
+            ));
+            d.blocks.push(blk(
+                &format!("k{i}"),
+                BlockKind::Bullet,
+                Some(&tid),
+                &format!("detail {i} here"),
+                i * 10 + 1,
+            ));
         }
         let o = d.outline(900);
         assert!(o.contains("detail 4 here") && o.contains("detail 3 here"));
@@ -595,7 +704,13 @@ mod tests {
         let mut d = NoteDoc::new();
         for i in 0..80u32 {
             let tid = format!("t{i}");
-            d.blocks.push(blk(&tid, BlockKind::Topic, None, &format!("A long topic title number {i} about things"), i * 100));
+            d.blocks.push(blk(
+                &tid,
+                BlockKind::Topic,
+                None,
+                &format!("A long topic title number {i} about things"),
+                i * 100,
+            ));
             for j in 0..6u32 {
                 d.blocks.push(blk(
                     &format!("k{i}_{j}"),

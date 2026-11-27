@@ -7,18 +7,21 @@ use std::sync::{Arc, Mutex};
 use tauri::{command, AppHandle, Emitter, State};
 
 use crate::commands::intelligence_commands::{
-    compose_instructions, plan_toggles, request_plan, request_route_locked, route_after_outage, run_session_assist,
-    sources_unavailable_notice, stateless_provider, SessionAssist, SessionOutcome,
+    compose_instructions, plan_toggles, request_plan, request_route_locked, route_after_outage,
+    run_session_assist, sources_unavailable_notice, stateless_provider, SessionAssist,
+    SessionOutcome,
 };
 use crate::commands::meeting_commands::{past_meeting_context, PastMeetingContext};
 use crate::db::meeting_chat::{self, MeetingChatMessage};
 use crate::intelligence::prompt_templates::MEETING_ASK_PROMPT;
 use crate::llm::cli_agent::context::{build_preload_messages, pack_messages};
 use crate::llm::cli_agent::manager::{SessionKey, SessionScope};
+use crate::llm::cli_agent::routing::{
+    earlier_exchange, Route, PRELOAD_MESSAGE_CHARS, REPLAY_TAIL_CHARS,
+};
 use crate::llm::provider::emit_activity;
-use crate::sources::config::SourceToggles;
-use crate::llm::cli_agent::routing::{earlier_exchange, Route, PRELOAD_MESSAGE_CHARS, REPLAY_TAIL_CHARS};
 use crate::llm::provider::{GenerationParams, LLMError, LLMMessage, StreamStartPayload, TokenSink};
+use crate::sources::config::SourceToggles;
 use crate::state::AppState;
 
 /// Intelligence mode of an "Ask this meeting" request (stream events, AI Log).
@@ -54,14 +57,22 @@ fn recent_exchanges(chat: &[MeetingChatMessage], budget: usize) -> Vec<String> {
 /// session (`shouldQuery:false`), so follow-up questions work. Only the most
 /// recent exchanges are kept (about 30k tokens).
 pub(crate) fn chat_history_preload(chat: &[MeetingChatMessage]) -> Vec<String> {
-    pack_messages(&recent_exchanges(chat, REPLAY_TAIL_CHARS), PRELOAD_MESSAGE_CHARS)
+    pack_messages(
+        &recent_exchanges(chat, REPLAY_TAIL_CHARS),
+        PRELOAD_MESSAGE_CHARS,
+    )
 }
 
 /// The user message of a stateless "Ask this meeting" request: the summary,
 /// the whole transcript, the earlier questions with their answers, then the
 /// question.
 fn stateless_user_prompt(context: &PastMeetingContext, question: &str) -> String {
-    let mut parts = build_preload_messages(&context.transcript, context.summary.as_deref(), usize::MAX, false);
+    let mut parts = build_preload_messages(
+        &context.transcript,
+        context.summary.as_deref(),
+        usize::MAX,
+        false,
+    );
     parts.extend(recent_exchanges(&context.chat, REPLAY_TAIL_CHARS));
     parts.push(format!("## Question\n{}", question.trim()));
     parts.join("\n\n")
@@ -73,7 +84,10 @@ fn stateless_system_prompt(composed_instructions: &str) -> String {
     if composed_instructions.trim().is_empty() {
         MEETING_ASK_PROMPT.to_string()
     } else {
-        format!("{MEETING_ASK_PROMPT}\n\nAdditional Instructions: {}", composed_instructions.trim())
+        format!(
+            "{MEETING_ASK_PROMPT}\n\nAdditional Instructions: {}",
+            composed_instructions.trim()
+        )
     }
 }
 
@@ -100,7 +114,13 @@ struct Answer {
 }
 
 /// The question row and the answer row of one exchange.
-fn exchange_rows(meeting_id: &str, question: &str, asked_at: i64, answer: &Answer, answered_at: i64) -> [MeetingChatMessage; 2] {
+fn exchange_rows(
+    meeting_id: &str,
+    question: &str,
+    asked_at: i64,
+    answer: &Answer,
+    answered_at: i64,
+) -> [MeetingChatMessage; 2] {
     [
         MeetingChatMessage {
             id: uuid::Uuid::new_v4().to_string(),
@@ -127,7 +147,13 @@ fn exchange_rows(meeting_id: &str, question: &str, asked_at: i64, answer: &Answe
 }
 
 /// Save one answered question with the meeting.
-fn save_exchange(state: &AppState, meeting_id: &str, question: &str, asked_at: i64, answer: &Answer) -> Result<(), String> {
+fn save_exchange(
+    state: &AppState,
+    meeting_id: &str,
+    question: &str,
+    asked_at: i64,
+    answer: &Answer,
+) -> Result<(), String> {
     if answer.text.trim().is_empty() {
         return Ok(());
     }
@@ -135,7 +161,9 @@ fn save_exchange(state: &AppState, meeting_id: &str, question: &str, asked_at: i
         .database
         .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
-    let db = db.lock().map_err(|e| format!("Failed to lock database: {}", e))?;
+    let db = db
+        .lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
     for row in exchange_rows(meeting_id, question, asked_at, answer, now_ms()) {
         meeting_chat::insert_chat_message(db.connection(), &row)
             .map_err(|e| format!("Answer not saved: {}", e))?;
@@ -153,7 +181,9 @@ pub async fn list_meeting_chat(
         .database
         .as_ref()
         .ok_or_else(|| "Database not initialized".to_string())?;
-    let db = db.lock().map_err(|e| format!("Failed to lock database: {}", e))?;
+    let db = db
+        .lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
     meeting_chat::list_chat_messages(db.connection(), &meeting_id)
         .map_err(|e| format!("Failed to load meeting chat: {}", e))
 }
@@ -193,9 +223,16 @@ pub async fn ask_meeting(
             .ok_or_else(|| "Generation already in progress".to_string())?;
         let configs = engine.get_action_configs();
         let presets = compose_instructions(&configs.instruction_presets, "");
-        let composed = compose_instructions(&configs.instruction_presets, &configs.custom_instructions);
+        let composed =
+            compose_instructions(&configs.instruction_presets, &configs.custom_instructions);
         let cancel = guard.cancel_token();
-        (guard, cancel, presets, composed, configs.global_defaults.temperature)
+        (
+            guard,
+            cancel,
+            presets,
+            composed,
+            configs.global_defaults.temperature,
+        )
     };
     let params = GenerationParams {
         request_id: Some(request_id.clone()),
@@ -210,7 +247,14 @@ pub async fn ask_meeting(
     let plan = request_plan(&state, MEETING_ASK_MODE, &scope, sources, &scoped);
     let with_sources = plan.with_sources();
     let (no_library, no_tools) = plan.key_flags();
-    let mut route = request_route_locked(&state, MEETING_ASK_MODE, &scope, with_sources, no_library, no_tools);
+    let mut route = request_route_locked(
+        &state,
+        MEETING_ASK_MODE,
+        &scope,
+        with_sources,
+        no_library,
+        no_tools,
+    );
     let _content_request = match &route {
         Route::ClaudeSession(_) => {
             let provider = state.cli_settings.active().provider_type();
@@ -221,9 +265,12 @@ pub async fn ask_meeting(
                 .map_err(|error| error.to_string())?;
             crate::privacy::begin_llm_request(&provider, config.base_url.as_deref())?
         }
-        Route::Stateless => state.llm.as_ref()
+        Route::Stateless => state
+            .llm
+            .as_ref()
             .ok_or_else(|| "LLM router not initialized".to_string())?
-            .lock().map_err(|error| format!("Failed to lock LLM router: {error}"))?
+            .lock()
+            .map_err(|error| format!("Failed to lock LLM router: {error}"))?
             .begin_content_request()?,
     };
 
@@ -252,7 +299,9 @@ pub async fn ask_meeting(
             SessionOutcome::Done(Ok(Some(answer))) => {
                 // A restarted session replays the answer with its question; the
                 // session that answered (the plain one after a sources fallback).
-                state.meeting_sessions.record_reply(&answer.key, &answer.prompt, &answer.turn.text);
+                state
+                    .meeting_sessions
+                    .record_reply(&answer.key, &answer.prompt, &answer.turn.text);
                 let saved = save_exchange(
                     &state,
                     &meeting_id,
@@ -260,7 +309,8 @@ pub async fn ask_meeting(
                     asked_at,
                     &Answer {
                         model: answer.model,
-                        input_tokens: (answer.turn.input_tokens + answer.turn.cache_read_tokens) as i64,
+                        input_tokens: (answer.turn.input_tokens + answer.turn.cache_read_tokens)
+                            as i64,
                         output_tokens: answer.turn.output_tokens as i64,
                         text: answer.turn.text,
                     },
@@ -272,9 +322,19 @@ pub async fn ask_meeting(
                 drop(generation_guard);
                 return result.map(|_| ());
             }
-            SessionOutcome::Stateless | SessionOutcome::SourcesFailed(_) => route = Route::Stateless,
+            SessionOutcome::Stateless | SessionOutcome::SourcesFailed(_) => {
+                route = Route::Stateless
+            }
             SessionOutcome::Unavailable(kind, reason) => {
-                route = route_after_outage(&state, &app_handle, MEETING_ASK_MODE, &scope, kind, &reason, &params)?;
+                route = route_after_outage(
+                    &state,
+                    &app_handle,
+                    MEETING_ASK_MODE,
+                    &scope,
+                    kind,
+                    &reason,
+                    &params,
+                )?;
             }
         }
     }
@@ -283,7 +343,8 @@ pub async fn ask_meeting(
     if with_sources {
         emit_activity(&app_handle, &params, sources_unavailable_notice());
     }
-    let (provider, model, provider_name, _) = stateless_provider(&state, &app_handle, &route, &params).await?;
+    let (provider, model, provider_name, _) =
+        stateless_provider(&state, &app_handle, &route, &params).await?;
     let context = past_meeting_context(&state, &meeting_id)?;
     let system_prompt = stateless_system_prompt(&composed);
     let user_prompt = stateless_user_prompt(&context, &question);
@@ -326,8 +387,14 @@ pub async fn ask_meeting(
         })
     };
     let messages = vec![
-        LLMMessage { role: "system".into(), content: system_prompt },
-        LLMMessage { role: "user".into(), content: user_prompt },
+        LLMMessage {
+            role: "system".into(),
+            content: system_prompt,
+        },
+        LLMMessage {
+            role: "user".into(),
+            content: user_prompt,
+        },
     ];
     let result = {
         let provider = provider.lock().await;
@@ -335,7 +402,10 @@ pub async fn ask_meeting(
             .stream_completion(
                 messages,
                 &model,
-                GenerationParams { temperature: Some(temperature), ..params },
+                GenerationParams {
+                    temperature: Some(temperature),
+                    ..params
+                },
                 app_handle.clone(),
                 Some(sink),
             )
@@ -426,7 +496,12 @@ mod tests {
     fn meeting_chat_stateless_prompt_has_meeting_history_and_question() {
         let context = PastMeetingContext {
             summary: Some("We agreed to ship.".into()),
-            transcript: vec![Seg { id: "s1".into(), text: "Ship Friday".into(), speaker: "Dana".into(), timestamp_ms: 65_000 }],
+            transcript: vec![Seg {
+                id: "s1".into(),
+                text: "Ship Friday".into(),
+                speaker: "Dana".into(),
+                timestamp_ms: 65_000,
+            }],
             chat: vec![row("user", "When?", 1), row("assistant", "Friday.", 2)],
         };
         assert_eq!(
@@ -437,17 +512,32 @@ mod tests {
              ## Question\nWho decided?"
         );
         assert_eq!(stateless_system_prompt(" "), MEETING_ASK_PROMPT);
-        assert!(stateless_system_prompt("Be brief.").ends_with("\n\nAdditional Instructions: Be brief."));
+        assert!(stateless_system_prompt("Be brief.")
+            .ends_with("\n\nAdditional Instructions: Be brief."));
         assert!(session_task_instructions("Brief responses.").ends_with("\n\nBrief responses."));
     }
 
     #[test]
     fn meeting_chat_exchange_rows_keep_question_before_answer() {
-        let answer = Answer { text: "Friday.".into(), model: "sonnet".into(), input_tokens: 900, output_tokens: 12 };
+        let answer = Answer {
+            text: "Friday.".into(),
+            model: "sonnet".into(),
+            input_tokens: 900,
+            output_tokens: 12,
+        };
         let [q, a] = exchange_rows("m1", "When?", 1_000, &answer, 1_000);
-        assert_eq!((q.role.as_str(), q.content.as_str(), q.created_at, q.model), ("user", "When?", 1_000, None));
-        assert_eq!((a.role.as_str(), a.content.as_str(), a.created_at), ("assistant", "Friday.", 1_001));
-        assert_eq!((a.model.as_deref(), a.input_tokens, a.output_tokens), (Some("sonnet"), Some(900), Some(12)));
+        assert_eq!(
+            (q.role.as_str(), q.content.as_str(), q.created_at, q.model),
+            ("user", "When?", 1_000, None)
+        );
+        assert_eq!(
+            (a.role.as_str(), a.content.as_str(), a.created_at),
+            ("assistant", "Friday.", 1_001)
+        );
+        assert_eq!(
+            (a.model.as_deref(), a.input_tokens, a.output_tokens),
+            (Some("sonnet"), Some(900), Some(12))
+        );
         assert_ne!(q.id, a.id);
     }
 }

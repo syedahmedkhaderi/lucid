@@ -6,8 +6,8 @@ use serde_json::json;
 use std::time::Instant;
 
 use super::provider::{
-    CompletionStats, GenerationParams, LLMError, LLMMessage, LLMProvider, ModelInfo,
-    cancellable, check_cancelled, is_cancelled, emit_end, emit_error, emit_token, TokenSink,
+    cancellable, check_cancelled, emit_end, emit_error, emit_token, is_cancelled, CompletionStats,
+    GenerationParams, LLMError, LLMMessage, LLMProvider, ModelInfo, TokenSink,
 };
 use super::stream_parser::{LineBuffer, SSEParser};
 use super::thinking::{self, RequestOptions, Sent, ThinkingSetting};
@@ -80,7 +80,11 @@ pub(crate) fn build_chat_body(
 impl OpenAICompatClient {
     pub fn new(config: OpenAICompatConfig) -> Self {
         let client = reqwest::Client::new();
-        Self { config, client, options: RequestOptions::default() }
+        Self {
+            config,
+            client,
+            options: RequestOptions::default(),
+        }
     }
 
     /// Applies the user's thinking setting and extra request JSON.
@@ -150,9 +154,7 @@ impl LLMProvider for OpenAICompatClient {
                             context_window: m
                                 .get("context_window")
                                 .and_then(|c| c.as_u64())
-                                .or_else(|| {
-                                    m.get("context_length").and_then(|c| c.as_u64())
-                                }),
+                                .or_else(|| m.get("context_length").and_then(|c| c.as_u64())),
                         })
                     })
                     .collect()
@@ -196,25 +198,39 @@ impl LLMProvider for OpenAICompatClient {
         // with the correct mode. Do NOT emit it here — it would overwrite the mode.
 
         let send_thinking = thinking::should_send(provider, &self.config.base_url, model, setting);
-        let sent = thinking::send_with_fallback(provider, &self.config.base_url, model, send_thinking, &params, |with_thinking| {
-            let (body, _) =
-                build_chat_body(provider, &messages, model, &params, setting, extra.as_ref(), with_thinking);
-            let request = self
-                .apply_auth(self.client.post(&url))
-                .header("Content-Type", "application/json")
-                .json(&body)
-                .send();
-            let (params, app_handle) = (&params, &app_handle);
-            async move {
-                cancellable(params, request).await?.map_err(|e| {
-                    if is_cancelled(params) {
-                        return LLMError::Cancelled;
-                    }
-                    emit_error(app_handle, params, &super::provider::error_text(&e));
-                    LLMError::HttpError(e)
-                })
-            }
-        })
+        let sent = thinking::send_with_fallback(
+            provider,
+            &self.config.base_url,
+            model,
+            send_thinking,
+            &params,
+            |with_thinking| {
+                let (body, _) = build_chat_body(
+                    provider,
+                    &messages,
+                    model,
+                    &params,
+                    setting,
+                    extra.as_ref(),
+                    with_thinking,
+                );
+                let request = self
+                    .apply_auth(self.client.post(&url))
+                    .header("Content-Type", "application/json")
+                    .json(&body)
+                    .send();
+                let (params, app_handle) = (&params, &app_handle);
+                async move {
+                    cancellable(params, request).await?.map_err(|e| {
+                        if is_cancelled(params) {
+                            return LLMError::Cancelled;
+                        }
+                        emit_error(app_handle, params, &super::provider::error_text(&e));
+                        LLMError::HttpError(e)
+                    })
+                }
+            },
+        )
         .await?;
 
         let response = match sent {
@@ -337,9 +353,7 @@ pub fn create_openrouter_client(api_key: &str) -> OpenAICompatClient {
 pub fn create_lm_studio_client(base_url: Option<&str>) -> OpenAICompatClient {
     OpenAICompatClient::new(OpenAICompatConfig {
         provider_name: "lm_studio".to_string(),
-        base_url: base_url
-            .unwrap_or("http://localhost:1234/v1")
-            .to_string(),
+        base_url: base_url.unwrap_or("http://localhost:1234/v1").to_string(),
         auth_header: None,
         auth_value: None,
         extra_headers: vec![],
@@ -352,11 +366,18 @@ mod thinking_tests {
     use crate::llm::thinking::{parse_extra_request, ThinkingSetting::*};
 
     fn user() -> Vec<LLMMessage> {
-        vec![LLMMessage { role: "user".into(), content: "hi".into() }]
+        vec![LLMMessage {
+            role: "user".into(),
+            content: "hi".into(),
+        }]
     }
 
     fn body(provider: &str, model: &str, setting: ThinkingSetting) -> serde_json::Value {
-        let params = GenerationParams { temperature: Some(0.3), max_tokens: Some(50), ..Default::default() };
+        let params = GenerationParams {
+            temperature: Some(0.3),
+            max_tokens: Some(50),
+            ..Default::default()
+        };
         build_chat_body(provider, &user(), model, &params, setting, None, true).0
     }
 
@@ -375,19 +396,42 @@ mod thinking_tests {
     #[test]
     fn off_low_high_use_reasoning_effort() {
         assert_eq!(body("openai", "gpt-5.1", Off)["reasoning_effort"], "none");
-        assert_eq!(body("openai", "gpt-5-mini", Off)["reasoning_effort"], "minimal");
-        assert_eq!(body("groq", "qwen/qwen3-32b", Off)["reasoning_effort"], "none");
-        assert_eq!(body("lm_studio", "qwen3-8b", Low)["reasoning_effort"], "low");
+        assert_eq!(
+            body("openai", "gpt-5-mini", Off)["reasoning_effort"],
+            "minimal"
+        );
+        assert_eq!(
+            body("groq", "qwen/qwen3-32b", Off)["reasoning_effort"],
+            "none"
+        );
+        assert_eq!(
+            body("lm_studio", "qwen3-8b", Low)["reasoning_effort"],
+            "low"
+        );
         assert_eq!(body("openai", "gpt-5", High)["reasoning_effort"], "high");
     }
 
     #[test]
     fn openrouter_uses_reasoning_object_and_keeps_online_suffix() {
-        assert_eq!(body("openrouter", "m", Off)["reasoning"], serde_json::json!({ "enabled": false }));
-        assert_eq!(body("openrouter", "m", Low)["reasoning"], serde_json::json!({ "effort": "low" }));
-        assert_eq!(body("openrouter", "m", High)["reasoning"], serde_json::json!({ "effort": "high" }));
-        assert!(body("openrouter", "m", High).get("reasoning_effort").is_none());
-        let params = GenerationParams { enable_web_search: true, ..Default::default() };
+        assert_eq!(
+            body("openrouter", "m", Off)["reasoning"],
+            serde_json::json!({ "enabled": false })
+        );
+        assert_eq!(
+            body("openrouter", "m", Low)["reasoning"],
+            serde_json::json!({ "effort": "low" })
+        );
+        assert_eq!(
+            body("openrouter", "m", High)["reasoning"],
+            serde_json::json!({ "effort": "high" })
+        );
+        assert!(body("openrouter", "m", High)
+            .get("reasoning_effort")
+            .is_none());
+        let params = GenerationParams {
+            enable_web_search: true,
+            ..Default::default()
+        };
         let (b, _) = build_chat_body("openrouter", &user(), "m", &params, Off, None, true);
         assert_eq!(b["model"], "m:online");
     }
@@ -399,8 +443,18 @@ mod thinking_tests {
         assert!(!sent);
         assert!(b.get("reasoning_effort").is_none());
 
-        let extra = parse_extra_request(Some(r#"{"model":"evil","stream":false,"messages":[],"top_p":0.9}"#));
-        let (b, _) = build_chat_body("lm_studio", &user(), "m", &params, Auto, extra.as_ref(), true);
+        let extra = parse_extra_request(Some(
+            r#"{"model":"evil","stream":false,"messages":[],"top_p":0.9}"#,
+        ));
+        let (b, _) = build_chat_body(
+            "lm_studio",
+            &user(),
+            "m",
+            &params,
+            Auto,
+            extra.as_ref(),
+            true,
+        );
         assert_eq!(b["model"], "m");
         assert_eq!(b["stream"], true);
         assert_eq!(b["messages"][0]["content"], "hi");

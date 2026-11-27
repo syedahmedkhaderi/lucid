@@ -12,14 +12,14 @@
 //! arrives, so a cancelled or dropped `ask` never leaves stale events behind for
 //! the next turn.
 
+use super::approval::ChatApprovals;
 use super::command::{
     build_args, configure_session_command, configure_sources_env, sandbox_dir, SessionConfig,
 };
-use super::approval::ChatApprovals;
 use super::protocol::{
-    permission_allow, permission_deny, PermissionAsk,
-    classify_error, PlanLimit, parse_line, user_message, user_message_with_images, AgentErrorKind, AgentEvent,
-    ImageAttachment, McpServerState, ToolResult, ToolUse, TurnResult,
+    classify_error, parse_line, permission_allow, permission_deny, user_message,
+    user_message_with_images, AgentErrorKind, AgentEvent, ImageAttachment, McpServerState,
+    PermissionAsk, PlanLimit, ToolResult, ToolUse, TurnResult,
 };
 use crate::llm::provider::CancelToken;
 use crate::sources::private_files::{private_dir, remove_private_file, write_private_file};
@@ -50,7 +50,10 @@ pub const RESULT_PREFIX: &str = "\u{1}nexq-result\u{1}";
 
 /// A tool result as an `on_delta` token.
 pub fn encode_tool_result(r: &ToolResult) -> String {
-    format!("{RESULT_PREFIX}{}", serde_json::json!({ "id": r.tool_use_id, "is_error": r.is_error }))
+    format!(
+        "{RESULT_PREFIX}{}",
+        serde_json::json!({ "id": r.tool_use_id, "is_error": r.is_error })
+    )
 }
 
 /// The tool result in an [`encode_tool_result`] token; `None` for anything else.
@@ -119,7 +122,13 @@ pub fn failed_mcp_servers(info: &InitInfo) -> Vec<String> {
 pub fn failed_server_names(info: &InitInfo, labels: &[(String, String)]) -> String {
     let names: Vec<String> = failed_mcp_servers(info)
         .into_iter()
-        .map(|key| labels.iter().find(|(k, _)| *k == key).map(|(_, l)| l.clone()).unwrap_or(key))
+        .map(|key| {
+            labels
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, l)| l.clone())
+                .unwrap_or(key)
+        })
         .collect();
     match names.split_last() {
         Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
@@ -212,7 +221,10 @@ pub enum AgentError {
 impl AgentError {
     /// Stopped by the caller (before or during the turn).
     pub fn is_cancel(&self) -> bool {
-        matches!(self, AgentError::Cancelled | AgentError::CancelledBeforeSend)
+        matches!(
+            self,
+            AgentError::Cancelled | AgentError::CancelledBeforeSend
+        )
     }
 
     /// Coarse kind for status reasons and fallback decisions. A missing binary
@@ -347,26 +359,41 @@ impl ClaudeAsk {
     /// the turn keeps reading the CLI's output meanwhile.
     fn answer(self: &Arc<Self>, q: PermissionAsk) {
         if self.refuse.load(Ordering::SeqCst) {
-            self.send(permission_deny(&q.request_id, "No tool call may be approved outside a turn."));
+            self.send(permission_deny(
+                &q.request_id,
+                "No tool call may be approved outside a turn.",
+            ));
             return;
         }
         let turn = self.turn.load(Ordering::SeqCst);
         if q.request_id.is_empty() || !self.open_ids.lock().unwrap().insert(q.request_id.clone()) {
             // No id, or one already open: the answer could not be told apart.
-            self.send(permission_deny(&q.request_id, "The user did not allow this tool call."));
+            self.send(permission_deny(
+                &q.request_id,
+                "The user did not allow this tool call.",
+            ));
             return;
         }
         self.open.fetch_add(1, Ordering::SeqCst);
         let me = self.clone();
         tokio::spawn(async move {
-            let (allow, why) = me.approvals.decide_with_reason(&q.request_id, &q.tool_name, &q.input).await;
+            let (allow, why) = me
+                .approvals
+                .decide_with_reason(&q.request_id, &q.tool_name, &q.input)
+                .await;
             me.open_ids.lock().unwrap().remove(&q.request_id);
             // The turn this was asked in is over: whatever was clicked, it is a refusal.
-            let allow = allow && me.turn.load(Ordering::SeqCst) == turn && !me.refuse.load(Ordering::SeqCst);
+            let allow = allow
+                && me.turn.load(Ordering::SeqCst) == turn
+                && !me.refuse.load(Ordering::SeqCst);
             me.send(if allow {
                 permission_allow(&q.request_id, &q.input)
             } else {
-                permission_deny(&q.request_id, why.as_deref().unwrap_or("The user did not allow this tool call."))
+                permission_deny(
+                    &q.request_id,
+                    why.as_deref()
+                        .unwrap_or("The user did not allow this tool call."),
+                )
             });
             me.open.fetch_sub(1, Ordering::SeqCst);
         });
@@ -428,12 +455,18 @@ impl ClaudeSession {
         // The mcp-config holds each server's own secret values, so it goes in
         // the private folder (never the sandbox the model can read) and never
         // in the process env.
-        let mcp_config_file = match cfg.sources.as_ref().and_then(|s| s.mcp_config_json.as_deref()) {
+        let mcp_config_file = match cfg
+            .sources
+            .as_ref()
+            .and_then(|s| s.mcp_config_json.as_deref())
+        {
             Some(json) => match write_private_file(&private_dir(), json) {
                 Ok(path) => Some(path),
                 Err(e) => {
                     let _ = std::fs::remove_file(&prompt_file);
-                    return Err(AgentError::Spawn(format!("cannot write the sources config: {e}")));
+                    return Err(AgentError::Spawn(format!(
+                        "cannot write the sources config: {e}"
+                    )));
                 }
             },
             None => None,
@@ -442,13 +475,18 @@ impl ClaudeSession {
         let thinking = cfg.thinking;
         // `None` for a plain session, else whether a notes folder is among its sources.
         let sources_folders = cfg.sources.as_ref().map(|s| !s.add_dirs.is_empty());
-        let server_labels = cfg.sources.as_ref().map(|s| s.server_labels.clone()).unwrap_or_default();
+        let server_labels = cfg
+            .sources
+            .as_ref()
+            .map(|s| s.server_labels.clone())
+            .unwrap_or_default();
         // `Some(MCP_TIMEOUT override)` for a with-sources session.
         let with_sources = cfg.sources.as_ref().map(|s| s.mcp_startup_timeout_ms);
-        let started = tokio::task::spawn_blocking(move || start_process(&bin, &args, thinking, with_sources))
-            .await
-            .map_err(|e| AgentError::Spawn(format!("spawn task failed: {e}")))
-            .and_then(|r| r);
+        let started =
+            tokio::task::spawn_blocking(move || start_process(&bin, &args, thinking, with_sources))
+                .await
+                .map_err(|e| AgentError::Spawn(format!("spawn task failed: {e}")))
+                .and_then(|r| r);
         let (shared, stdin_tx, events) = match started {
             Ok(parts) => parts,
             Err(e) => {
@@ -460,9 +498,20 @@ impl ClaudeSession {
             }
         };
 
-        let ask = cfg.approvals.clone().filter(|a| a.can_ask && cfg.sources.is_some()).map(|approvals| {
-            Arc::new(ClaudeAsk { approvals, stdin: Mutex::new(Some(stdin_tx.clone())), open: AtomicUsize::new(0), open_ids: Mutex::default(), turn: std::sync::atomic::AtomicU64::new(0), refuse: AtomicBool::new(true) })
-        });
+        let ask = cfg
+            .approvals
+            .clone()
+            .filter(|a| a.can_ask && cfg.sources.is_some())
+            .map(|approvals| {
+                Arc::new(ClaudeAsk {
+                    approvals,
+                    stdin: Mutex::new(Some(stdin_tx.clone())),
+                    open: AtomicUsize::new(0),
+                    open_ids: Mutex::default(),
+                    turn: std::sync::atomic::AtomicU64::new(0),
+                    refuse: AtomicBool::new(true),
+                })
+            });
         let session = ClaudeSession {
             model: cfg.model,
             shared,
@@ -487,7 +536,10 @@ impl ClaudeSession {
                 let info = session.init_info();
                 if nothing_usable(has_folders, &info) {
                     Err(AgentError::NoUsableSources {
-                        message: format!("{} didn't start", failed_server_names(&info, &server_labels)),
+                        message: format!(
+                            "{} didn't start",
+                            failed_server_names(&info, &server_labels)
+                        ),
                         info,
                     })
                 } else {
@@ -513,7 +565,10 @@ impl ClaudeSession {
         let wait = async {
             loop {
                 match rx.recv().await {
-                    Some(TurnMsg::Delta(_)) | Some(TurnMsg::Tool(_)) | Some(TurnMsg::ToolDone(_)) | Some(TurnMsg::Thinking) => {}
+                    Some(TurnMsg::Delta(_))
+                    | Some(TurnMsg::Tool(_))
+                    | Some(TurnMsg::ToolDone(_))
+                    | Some(TurnMsg::Thinking) => {}
                     Some(TurnMsg::Done(r)) => return r,
                     None => return Err(AgentError::Crashed(self.shared.crash_reason())),
                 }
@@ -661,7 +716,12 @@ impl ClaudeSession {
         let mut init_seen = false;
         loop {
             match events.recv().await {
-                Some(AgentEvent::Init { session_id, model, tools, mcp_servers }) => {
+                Some(AgentEvent::Init {
+                    session_id,
+                    model,
+                    tools,
+                    mcp_servers,
+                }) => {
                     log::info!("claude session {session_id} ready (model {model})");
                     *self.shared.init.lock().unwrap() = InitInfo { tools, mcp_servers };
                     init_seen = true;
@@ -726,7 +786,13 @@ impl ClaudeSession {
         }
         self.send_line(user_message_with_images(text, query, images))?;
         let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(drive_turn(guard, tx, self.shared.clone(), self.timeouts, self.ask.clone()));
+        tokio::spawn(drive_turn(
+            guard,
+            tx,
+            self.shared.clone(),
+            self.timeouts,
+            self.ask.clone(),
+        ));
         Ok(rx)
     }
 }
@@ -1093,7 +1159,10 @@ mod tests {
             init: Mutex::new(InitInfo::default()),
             plan_limit: Mutex::new(None),
         };
-        let first = shared.settle_cost(TurnResult { total_cost_usd: 0.0100, ..Default::default() });
+        let first = shared.settle_cost(TurnResult {
+            total_cost_usd: 0.0100,
+            ..Default::default()
+        });
         assert_eq!(first.cost_usd, 0.0100);
         let AgentEvent::TurnComplete(real) =
             parse_line(crate::llm::cli_agent::protocol::tests::REAL_RESULT).unwrap()
@@ -1101,20 +1170,31 @@ mod tests {
             panic!("not a result");
         };
         let second = shared.settle_cost(real);
-        assert!((second.cost_usd - 0.00933).abs() < 1e-9, "{}", second.cost_usd);
+        assert!(
+            (second.cost_usd - 0.00933).abs() < 1e-9,
+            "{}",
+            second.cost_usd
+        );
         assert_eq!(second.total_cost_usd, 0.01933);
     }
 
     #[test]
     fn activity_round_trips_and_is_never_text() {
-        let t = ToolUse { id: "toolu_1".into(), name: "Read".into(), input: serde_json::json!({"file_path": "D:\\V\\a b.md"}) };
+        let t = ToolUse {
+            id: "toolu_1".into(),
+            name: "Read".into(),
+            input: serde_json::json!({"file_path": "D:\\V\\a b.md"}),
+        };
         let enc = encode_activity(&t);
         assert!(is_activity(&enc) && !enc.is_empty());
         assert_eq!(decode_activity(&enc), Some(t.clone()));
         assert_eq!(decode_activity("plain text"), None);
         assert_eq!(decode_activity(&format!("{ACTIVITY_PREFIX}not json")), None);
         assert!(!is_activity("") && !is_activity("hello"));
-        let done = ToolResult { tool_use_id: "toolu_1".into(), is_error: true };
+        let done = ToolResult {
+            tool_use_id: "toolu_1".into(),
+            is_error: true,
+        };
         let enc = encode_tool_result(&done);
         assert!(is_activity(&enc));
         assert_eq!(decode_tool_result(&enc), Some(done));
@@ -1124,50 +1204,87 @@ mod tests {
 
     #[test]
     fn nothing_usable_needs_a_failed_server_and_nothing_else() {
-        let state = |name: &str, status: &str| McpServerState { name: name.into(), status: status.into() };
-        let info = |servers: Vec<McpServerState>| InitInfo { tools: vec![], mcp_servers: servers };
+        let state = |name: &str, status: &str| McpServerState {
+            name: name.into(),
+            status: status.into(),
+        };
+        let info = |servers: Vec<McpServerState>| InitInfo {
+            tools: vec![],
+            mcp_servers: servers,
+        };
         // Nothing failed.
         assert!(!nothing_usable(false, &info(vec![state("a", "connected")])));
         assert!(!nothing_usable(false, &info(vec![])));
         // The only server failed.
         assert!(nothing_usable(false, &info(vec![state("a", "failed")])));
-        assert!(nothing_usable(false, &info(vec![state("a", "failed"), state("b", "needs-auth")])));
+        assert!(nothing_usable(
+            false,
+            &info(vec![state("a", "failed"), state("b", "needs-auth")])
+        ));
         // A folder, a connected server or one still connecting is left.
         assert!(!nothing_usable(true, &info(vec![state("a", "failed")])));
-        assert!(!nothing_usable(false, &info(vec![state("a", "failed"), state("b", "connected")])));
-        assert!(!nothing_usable(false, &info(vec![state("a", "failed"), state("b", "pending")])));
+        assert!(!nothing_usable(
+            false,
+            &info(vec![state("a", "failed"), state("b", "connected")])
+        ));
+        assert!(!nothing_usable(
+            false,
+            &info(vec![state("a", "failed"), state("b", "pending")])
+        ));
     }
 
     #[test]
     fn model_text_cannot_carry_the_activity_marker() {
         let spoof = format!("{ACTIVITY_PREFIX}{{\"name\":\"mcp__mira__x\",\"input\":{{}}}}");
         let clean = strip_marker(spoof);
-        assert!(!is_activity(&clean) && !clean.contains('\u{1}'), "{clean:?}");
+        assert!(
+            !is_activity(&clean) && !clean.contains('\u{1}'),
+            "{clean:?}"
+        );
         assert_eq!(strip_marker("plain answer".to_string()), "plain answer");
         assert_eq!(strip_marker("\u{1}".to_string()), "");
     }
 
     #[test]
     fn failed_server_names_use_labels() {
-        let st = |n: &str, s: &str| McpServerState { name: n.into(), status: s.into() };
-        let info = InitInfo { tools: vec![], mcp_servers: vec![st("mira", "failed"), st("wiki", "needs-auth"), st("c", "failed"), st("ok", "connected")] };
-        let labels = vec![("mira".to_string(), "Mira".to_string()), ("wiki".to_string(), "Wiki".to_string())];
+        let st = |n: &str, s: &str| McpServerState {
+            name: n.into(),
+            status: s.into(),
+        };
+        let info = InitInfo {
+            tools: vec![],
+            mcp_servers: vec![
+                st("mira", "failed"),
+                st("wiki", "needs-auth"),
+                st("c", "failed"),
+                st("ok", "connected"),
+            ],
+        };
+        let labels = vec![
+            ("mira".to_string(), "Mira".to_string()),
+            ("wiki".to_string(), "Wiki".to_string()),
+        ];
         assert_eq!(failed_server_names(&info, &labels), "Mira, Wiki and c");
-        let one = InitInfo { tools: vec![], mcp_servers: vec![st("mira", "failed")] };
+        let one = InitInfo {
+            tools: vec![],
+            mcp_servers: vec![st("mira", "failed")],
+        };
         assert_eq!(failed_server_names(&one, &labels), "Mira");
     }
 
     #[test]
     fn failed_servers_from_init() {
-        let AgentEvent::Init { tools, mcp_servers, .. } =
-            parse_line(include_str!("testdata/init_mcp_failed.json")).unwrap()
+        let AgentEvent::Init {
+            tools, mcp_servers, ..
+        } = parse_line(include_str!("testdata/init_mcp_failed.json")).unwrap()
         else {
             panic!("not an init");
         };
         let info = InitInfo { tools, mcp_servers };
         assert_eq!(failed_mcp_servers(&info), vec!["broken".to_string()]);
-        let AgentEvent::Init { tools, mcp_servers, .. } =
-            parse_line(include_str!("testdata/init_with_mcp.json")).unwrap()
+        let AgentEvent::Init {
+            tools, mcp_servers, ..
+        } = parse_line(include_str!("testdata/init_with_mcp.json")).unwrap()
         else {
             panic!("not an init");
         };
@@ -1175,8 +1292,14 @@ mod tests {
         let auth = InitInfo {
             tools: vec![],
             mcp_servers: vec![
-                McpServerState { name: "a".into(), status: "needs-auth".into() },
-                McpServerState { name: "b".into(), status: "pending".into() },
+                McpServerState {
+                    name: "a".into(),
+                    status: "needs-auth".into(),
+                },
+                McpServerState {
+                    name: "b".into(),
+                    status: "pending".into(),
+                },
             ],
         };
         assert_eq!(failed_mcp_servers(&auth), vec!["a".to_string()]);
@@ -1210,7 +1333,9 @@ mod tests {
 
     mod ask {
         use super::super::*;
-        use crate::llm::cli_agent::approval::{ApprovalBroker, ApprovalPolicy, ApprovalRequest, WorkspaceApprovals};
+        use crate::llm::cli_agent::approval::{
+            ApprovalBroker, ApprovalPolicy, ApprovalRequest, WorkspaceApprovals,
+        };
         use crate::sources::config::{McpServer, McpTool};
         use serde_json::json;
 
@@ -1223,12 +1348,21 @@ mod tests {
                 destructive_hint: None,
             };
             ApprovalPolicy::from_servers(
-                &[McpServer { key: "mira".into(), tools: vec![tool("kb_search", Some(true)), tool("send_mail", None)], ..Default::default() }],
+                &[McpServer {
+                    key: "mira".into(),
+                    tools: vec![tool("kb_search", Some(true)), tool("send_mail", None)],
+                    ..Default::default()
+                }],
                 vec![],
             )
         }
 
-        fn harness() -> (Arc<ClaudeAsk>, std_mpsc::Receiver<String>, Arc<WorkspaceApprovals>, Arc<Mutex<Vec<String>>>) {
+        fn harness() -> (
+            Arc<ClaudeAsk>,
+            std_mpsc::Receiver<String>,
+            Arc<WorkspaceApprovals>,
+            Arc<Mutex<Vec<String>>>,
+        ) {
             let broker = Arc::new(WorkspaceApprovals::new().with_timeout(Duration::from_secs(5)));
             let ids: Arc<Mutex<Vec<String>>> = Arc::default();
             let target = ids.clone();
@@ -1239,7 +1373,12 @@ mod tests {
             }));
             let (tx, rx) = std_mpsc::channel();
             let ask = Arc::new(ClaudeAsk {
-                approvals: ChatApprovals { can_ask: true, chat_id: "c1".into(), broker: broker.clone(), policy: Arc::new(policy()) },
+                approvals: ChatApprovals {
+                    can_ask: true,
+                    chat_id: "c1".into(),
+                    broker: broker.clone(),
+                    policy: Arc::new(policy()),
+                },
                 stdin: Mutex::new(Some(tx)),
                 open: AtomicUsize::new(0),
                 open_ids: Mutex::default(),
@@ -1251,7 +1390,12 @@ mod tests {
         }
 
         fn question(id: &str, tool: &str, input: serde_json::Value) -> PermissionAsk {
-            PermissionAsk { request_id: id.into(), tool_name: tool.into(), input, tool_use_id: "t".into() }
+            PermissionAsk {
+                request_id: id.into(),
+                tool_name: tool.into(),
+                input,
+                tool_use_id: "t".into(),
+            }
         }
 
         async fn line(rx: &std_mpsc::Receiver<String>) -> serde_json::Value {
@@ -1274,10 +1418,16 @@ mod tests {
             let input = json!({"to": "a@b.c"});
             ask.answer(question("r2", "mcp__mira__send_mail", input.clone()));
             for _ in 0..200 {
-                if !ids.lock().unwrap().is_empty() { break; }
+                if !ids.lock().unwrap().is_empty() {
+                    break;
+                }
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
-            assert_eq!(ask.open.load(Ordering::SeqCst), 1, "an open question counts as activity");
+            assert_eq!(
+                ask.open.load(Ordering::SeqCst),
+                1,
+                "an open question counts as activity"
+            );
             assert!(rx.try_recv().is_err(), "no answer yet: nothing is sent");
             let id = ids.lock().unwrap()[0].clone();
             assert!(broker.answer(&id, true));
@@ -1289,7 +1439,8 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn a_refused_unknown_or_forbidden_call_is_denied_and_a_closed_session_denies_what_is_open() {
+        async fn a_refused_unknown_or_forbidden_call_is_denied_and_a_closed_session_denies_what_is_open(
+        ) {
             let (ask, rx, broker, ids) = harness();
             ask.answer(question("r1", "Bash", json!({"command": "dir"})));
             assert_eq!(line(&rx).await["response"]["response"]["behavior"], "deny");
@@ -1298,17 +1449,28 @@ mod tests {
 
             ask.answer(question("r3", "mcp__mira__send_mail", json!({})));
             for _ in 0..200 {
-                if !ids.lock().unwrap().is_empty() { break; }
+                if !ids.lock().unwrap().is_empty() {
+                    break;
+                }
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
             let id = ids.lock().unwrap()[0].clone();
             ask.approvals.broker.deny_chat("c1"); // a cancel or a close refuses what is open
             assert_eq!(line(&rx).await["response"]["response"]["behavior"], "deny");
             ask.shut(); // and the close lets go of stdin
-            assert!(!broker.answer(&id, true), "a late click finds nothing to allow");
+            assert!(
+                !broker.answer(&id, true),
+                "a late click finds nothing to allow"
+            );
             // Stdin is let go: the CLI sees EOF.
             assert!(ask.stdin.lock().unwrap().is_none());
-            let _ = ApprovalRequest { chat_id: String::new(), request_id: String::new(), server: String::new(), tool: String::new(), args: json!(null) };
+            let _ = ApprovalRequest {
+                chat_id: String::new(),
+                request_id: String::new(),
+                server: String::new(),
+                tool: String::new(),
+                args: json!(null),
+            };
             let _ = broker.pending("c1");
         }
 
@@ -1331,15 +1493,33 @@ mod tests {
             // The receiver of the turn is already gone: this is a cancelled turn draining.
             let (ttx, trx) = mpsc::unbounded_channel();
             drop(trx);
-            etx.send(AgentEvent::PermissionRequest(question("q1", "mcp__mira__send_mail", json!({"to": "a"})))).unwrap();
-            etx.send(AgentEvent::PermissionRequest(question("q2", "mcp__mira__kb_search", json!({})))).unwrap();
-            etx.send(AgentEvent::TurnComplete(TurnResult::default())).unwrap();
-            let timeouts = SessionTimeouts { inactivity: Duration::from_secs(5), drain: Duration::from_secs(5), ..SessionTimeouts::default() };
+            etx.send(AgentEvent::PermissionRequest(question(
+                "q1",
+                "mcp__mira__send_mail",
+                json!({"to": "a"}),
+            )))
+            .unwrap();
+            etx.send(AgentEvent::PermissionRequest(question(
+                "q2",
+                "mcp__mira__kb_search",
+                json!({}),
+            )))
+            .unwrap();
+            etx.send(AgentEvent::TurnComplete(TurnResult::default()))
+                .unwrap();
+            let timeouts = SessionTimeouts {
+                inactivity: Duration::from_secs(5),
+                drain: Duration::from_secs(5),
+                ..SessionTimeouts::default()
+            };
             drive_turn(events, ttx, shared, timeouts, Some(ask.clone())).await;
             for id in ["q1", "q2"] {
                 let reply = line(&rx).await;
                 assert_eq!(reply["response"]["request_id"], id);
-                assert_eq!(reply["response"]["response"]["behavior"], "deny", "{id}: even the read-only tool");
+                assert_eq!(
+                    reply["response"]["response"]["behavior"], "deny",
+                    "{id}: even the read-only tool"
+                );
             }
             assert!(ids.lock().unwrap().is_empty(), "nobody was asked");
             assert_eq!(ask.open.load(Ordering::SeqCst), 0);
@@ -1350,16 +1530,26 @@ mod tests {
             let (ask, rx, broker, ids) = harness();
             ask.end_turn();
             ask.answer(question("o1", "mcp__mira__send_mail", json!({})));
-            assert_eq!(line(&rx).await["response"]["response"]["behavior"], "deny", "no turn: refused at once");
+            assert_eq!(
+                line(&rx).await["response"]["response"]["behavior"],
+                "deny",
+                "no turn: refused at once"
+            );
             ask.answer(question("o2", "mcp__mira__kb_search", json!({})));
-            assert_eq!(line(&rx).await["response"]["response"]["behavior"], "deny", "even a read-only tool");
+            assert_eq!(
+                line(&rx).await["response"]["response"]["behavior"],
+                "deny",
+                "even a read-only tool"
+            );
             assert!(ids.lock().unwrap().is_empty());
 
             // A question open when its turn ends: refused, and the late click does nothing.
             ask.begin_turn();
             ask.answer(question("t1", "mcp__mira__send_mail", json!({})));
             for _ in 0..200 {
-                if !ids.lock().unwrap().is_empty() { break; }
+                if !ids.lock().unwrap().is_empty() {
+                    break;
+                }
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
             let id = ids.lock().unwrap()[0].clone();
@@ -1377,16 +1567,26 @@ mod tests {
             let (ask, rx, broker, ids) = harness();
             ask.answer(question("dup", "mcp__mira__send_mail", json!({})));
             for _ in 0..200 {
-                if !ids.lock().unwrap().is_empty() { break; }
+                if !ids.lock().unwrap().is_empty() {
+                    break;
+                }
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
             // The same id again while the first is open: refused at once.
             ask.answer(question("dup", "mcp__mira__send_mail", json!({})));
             let reply = line(&rx).await;
             assert_eq!(reply["response"]["response"]["behavior"], "deny");
-            assert_eq!(ids.lock().unwrap().len(), 1, "only one question reached the user");
+            assert_eq!(
+                ids.lock().unwrap().len(),
+                1,
+                "only one question reached the user"
+            );
             ask.answer(question("", "mcp__mira__kb_search", json!({})));
-            assert_eq!(line(&rx).await["response"]["response"]["behavior"], "deny", "no id: refused even for a read-only tool");
+            assert_eq!(
+                line(&rx).await["response"]["response"]["behavior"],
+                "deny",
+                "no id: refused even for a read-only tool"
+            );
             // Once answered the id is free again.
             broker.answer(&ids.lock().unwrap()[0].clone(), false);
             assert_eq!(line(&rx).await["response"]["response"]["behavior"], "deny");

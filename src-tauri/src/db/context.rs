@@ -43,7 +43,10 @@ pub fn add_context_resource(
 }
 
 /// Changes what an edited note shows: its name, size, token count and preview.
-pub fn update_context_resource_text(conn: &Connection, resource: &ContextResource) -> Result<(), DatabaseError> {
+pub fn update_context_resource_text(
+    conn: &Connection,
+    resource: &ContextResource,
+) -> Result<(), DatabaseError> {
     conn.execute(
         "UPDATE context_resources SET name = ?2, size_bytes = ?3, token_count = ?4, preview = ?5 WHERE id = ?1",
         params![resource.id, resource.name, resource.size_bytes, resource.token_count, resource.preview],
@@ -52,10 +55,7 @@ pub fn update_context_resource_text(conn: &Connection, resource: &ContextResourc
 }
 
 /// Get a single context resource by ID.
-pub fn get_context_resource(
-    conn: &Connection,
-    id: &str,
-) -> Result<ContextResource, DatabaseError> {
+pub fn get_context_resource(conn: &Connection, id: &str) -> Result<ContextResource, DatabaseError> {
     let mut stmt = conn.prepare(
         "SELECT id, name, file_type, file_path, size_bytes, token_count, preview, loaded_at
          FROM context_resources WHERE id = ?1",

@@ -53,11 +53,15 @@ fn reply_err(id: &Value, code: i64, message: &str) {
 }
 
 fn update(update: Value) {
-    emit(&json!({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "fake-sid", "update": update}}));
+    emit(
+        &json!({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "fake-sid", "update": update}}),
+    );
 }
 
 fn chunk(text: &str) {
-    update(json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}}));
+    update(
+        json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}}),
+    );
 }
 
 fn usage() -> Value {
@@ -72,7 +76,9 @@ fn end_turn(id: &Value) {
 fn wait_reply(rx: &Receiver<Value>, id: &Value) -> (Value, bool) {
     let mut cancelled = false;
     loop {
-        let Ok(msg) = rx.recv() else { std::process::exit(0) };
+        let Ok(msg) = rx.recv() else {
+            std::process::exit(0)
+        };
         if msg["method"] == "session/cancel" {
             cancelled = true;
         }
@@ -85,7 +91,12 @@ fn wait_reply(rx: &Receiver<Value>, id: &Value) -> (Value, bool) {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flag = |f: &str| args.iter().any(|a| a == f);
-    let arg_after = |f: &str| args.iter().position(|a| a == f).and_then(|i| args.get(i + 1)).cloned();
+    let arg_after = |f: &str| {
+        args.iter()
+            .position(|a| a == f)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
     let record = arg_after("--record");
 
     if flag("--exit-on-start") {
@@ -99,7 +110,11 @@ fn main() {
         for line in std::io::stdin().lock().lines() {
             let Ok(line) = line else { break };
             if let Some(path) = &record {
-                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+                let mut f = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .unwrap();
                 writeln!(f, "{line}").unwrap();
             }
             if let Ok(v) = serde_json::from_str::<Value>(&line) {
@@ -118,37 +133,47 @@ fn main() {
                 if flag("--meta") {
                     caps["_meta"] = json!({"antigravity": {"systemPrompt": {"append": true}}});
                 }
-                reply(&id, json!({
-                    "protocolVersion": 1,
-                    "agentCapabilities": caps,
-                    "agentInfo": {"name": "fake-acp", "version": "0.0.1"},
-                    "authMethods": [{"id": "oauth-personal", "name": "Log in with Google"}],
-                }));
+                reply(
+                    &id,
+                    json!({
+                        "protocolVersion": 1,
+                        "agentCapabilities": caps,
+                        "agentInfo": {"name": "fake-acp", "version": "0.0.1"},
+                        "authMethods": [{"id": "oauth-personal", "name": "Log in with Google"}],
+                    }),
+                );
             }
             "session/new" => {
                 if flag("--login-fail") {
                     reply_err(&id, -32000, "Gemini API key is missing or not configured.");
                     continue;
                 }
-                let current_mode = if flag("--mode-auto") { "auto" } else { "default" };
-                reply(&id, json!({
-                    "sessionId": "fake-sid",
-                    "modes": {
-                        "currentModeId": current_mode,
-                        "availableModes": [
-                            {"id": "auto", "name": "Auto"},
-                            {"id": "default", "name": "Default"},
-                            {"id": "plan", "name": "Plan"},
-                        ],
-                    },
-                    "models": {
-                        "availableModels": [
-                            {"modelId": "fake-fast", "name": "Fake Fast"},
-                            {"modelId": "fake-deep", "name": "Fake Deep"},
-                        ],
-                        "currentModelId": "fake-fast",
-                    },
-                }));
+                let current_mode = if flag("--mode-auto") {
+                    "auto"
+                } else {
+                    "default"
+                };
+                reply(
+                    &id,
+                    json!({
+                        "sessionId": "fake-sid",
+                        "modes": {
+                            "currentModeId": current_mode,
+                            "availableModes": [
+                                {"id": "auto", "name": "Auto"},
+                                {"id": "default", "name": "Default"},
+                                {"id": "plan", "name": "Plan"},
+                            ],
+                        },
+                        "models": {
+                            "availableModels": [
+                                {"modelId": "fake-fast", "name": "Fake Fast"},
+                                {"modelId": "fake-deep", "name": "Fake Deep"},
+                            ],
+                            "currentModelId": "fake-fast",
+                        },
+                    }),
+                );
             }
             "session/set_mode" => reply(&id, json!({})),
             "session/set_model" => {
@@ -159,8 +184,16 @@ fn main() {
                 }
             }
             "session/prompt" => {
-                let text = msg["params"]["prompt"][0]["text"].as_str().unwrap_or_default().to_string();
-                let last = text.rsplit("\n\n").next().unwrap_or_default().trim().to_string();
+                let text = msg["params"]["prompt"][0]["text"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+                let last = text
+                    .rsplit("\n\n")
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
                 prompt(&rx, &id, &text, &last, &mut next_agent_id);
             }
             // `session/cancel` outside a prompt, and anything unknown: ignored.
@@ -173,7 +206,9 @@ fn prompt(rx: &Receiver<Value>, id: &Value, text: &str, last: &str, next_agent_i
     match last.split(':').next().unwrap_or_default() {
         "hello" => {
             update(json!({"sessionUpdate": "available_commands_update", "availableCommands": []}));
-            update(json!({"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "thinking"}}));
+            update(
+                json!({"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "thinking"}}),
+            );
             chunk("Hello");
             chunk(" world");
             update(json!({"sessionUpdate": "usage_update", "used": 10, "size": 1000}));
@@ -186,7 +221,14 @@ fn prompt(rx: &Receiver<Value>, id: &Value, text: &str, last: &str, next_agent_i
         "perm" => {
             let mut parts = last.splitn(4, ':').skip(1);
             let kind = parts.next().unwrap_or("read");
-            let tool = parts.next().filter(|t| !t.is_empty()).unwrap_or(if kind == "execute" { "run_command" } else { "read_file" });
+            let tool = parts
+                .next()
+                .filter(|t| !t.is_empty())
+                .unwrap_or(if kind == "execute" {
+                    "run_command"
+                } else {
+                    "read_file"
+                });
             let path = parts.next().unwrap_or_default();
             let call_id = format!("{tool}-{}", *next_agent_id);
             let mut tool_call = json!({
@@ -197,8 +239,12 @@ fn prompt(rx: &Receiver<Value>, id: &Value, text: &str, last: &str, next_agent_i
             if !path.is_empty() {
                 tool_call["locations"] = json!([{ "path": path }]);
             }
-            update(json!({"sessionUpdate": "tool_call", "toolCallId": call_id, "name": tool, "kind": kind, "status": "in_progress", "title": tool, "locations": tool_call["locations"].clone(), "rawInput": tool_call["rawInput"].clone()}));
-            update(json!({"sessionUpdate": "tool_call_update", "toolCallId": call_id, "name": tool, "status": "pending"}));
+            update(
+                json!({"sessionUpdate": "tool_call", "toolCallId": call_id, "name": tool, "kind": kind, "status": "in_progress", "title": tool, "locations": tool_call["locations"].clone(), "rawInput": tool_call["rawInput"].clone()}),
+            );
+            update(
+                json!({"sessionUpdate": "tool_call_update", "toolCallId": call_id, "name": tool, "status": "pending"}),
+            );
             let req_id = json!(*next_agent_id);
             *next_agent_id += 1;
             emit(&json!({
@@ -210,13 +256,22 @@ fn prompt(rx: &Receiver<Value>, id: &Value, text: &str, last: &str, next_agent_i
             }));
             let (answer, _) = wait_reply(rx, &req_id);
             let allowed = answer["result"]["outcome"]["optionId"] == "allow";
-            update(json!({"sessionUpdate": "tool_call_update", "toolCallId": call_id, "name": tool, "status": "in_progress"}));
-            update(json!({"sessionUpdate": "tool_call_update", "toolCallId": call_id, "name": tool, "status": if allowed { "completed" } else { "failed" }}));
-            chunk(if allowed { "perm:allowed" } else { "perm:rejected" });
+            update(
+                json!({"sessionUpdate": "tool_call_update", "toolCallId": call_id, "name": tool, "status": "in_progress"}),
+            );
+            update(
+                json!({"sessionUpdate": "tool_call_update", "toolCallId": call_id, "name": tool, "status": if allowed { "completed" } else { "failed" }}),
+            );
+            chunk(if allowed {
+                "perm:allowed"
+            } else {
+                "perm:rejected"
+            });
             end_turn(id);
         }
         "raw" => {
-            let steps: Vec<Value> = serde_json::from_str(last.strip_prefix("raw:").unwrap_or("[]")).unwrap_or_default();
+            let steps: Vec<Value> =
+                serde_json::from_str(last.strip_prefix("raw:").unwrap_or("[]")).unwrap_or_default();
             for step in steps {
                 if let Some(u) = step.get("update") {
                     update(u.clone());
@@ -233,7 +288,12 @@ fn prompt(rx: &Receiver<Value>, id: &Value, text: &str, last: &str, next_agent_i
                         ]},
                     }));
                     let (answer, _) = wait_reply(rx, &req_id);
-                    chunk(&format!("answer:{}", answer["result"]["outcome"]["optionId"].as_str().unwrap_or("cancelled")));
+                    chunk(&format!(
+                        "answer:{}",
+                        answer["result"]["outcome"]["optionId"]
+                            .as_str()
+                            .unwrap_or("cancelled")
+                    ));
                 }
             }
             end_turn(id);
@@ -241,20 +301,33 @@ fn prompt(rx: &Receiver<Value>, id: &Value, text: &str, last: &str, next_agent_i
         "auto" => {
             let mut parts = last.splitn(3, ':').skip(1);
             let kind = parts.next().unwrap_or("read");
-            let tool = parts.next().filter(|t| !t.is_empty()).unwrap_or("read_file");
+            let tool = parts
+                .next()
+                .filter(|t| !t.is_empty())
+                .unwrap_or("read_file");
             let call_id = format!("{tool}-auto-{}", *next_agent_id);
             *next_agent_id += 1;
-            update(json!({"sessionUpdate": "tool_call", "toolCallId": call_id, "name": tool, "kind": kind, "status": "in_progress", "title": tool, "rawInput": {"Path": "inside.txt"}}));
-            update(json!({"sessionUpdate": "tool_call_update", "toolCallId": call_id, "status": "completed"}));
+            update(
+                json!({"sessionUpdate": "tool_call", "toolCallId": call_id, "name": tool, "kind": kind, "status": "in_progress", "title": tool, "rawInput": {"Path": "inside.txt"}}),
+            );
+            update(
+                json!({"sessionUpdate": "tool_call_update", "toolCallId": call_id, "status": "completed"}),
+            );
             chunk("auto:done");
             end_turn(id);
         }
         "fsreq" => {
             let req_id = json!(*next_agent_id);
             *next_agent_id += 1;
-            emit(&json!({"jsonrpc": "2.0", "id": req_id, "method": "fs/read_text_file", "params": {"sessionId": "fake-sid", "path": "C:\\x.txt"}}));
+            emit(
+                &json!({"jsonrpc": "2.0", "id": req_id, "method": "fs/read_text_file", "params": {"sessionId": "fake-sid", "path": "C:\\x.txt"}}),
+            );
             let (answer, _) = wait_reply(rx, &req_id);
-            chunk(if answer.get("error").is_some() { "fs:error" } else { "fs:ok" });
+            chunk(if answer.get("error").is_some() {
+                "fs:error"
+            } else {
+                "fs:ok"
+            });
             end_turn(id);
         }
         "slow" => {
@@ -282,8 +355,19 @@ fn prompt(rx: &Receiver<Value>, id: &Value, text: &str, last: &str, next_agent_i
         }
         "quota" => reply_err(id, 402, "Your prepayment credits are depleted."),
         "env" => {
-            let set = |k: &str| if std::env::var_os(k).is_some() { "set" } else { "unset" };
-            chunk(&format!("env:NEXQ_TEST_SECRET={} GEMINI_API_KEY={} ANTHROPIC_API_KEY={}", set("NEXQ_TEST_SECRET"), set("GEMINI_API_KEY"), set("ANTHROPIC_API_KEY")));
+            let set = |k: &str| {
+                if std::env::var_os(k).is_some() {
+                    "set"
+                } else {
+                    "unset"
+                }
+            };
+            chunk(&format!(
+                "env:NEXQ_TEST_SECRET={} GEMINI_API_KEY={} ANTHROPIC_API_KEY={}",
+                set("NEXQ_TEST_SECRET"),
+                set("GEMINI_API_KEY"),
+                set("ANTHROPIC_API_KEY")
+            ));
             end_turn(id);
         }
         _ => {

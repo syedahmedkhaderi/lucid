@@ -135,10 +135,16 @@ pub fn crawl_folder(
     }
     let canon_root = fs::canonicalize(root).map_err(|e| format!("Folder not readable: {e}"))?;
 
-    let mut res = CrawlResult { canon_root: canon_root.clone(), ..Default::default() };
+    let mut res = CrawlResult {
+        canon_root: canon_root.clone(),
+        ..Default::default()
+    };
     let skip = |res: &mut CrawlResult, rel: String, reason: &str| {
         if res.skipped.len() < opts.max_skipped_listed {
-            res.skipped.push(SkippedFile { rel_path: rel, reason: reason.to_string() });
+            res.skipped.push(SkippedFile {
+                rel_path: rel,
+                reason: reason.to_string(),
+            });
         }
     };
 
@@ -152,13 +158,21 @@ pub fn crawl_folder(
         dirs_seen += 1;
         if dirs_seen > opts.max_dirs {
             res.truncated = true;
-            skip(&mut res, rel_string(&canon_root, &dir), "too many folders; the rest is not indexed");
+            skip(
+                &mut res,
+                rel_string(&canon_root, &dir),
+                "too many folders; the rest is not indexed",
+            );
             break;
         }
         let rd = match fs::read_dir(&dir) {
             Ok(r) => r,
             Err(e) => {
-                skip(&mut res, rel_string(&canon_root, &dir), &format!("folder not readable: {}", crate::db::health::plain_io(&e)));
+                skip(
+                    &mut res,
+                    rel_string(&canon_root, &dir),
+                    &format!("folder not readable: {}", crate::db::health::plain_io(&e)),
+                );
                 continue;
             }
         };
@@ -172,7 +186,11 @@ pub fn crawl_folder(
             let md = match fs::symlink_metadata(&path) {
                 Ok(m) => m,
                 Err(e) => {
-                    skip(&mut res, rel, &format!("not readable: {}", crate::db::health::plain_io(&e)));
+                    skip(
+                        &mut res,
+                        rel,
+                        &format!("not readable: {}", crate::db::health::plain_io(&e)),
+                    );
                     continue;
                 }
             };
@@ -233,13 +251,21 @@ pub fn crawl_folder(
                     continue;
                 }
                 Err(e) => {
-                    skip(&mut res, rel, &format!("not readable: {}", crate::db::health::plain_io(&e)));
+                    skip(
+                        &mut res,
+                        rel,
+                        &format!("not readable: {}", crate::db::health::plain_io(&e)),
+                    );
                     continue;
                 }
             }
             if res.files.len() >= opts.max_files {
                 res.truncated = true;
-                skip(&mut res, rel, "folder has more than 5,000 files; the rest is not indexed");
+                skip(
+                    &mut res,
+                    rel,
+                    "folder has more than 5,000 files; the rest is not indexed",
+                );
                 // keep counting nothing more: stop the whole walk
                 stack.clear();
                 sub_dirs.clear();
@@ -275,11 +301,16 @@ pub fn still_allowed(canon_root: &Path, rel: &str, opts: &CrawlOptions) -> bool 
     for (i, part) in parts.iter().enumerate() {
         let last = i + 1 == parts.len();
         let lower = part.to_lowercase();
-        if part.starts_with('.') || is_secret_like(part) || (!last && SKIP_DIR_NAMES.contains(&lower.as_str())) {
+        if part.starts_with('.')
+            || is_secret_like(part)
+            || (!last && SKIP_DIR_NAMES.contains(&lower.as_str()))
+        {
             return false;
         }
         path.push(part);
-        let Ok(md) = fs::symlink_metadata(&path) else { return false };
+        let Ok(md) = fs::symlink_metadata(&path) else {
+            return false;
+        };
         let (hidden, system, reparse) = attr_flags(&md);
         if md.file_type().is_symlink() || reparse || hidden || system {
             return false;
@@ -291,8 +322,13 @@ pub fn still_allowed(canon_root: &Path, rel: &str, opts: &CrawlOptions) -> bool 
             return false;
         }
     }
-    let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_default();
-    SUPPORTED_EXTENSIONS.contains(&ext.as_str()) && fs::canonicalize(&path).map_or(false, |c| c.starts_with(canon_root))
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    SUPPORTED_EXTENSIONS.contains(&ext.as_str())
+        && fs::canonicalize(&path).map_or(false, |c| c.starts_with(canon_root))
 }
 
 #[cfg(test)]
@@ -332,10 +368,33 @@ mod tests {
         write(&root, "secrets/inside.md", "x");
         write(&root, "ok.md", "ok");
         let r = crawl(&root);
-        assert_eq!(rels(&r), vec!["c.docx", "d.pptx", "notes/a.md", "notes/deep/b.TXT", "ok.md"]);
-        let reasons: Vec<_> = r.skipped.iter().map(|s| (s.rel_path.as_str(), s.reason.as_str())).collect();
-        for name in [".env", "id_rsa", "server.pem", "my-credentials.md", "API Token notes.txt", "secrets"] {
-            assert!(reasons.iter().any(|(p, _)| *p == name), "{name} not listed: {reasons:?}");
+        assert_eq!(
+            rels(&r),
+            vec![
+                "c.docx",
+                "d.pptx",
+                "notes/a.md",
+                "notes/deep/b.TXT",
+                "ok.md"
+            ]
+        );
+        let reasons: Vec<_> = r
+            .skipped
+            .iter()
+            .map(|s| (s.rel_path.as_str(), s.reason.as_str()))
+            .collect();
+        for name in [
+            ".env",
+            "id_rsa",
+            "server.pem",
+            "my-credentials.md",
+            "API Token notes.txt",
+            "secrets",
+        ] {
+            assert!(
+                reasons.iter().any(|(p, _)| *p == name),
+                "{name} not listed: {reasons:?}"
+            );
         }
         assert_eq!(r.unsupported, 1);
         fs::remove_dir_all(&root).ok();
@@ -348,7 +407,10 @@ mod tests {
         write(&root, "huge.txt", &"x".repeat(2 * 1024 * 1024 + 1));
         let r = crawl(&root);
         assert_eq!(rels(&r), vec!["small.txt"]);
-        assert!(r.skipped.iter().any(|s| s.rel_path == "huge.txt" && s.reason == "over 2 MB"));
+        assert!(r
+            .skipped
+            .iter()
+            .any(|s| s.rel_path == "huge.txt" && s.reason == "over 2 MB"));
         fs::remove_dir_all(&root).ok();
     }
 
@@ -358,7 +420,10 @@ mod tests {
         for i in 0..30 {
             write(&root, &format!("f{i:02}.md"), "x");
         }
-        let opts = CrawlOptions { max_files: 10, ..Default::default() };
+        let opts = CrawlOptions {
+            max_files: 10,
+            ..Default::default()
+        };
         let r = crawl_folder(&root, &opts, &|| false).unwrap();
         assert_eq!(r.files.len(), 10);
         assert!(r.truncated);
@@ -375,7 +440,10 @@ mod tests {
         }
         write(&root, &format!("{rel}deep.md"), "x");
         write(&root, "top.md", "x");
-        let opts = CrawlOptions { max_depth: 3, ..Default::default() };
+        let opts = CrawlOptions {
+            max_depth: 3,
+            ..Default::default()
+        };
         let r = crawl_folder(&root, &opts, &|| false).unwrap();
         assert_eq!(rels(&r), vec!["top.md"]);
         assert!(r.truncated);
@@ -391,7 +459,10 @@ mod tests {
         write(&root, &format!("long/{}.md", "n".repeat(120)), "x");
         let r = crawl(&root);
         assert_eq!(r.files.len(), 4, "{:?}", rels(&r));
-        assert!(r.files.iter().any(|f| f.rel_path == "ünïcödé 日本語/メモ.md"));
+        assert!(r
+            .files
+            .iter()
+            .any(|f| f.rel_path == "ünïcödé 日本語/メモ.md"));
         fs::remove_dir_all(&root).ok();
     }
 
@@ -416,7 +487,17 @@ mod tests {
         let canon = fs::canonicalize(&root).unwrap();
         let o = CrawlOptions::default();
         assert!(still_allowed(&canon, "ok/a.md", &o));
-        for gone in ["ok/missing.md", "ok/my token.md", ".hid/b.md", "big.txt", "pic.png", "node_modules/p/r.md", "../x.md", "ok", ""] {
+        for gone in [
+            "ok/missing.md",
+            "ok/my token.md",
+            ".hid/b.md",
+            "big.txt",
+            "pic.png",
+            "node_modules/p/r.md",
+            "../x.md",
+            "ok",
+            "",
+        ] {
             assert!(!still_allowed(&canon, gone, &o), "{gone}");
         }
         fs::remove_dir_all(&root).ok();
@@ -434,10 +515,26 @@ mod tests {
 
     #[test]
     fn secret_name_rules() {
-        for n in [".env", ".env.local", "id_rsa", "id_ed25519.pub", "a.PEM", "x.key", "My Secret.md", "oauth-token.txt", "credentials.txt"] {
+        for n in [
+            ".env",
+            ".env.local",
+            "id_rsa",
+            "id_ed25519.pub",
+            "a.PEM",
+            "x.key",
+            "My Secret.md",
+            "oauth-token.txt",
+            "credentials.txt",
+        ] {
             assert!(is_secret_like(n), "{n}");
         }
-        for n in ["notes.md", "envoy.md", "ideas.md", "monkey.txt", "keynote.md"] {
+        for n in [
+            "notes.md",
+            "envoy.md",
+            "ideas.md",
+            "monkey.txt",
+            "keynote.md",
+        ] {
             assert!(!is_secret_like(n), "{n}");
         }
     }
@@ -460,7 +557,11 @@ mod tests {
         // symlink (may need privileges)
         let made_symlink = std::os::windows::fs::symlink_dir(&outside, root.join("sym")).is_ok();
         let r = crawl(&root);
-        assert_eq!(rels(&r), vec!["ok.md"], "junction={made_junction} symlink={made_symlink}");
+        assert_eq!(
+            rels(&r),
+            vec!["ok.md"],
+            "junction={made_junction} symlink={made_symlink}"
+        );
         if made_junction {
             assert!(r.skipped.iter().any(|s| s.rel_path == "jct"));
         }

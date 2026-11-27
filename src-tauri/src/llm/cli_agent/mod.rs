@@ -29,7 +29,9 @@ pub mod transcripts;
 
 /// Which CLI agent a session talks to. Serialised as the provider id
 /// (`claude_cli`, `antigravity_cli`, `codex_cli`), the string the frontend uses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum CliAgentKind {
     #[serde(rename = "claude_cli")]
     Claude,
@@ -42,7 +44,11 @@ pub enum CliAgentKind {
 }
 
 impl CliAgentKind {
-    pub const ALL: [CliAgentKind; 3] = [CliAgentKind::Claude, CliAgentKind::Antigravity, CliAgentKind::Codex];
+    pub const ALL: [CliAgentKind; 3] = [
+        CliAgentKind::Claude,
+        CliAgentKind::Antigravity,
+        CliAgentKind::Codex,
+    ];
 
     /// The provider id (`ProviderType::as_str`).
     pub fn provider_id(self) -> &'static str {
@@ -54,7 +60,9 @@ impl CliAgentKind {
     }
 
     pub fn from_provider_id(id: &str) -> Option<CliAgentKind> {
-        CliAgentKind::ALL.into_iter().find(|k| k.provider_id() == id)
+        CliAgentKind::ALL
+            .into_iter()
+            .find(|k| k.provider_id() == id)
     }
 
     /// The provider's display name (`ProviderType::display_name`).
@@ -117,7 +125,10 @@ mod tests {
     #[test]
     fn kinds_round_trip_through_their_provider_id() {
         for kind in CliAgentKind::ALL {
-            assert_eq!(CliAgentKind::from_provider_id(kind.provider_id()), Some(kind));
+            assert_eq!(
+                CliAgentKind::from_provider_id(kind.provider_id()),
+                Some(kind)
+            );
             assert_eq!(kind.provider_type().as_str(), kind.provider_id());
             assert_eq!(kind.provider_type().display_name(), kind.display_name());
             assert_eq!(kind.provider_type().cli_agent_kind(), Some(kind));
@@ -131,7 +142,10 @@ mod tests {
 
     #[test]
     fn only_claude_takes_images_and_the_thinking_toggle() {
-        assert!(CliAgentKind::Claude.supports_images() && CliAgentKind::Claude.supports_thinking_toggle());
+        assert!(
+            CliAgentKind::Claude.supports_images()
+                && CliAgentKind::Claude.supports_thinking_toggle()
+        );
         for kind in [CliAgentKind::Antigravity, CliAgentKind::Codex] {
             assert!(!kind.supports_images() && !kind.supports_thinking_toggle());
         }

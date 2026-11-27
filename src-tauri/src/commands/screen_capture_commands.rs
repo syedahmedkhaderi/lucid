@@ -118,9 +118,16 @@ pub struct Timings {
 
 /// The frame as PNG bytes, shrunk so its long edge is at most `max_edge`.
 pub fn encode_png(frame: Frame, max_edge: u32) -> Result<(Vec<u8>, Timings), String> {
-    let Frame { width, height, bgra } = frame;
+    let Frame {
+        width,
+        height,
+        bgra,
+    } = frame;
     if width == 0 || height == 0 || bgra.len() != width as usize * height as usize * 4 {
-        log::warn!("screen capture: malformed frame {width}x{height}, {} bytes", bgra.len());
+        log::warn!(
+            "screen capture: malformed frame {width}x{height}, {} bytes",
+            bgra.len()
+        );
         return Err(FAILED.into());
     }
     let mut timings = Timings::default();
@@ -131,7 +138,9 @@ pub fn encode_png(frame: Frame, max_edge: u32) -> Result<(Vec<u8>, Timings), Str
     timings.convert = t.elapsed();
     if blank {
         log::warn!("screen capture: the screen came out entirely black");
-        return Err("The screen came out black. It may be locked or showing protected content.".into());
+        return Err(
+            "The screen came out black. It may be locked or showing protected content.".into(),
+        );
     }
     let mut img = RgbImage::from_raw(width, height, rgb).ok_or_else(|| {
         log::warn!("screen capture: pixel buffer does not match {width}x{height}");
@@ -148,7 +157,12 @@ pub fn encode_png(frame: Frame, max_edge: u32) -> Result<(Vec<u8>, Timings), Str
     let t = Instant::now();
     let mut out = Cursor::new(Vec::new());
     PngEncoder::new(&mut out)
-        .write_image(img.as_raw(), img.width(), img.height(), ExtendedColorType::Rgb8)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            ExtendedColorType::Rgb8,
+        )
         .map_err(|e| {
             log::warn!("screen capture: PNG encoding failed: {e}");
             FAILED
@@ -177,8 +191,12 @@ pub async fn capture_screen_under_cursor(
     window: Window,
     state: State<'_, AppState>,
 ) -> Result<tauri::ipc::Response, String> {
-    if let Err(refusal) = check_allowed(window.label(), state.meeting_active.load(Ordering::SeqCst)) {
-        log::warn!("screen capture refused for window '{}': {refusal}", window.label());
+    if let Err(refusal) = check_allowed(window.label(), state.meeting_active.load(Ordering::SeqCst))
+    {
+        log::warn!(
+            "screen capture refused for window '{}': {refusal}",
+            window.label()
+        );
         return Err(refusal.into());
     }
     let started = Instant::now();
@@ -213,12 +231,14 @@ mod platform {
     use windows::core::BOOL;
     use windows::Win32::Foundation::{LPARAM, POINT, RECT};
     use windows::Win32::Graphics::Gdi::{
-        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, EnumDisplayMonitors, GetDC,
-        GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, HBITMAP,
-        HDC, HGDIOBJ, HMONITOR, SRCCOPY,
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
+        EnumDisplayMonitors, GetDC, GetDIBits, ReleaseDC, SelectObject, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ, HMONITOR,
+        SRCCOPY,
     };
     use windows::Win32::UI::HiDpi::{
-        SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT,
+        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
     use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
@@ -229,7 +249,9 @@ mod platform {
     impl DpiAwareThread {
         pub fn new() -> Self {
             // SAFETY: plain Win32 call with a constant context.
-            Self(unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) })
+            Self(unsafe {
+                SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+            })
         }
     }
     impl Drop for DpiAwareThread {
@@ -245,7 +267,12 @@ mod platform {
         // SAFETY: `data` is the `Vec<Rect>` passed by `monitors`; `rect` is valid for the call.
         let list = &mut *(data.0 as *mut Vec<Rect>);
         let r = &*rect;
-        list.push(Rect { left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+        list.push(Rect {
+            left: r.left,
+            top: r.top,
+            right: r.right,
+            bottom: r.bottom,
+        });
         BOOL(1)
     }
 
@@ -254,8 +281,14 @@ mod platform {
     pub fn monitors() -> Vec<Rect> {
         let mut list: Vec<Rect> = Vec::new();
         // SAFETY: the callback only runs during this call, with `list` alive.
-        let listed =
-            unsafe { EnumDisplayMonitors(None, None, Some(collect), LPARAM(&mut list as *mut Vec<Rect> as isize)) };
+        let listed = unsafe {
+            EnumDisplayMonitors(
+                None,
+                None,
+                Some(collect),
+                LPARAM(&mut list as *mut Vec<Rect> as isize),
+            )
+        };
         if !listed.as_bool() {
             log::warn!("screen capture: EnumDisplayMonitors failed");
         }
@@ -297,10 +330,12 @@ mod platform {
             FAILED.to_string()
         })?;
         let list = monitors();
-        let monitor = pick_monitor(&list, cursor.x, cursor.y).map(|i| list[i]).ok_or_else(|| {
-            log::warn!("screen capture: no monitors found");
-            FAILED.to_string()
-        })?;
+        let monitor = pick_monitor(&list, cursor.x, cursor.y)
+            .map(|i| list[i])
+            .ok_or_else(|| {
+                log::warn!("screen capture: no monitors found");
+                FAILED.to_string()
+            })?;
         grab_monitor(&monitor)
     }
 
@@ -312,7 +347,10 @@ mod platform {
             return Err(FAILED.into());
         }
         let fail = |step: &str| -> String {
-            log::warn!("screen capture: {step} failed: {}", windows::core::Error::from_thread());
+            log::warn!(
+                "screen capture: {step} failed: {}",
+                windows::core::Error::from_thread()
+            );
             FAILED.to_string()
         };
 
@@ -336,7 +374,17 @@ mod platform {
                 return Err(fail("SelectObject"));
             }
             // CAPTUREBLT includes layered (transparent) windows.
-            let copied = BitBlt(mem.0, 0, 0, width, height, Some(screen.0), monitor.left, monitor.top, SRCCOPY | CAPTUREBLT);
+            let copied = BitBlt(
+                mem.0,
+                0,
+                0,
+                width,
+                height,
+                Some(screen.0),
+                monitor.left,
+                monitor.top,
+                SRCCOPY | CAPTUREBLT,
+            );
             // GetDIBits needs the bitmap out of every DC: put the original back first.
             SelectObject(mem.0, previous);
             if let Err(e) = copied {
@@ -369,7 +417,11 @@ mod platform {
                 log::warn!("screen capture: GetDIBits returned {lines} of {height} lines");
                 return Err(FAILED.into());
             }
-            Ok(Frame { width: width as u32, height: height as u32, bgra })
+            Ok(Frame {
+                width: width as u32,
+                height: height as u32,
+                bgra,
+            })
         }
     }
 }
@@ -388,7 +440,12 @@ mod tests {
     use super::*;
 
     const fn r(left: i32, top: i32, right: i32, bottom: i32) -> Rect {
-        Rect { left, top, right, bottom }
+        Rect {
+            left,
+            top,
+            right,
+            bottom,
+        }
     }
 
     // A 5120x1440 primary at the origin and a 3840x2160 monitor above-right of
@@ -458,7 +515,16 @@ mod tests {
     }
 
     fn frame(width: u32, height: u32, fill: [u8; 4]) -> Frame {
-        Frame { width, height, bgra: fill.iter().copied().cycle().take((width * height * 4) as usize).collect() }
+        Frame {
+            width,
+            height,
+            bgra: fill
+                .iter()
+                .copied()
+                .cycle()
+                .take((width * height * 4) as usize)
+                .collect(),
+        }
     }
 
     #[test]
@@ -466,7 +532,9 @@ mod tests {
         // BGRA (blue 10, green 20, red 30) must come out as RGB (30, 20, 10).
         let (png, _) = encode_png(frame(40, 20, [10, 20, 30, 0]), MAX_EDGE).unwrap();
         assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
-        let img = image::load_from_memory_with_format(&png, image::ImageFormat::Png).unwrap().into_rgb8();
+        let img = image::load_from_memory_with_format(&png, image::ImageFormat::Png)
+            .unwrap()
+            .into_rgb8();
         assert_eq!(img.dimensions(), (40, 20));
         assert_eq!(img.get_pixel(5, 5).0, [30, 20, 10]);
     }
@@ -474,7 +542,9 @@ mod tests {
     #[test]
     fn shrinks_a_wide_screen_to_the_edge_limit() {
         let (png, _) = encode_png(frame(5120, 1440, [200, 100, 50, 0]), MAX_EDGE).unwrap();
-        let img = image::load_from_memory_with_format(&png, image::ImageFormat::Png).unwrap().into_rgb8();
+        let img = image::load_from_memory_with_format(&png, image::ImageFormat::Png)
+            .unwrap()
+            .into_rgb8();
         assert_eq!(img.dimensions(), (1568, 441));
         assert_eq!(img.get_pixel(700, 200).0, [50, 100, 200]);
     }
@@ -483,9 +553,21 @@ mod tests {
     fn refuses_a_black_screen_and_a_malformed_frame() {
         let black = encode_png(frame(64, 64, [0, 0, 0, 0]), MAX_EDGE).unwrap_err();
         assert!(black.contains("black"), "{black}");
-        let short = Frame { width: 10, height: 10, bgra: vec![1; 12] };
+        let short = Frame {
+            width: 10,
+            height: 10,
+            bgra: vec![1; 12],
+        };
         assert!(encode_png(short, MAX_EDGE).is_err());
-        assert!(encode_png(Frame { width: 0, height: 0, bgra: vec![] }, MAX_EDGE).is_err());
+        assert!(encode_png(
+            Frame {
+                width: 0,
+                height: 0,
+                bgra: vec![]
+            },
+            MAX_EDGE
+        )
+        .is_err());
     }
 
     #[test]

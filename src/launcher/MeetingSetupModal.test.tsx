@@ -46,7 +46,23 @@ describe("MeetingSetupModal scenarios", () => {
     fireEvent.click(screen.getByRole("button", { name: "Team Meeting" }));
     fireEvent.click(screen.getByRole("button", { name: /Board review/ }));
     await start();
-    expect(onStart).toHaveBeenCalledWith("online", "custom_1", { workspaceId: "general", borrowed: [], documentIds: [] });
+    expect(onStart).toHaveBeenCalledWith("online", "custom_1", { workspaceId: "general", borrowed: [], documentIds: [], meetingContext: "" });
+  });
+
+  it("passes optional meeting context with the selected documents", async () => {
+    const onStart = vi.fn();
+    render(<MeetingSetupModal open onStart={onStart} onCancel={() => {}} />);
+    fireEvent.click(screen.getByText("Add optional meeting context"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Optional meeting context" }), {
+      target: { value: "Review Q3 renewals and explain each variance." },
+    });
+    await start();
+    expect(onStart).toHaveBeenCalledWith("online", "team_meeting", {
+      workspaceId: "general",
+      borrowed: [],
+      documentIds: [],
+      meetingContext: "Review Q3 renewals and explain each variance.",
+    });
   });
 
   it("shows a remembered custom scenario by name", async () => {
@@ -55,7 +71,7 @@ describe("MeetingSetupModal scenarios", () => {
     render(<MeetingSetupModal open onStart={onStart} onCancel={() => {}} />);
     expect(screen.getByText("Board review")).toBeInTheDocument();
     await start();
-    expect(onStart).toHaveBeenCalledWith("online", "custom_1", { workspaceId: "general", borrowed: [], documentIds: [] });
+    expect(onStart).toHaveBeenCalledWith("online", "custom_1", { workspaceId: "general", borrowed: [], documentIds: [], meetingContext: "" });
   });
 
   it("falls back to Team Meeting when the remembered scenario was deleted", async () => {
@@ -65,7 +81,7 @@ describe("MeetingSetupModal scenarios", () => {
     expect(screen.getByText("Team Meeting")).toBeInTheDocument();
     expect(screen.queryByText("custom_deleted")).toBeNull();
     await start();
-    expect(onStart).toHaveBeenCalledWith("online", "team_meeting", { workspaceId: "general", borrowed: [], documentIds: [] });
+    expect(onStart).toHaveBeenCalledWith("online", "team_meeting", { workspaceId: "general", borrowed: [], documentIds: [], meetingContext: "" });
   });
 });
 
@@ -122,6 +138,7 @@ describe("MeetingSetupModal workspaces", () => {
       workspaceId: "general",
       borrowed: [],
       documentIds: ["doc-1", "doc-2", "doc-3", "doc-4", "doc-5", "doc-6", "doc-7", "doc-8", "doc-9", "doc-10"],
+      meetingContext: "",
     });
   });
 
@@ -131,7 +148,7 @@ describe("MeetingSetupModal workspaces", () => {
     expect(screen.getByRole("radio", { name: "Acme" })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(screen.getByRole("radio", { name: "Biology" }));
     await start2();
-    expect(onStart).toHaveBeenCalledWith("online", "interview", { workspaceId: "b", borrowed: [], documentIds: [] });
+    expect(onStart).toHaveBeenCalledWith("online", "interview", { workspaceId: "b", borrowed: [], documentIds: [], meetingContext: "" });
   });
 
   it("the workspace's scenario applies until one is picked here", async () => {
@@ -143,7 +160,7 @@ describe("MeetingSetupModal workspaces", () => {
     fireEvent.click(screen.getByRole("button", { name: /Board review/ }));
     fireEvent.click(screen.getByRole("radio", { name: "Acme" }));
     await start2();
-    expect(onStart).toHaveBeenCalledWith("online", "custom_1", { workspaceId: "a", borrowed: [], documentIds: [] });
+    expect(onStart).toHaveBeenCalledWith("online", "custom_1", { workspaceId: "a", borrowed: [], documentIds: [], meetingContext: "" });
   });
 
   it("offers Also use, blocks kept-separate combinations with the reason, and drops a borrowed home", async () => {
@@ -154,10 +171,10 @@ describe("MeetingSetupModal workspaces", () => {
     expect(screen.getByText("Kept separate")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: /Biology/ }));
     await start2();
-    expect(onStart).toHaveBeenLastCalledWith("online", expect.any(String), { workspaceId: "a", borrowed: ["b"], documentIds: [] });
+    expect(onStart).toHaveBeenLastCalledWith("online", expect.any(String), { workspaceId: "a", borrowed: ["b"], documentIds: [], meetingContext: "" });
     // Moving the home onto the borrowed one removes it from "Also use".
     fireEvent.click(screen.getByRole("radio", { name: "Biology" }));
     await start2();
-    expect(onStart).toHaveBeenLastCalledWith("online", expect.any(String), { workspaceId: "b", borrowed: [], documentIds: [] });
+    expect(onStart).toHaveBeenLastCalledWith("online", expect.any(String), { workspaceId: "b", borrowed: [], documentIds: [], meetingContext: "" });
   });
 });

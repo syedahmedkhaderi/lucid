@@ -562,7 +562,8 @@ mod tests {
     #[test]
     fn macbook_tap_and_mic_stay_aligned_for_minutes() {
         let far = far_end_48k(90);
-        let per_10s = reduction_over_time(capture(&far, 15.0, 0.0, streaming), 10);        for (i, reduction) in per_10s.iter().enumerate().skip(1) {
+        let per_10s = reduction_over_time(capture(&far, 15.0, 0.0, streaming), 10);
+        for (i, reduction) in per_10s.iter().enumerate().skip(1) {
             assert!(
                 *reduction > 20.0,
                 "{}–{} s: echo only reduced by {reduction:.1} dB ({per_10s:.1?})",
@@ -580,7 +581,8 @@ mod tests {
     fn a_mic_with_its_own_clock_stays_aligned() {
         let far = far_end_48k(90);
         for ppm in [-300.0, 300.0] {
-            let per_10s = reduction_over_time(capture(&far, 15.0, ppm, streaming), 10);            let weak = per_10s.iter().skip(1).filter(|&&r| r < 20.0).count();
+            let per_10s = reduction_over_time(capture(&far, 15.0, ppm, streaming), 10);
+            let weak = per_10s.iter().skip(1).filter(|&&r| r < 20.0).count();
             assert!(weak <= 1, "mic clock {ppm:+} ppm: {per_10s:.1?}");
             assert!(
                 per_10s.iter().skip(1).all(|&r| r > 12.0),
@@ -661,8 +663,12 @@ mod tests {
         far[25 * 48_000..37 * 48_000].fill(0.0);
         let chunks = capture_on(&WINDOWS, &far, 20.0, 0.0, streaming);
         let sent = chunks.iter().filter(|c| c.system).count();
-        assert!(sent < far.len() / 480 * 3 / 4, "silent packets were dropped");
-        let per_10s = reduction_over_time(chunks, 10);        for (i, reduction) in per_10s.iter().enumerate().skip(1) {
+        assert!(
+            sent < far.len() / 480 * 3 / 4,
+            "silent packets were dropped"
+        );
+        let per_10s = reduction_over_time(chunks, 10);
+        for (i, reduction) in per_10s.iter().enumerate().skip(1) {
             assert!(
                 *reduction > 15.0,
                 "{}–{} s: echo only reduced by {reduction:.1} dB ({per_10s:.1?})",

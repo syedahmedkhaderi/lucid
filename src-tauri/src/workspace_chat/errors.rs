@@ -6,7 +6,11 @@ use crate::ai_runs::AiRunError;
 
 /// `(message, error_kind)`.
 pub fn describe(e: &AiRunError, provider: &str, model: &str) -> (String, &'static str) {
-    let who = if model.trim().is_empty() { provider.to_string() } else { format!("{provider} ({model})") };
+    let who = if model.trim().is_empty() {
+        provider.to_string()
+    } else {
+        format!("{provider} ({model})")
+    };
     let msg = match e {
         AiRunError::NoKey { message, .. } => format!("{who} refused the request: {message}"),
         AiRunError::RateLimited { message, plan_limit } => match plan_limit {

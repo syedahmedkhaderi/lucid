@@ -29,8 +29,7 @@ pub fn response_ok(id: &Value, result: Value) -> String {
 
 /// An error reply to an agent request.
 pub fn response_err(id: &Value, code: i64, message: &str) -> String {
-    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
-        .to_string()
+    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }).to_string()
 }
 
 /// JSON-RPC "Method not found".
@@ -49,7 +48,11 @@ pub fn initialize_params() -> Value {
 /// `session/new` params. No `additionalDirectories`, ever: the agent reads
 /// nothing of the user's disk (the notes come through an MCP server).
 /// `system_prompt_append` goes in `_meta.antigravity.systemPrompt.append`.
-pub fn session_new_params(cwd: &Path, mcp_servers: &[Value], system_prompt_append: Option<&str>) -> Value {
+pub fn session_new_params(
+    cwd: &Path,
+    mcp_servers: &[Value],
+    system_prompt_append: Option<&str>,
+) -> Value {
     let mut params = json!({
         "cwd": cwd.to_string_lossy(),
         "mcpServers": mcp_servers,
@@ -111,9 +114,16 @@ impl RpcError {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Incoming {
     /// The answer to one of our requests.
-    Response { id: u64, result: Result<Value, RpcError> },
+    Response {
+        id: u64,
+        result: Result<Value, RpcError>,
+    },
     /// A request from the agent: it waits for our reply to `id`.
-    Request { id: Value, method: String, params: Value },
+    Request {
+        id: Value,
+        method: String,
+        params: Value,
+    },
     /// A notification (`session/update`, ...).
     Notification { method: String, params: Value },
 }
@@ -171,14 +181,24 @@ pub fn parse_initialize(v: &Value) -> AgentInit {
     let v = v.get("result").unwrap_or(v);
     let caps = &v["agentCapabilities"];
     AgentInit {
-        name: v["agentInfo"]["name"].as_str().unwrap_or_default().to_string(),
-        version: v["agentInfo"]["version"].as_str().unwrap_or_default().to_string(),
+        name: v["agentInfo"]["name"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        version: v["agentInfo"]["version"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
         system_prompt_append: caps["_meta"]["antigravity"]["systemPrompt"]["append"]
             .as_bool()
             .unwrap_or(false),
         auth_methods: v["authMethods"]
             .as_array()
-            .map(|a| a.iter().filter_map(|m| m["id"].as_str().map(str::to_string)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|m| m["id"].as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default(),
     }
 }
@@ -223,7 +243,11 @@ pub fn parse_session_new(v: &Value) -> Result<NewSession, String> {
         current_mode: v["modes"]["currentModeId"].as_str().map(str::to_string),
         modes: v["modes"]["availableModes"]
             .as_array()
-            .map(|m| m.iter().filter_map(|m| m["id"].as_str().map(str::to_string)).collect())
+            .map(|m| {
+                m.iter()
+                    .filter_map(|m| m["id"].as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default(),
     })
 }
@@ -285,7 +309,11 @@ pub fn parse_tool_call(v: &Value) -> ToolCallInfo {
         .filter(|n| !n.is_empty())
         .map(str::to_string)
         .unwrap_or_default();
-    let raw_input = if v["rawInput"].is_null() { v["args"].clone() } else { v["rawInput"].clone() };
+    let raw_input = if v["rawInput"].is_null() {
+        v["args"].clone()
+    } else {
+        v["rawInput"].clone()
+    };
     ToolCallInfo {
         id,
         name,
@@ -295,7 +323,11 @@ pub fn parse_tool_call(v: &Value) -> ToolCallInfo {
         raw_input,
         locations: v["locations"]
             .as_array()
-            .map(|l| l.iter().filter_map(|x| x["path"].as_str().map(str::to_string)).collect())
+            .map(|l| {
+                l.iter()
+                    .filter_map(|x| x["path"].as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default(),
     }
 }
@@ -392,11 +424,12 @@ pub fn tool_use_for_activity(info: &ToolCallInfo, servers: &[String]) -> ToolUse
             input: Value::Null,
         };
     }
-    let first_path = info
-        .locations
-        .first()
-        .cloned()
-        .or_else(|| first_string(&info.raw_input, &["file_path", "path", "filepath", "file", "uri"]));
+    let first_path = info.locations.first().cloned().or_else(|| {
+        first_string(
+            &info.raw_input,
+            &["file_path", "path", "filepath", "file", "uri"],
+        )
+    });
     let (name, input) = match (info.kind.as_str(), first_path) {
         ("read", Some(path)) => ("Read".to_string(), json!({ "file_path": path })),
         ("search", _) => {
@@ -405,11 +438,19 @@ pub fn tool_use_for_activity(info: &ToolCallInfo, servers: &[String]) -> ToolUse
             ("Grep".to_string(), json!({ "pattern": pattern }))
         }
         _ => (
-            if info.name.is_empty() { info.title.clone() } else { info.name.clone() },
+            if info.name.is_empty() {
+                info.title.clone()
+            } else {
+                info.name.clone()
+            },
             Value::Null,
         ),
     };
-    ToolUse { id: info.id.clone(), name, input }
+    ToolUse {
+        id: info.id.clone(),
+        name,
+        input,
+    }
 }
 
 /// `(server, tool)` of an MCP tool name `mcp_<server>_<tool>` (or
@@ -493,16 +534,20 @@ mod tests {
 
     #[test]
     fn builders_make_json_rpc_lines() {
-        let v: Value = serde_json::from_str(&request(4, "session/prompt", json!({"a": 1}))).unwrap();
+        let v: Value =
+            serde_json::from_str(&request(4, "session/prompt", json!({"a": 1}))).unwrap();
         assert_eq!(v["jsonrpc"], "2.0");
         assert_eq!(v["id"], 4);
         assert_eq!(v["method"], "session/prompt");
-        let n: Value = serde_json::from_str(&notification("session/cancel", cancel_params("s"))).unwrap();
+        let n: Value =
+            serde_json::from_str(&notification("session/cancel", cancel_params("s"))).unwrap();
         assert!(n.get("id").is_none());
         assert_eq!(n["params"]["sessionId"], "s");
-        let ok: Value = serde_json::from_str(&response_ok(&json!("abc"), json!({"outcome": {}}))).unwrap();
+        let ok: Value =
+            serde_json::from_str(&response_ok(&json!("abc"), json!({"outcome": {}}))).unwrap();
         assert_eq!(ok["id"], "abc");
-        let err: Value = serde_json::from_str(&response_err(&json!(5), METHOD_NOT_FOUND, "no")).unwrap();
+        let err: Value =
+            serde_json::from_str(&response_err(&json!(5), METHOD_NOT_FOUND, "no")).unwrap();
         assert_eq!(err["error"]["code"], -32601);
         assert_eq!(err["id"], 5);
     }
@@ -521,20 +566,31 @@ mod tests {
         let p = session_new_params(Path::new("C:\\Work"), &[], Some("Be brief."));
         assert_eq!(p["cwd"], "C:\\Work");
         assert_eq!(p["mcpServers"], json!([]));
-        assert_eq!(p["_meta"]["antigravity"]["systemPrompt"]["append"], "Be brief.");
+        assert_eq!(
+            p["_meta"]["antigravity"]["systemPrompt"]["append"],
+            "Be brief."
+        );
         // The agent is never given a folder of the user's to read.
         assert!(p.get("additionalDirectories").is_none());
-        assert!(session_new_params(Path::new("C:\\Work"), &[], None).get("_meta").is_none());
+        assert!(session_new_params(Path::new("C:\\Work"), &[], None)
+            .get("_meta")
+            .is_none());
     }
 
     #[test]
     fn parses_responses_requests_and_notifications() {
         match parse_line(&line("agy_initialize.json")).unwrap() {
-            Incoming::Response { id: 1, result: Ok(r) } => assert_eq!(r["protocolVersion"], 1),
+            Incoming::Response {
+                id: 1,
+                result: Ok(r),
+            } => assert_eq!(r["protocolVersion"], 1),
             other => panic!("{other:?}"),
         }
         match parse_line(&line("err_not_logged_in.json")).unwrap() {
-            Incoming::Response { id: 2, result: Err(e) } => {
+            Incoming::Response {
+                id: 2,
+                result: Err(e),
+            } => {
                 assert_eq!(e.code, -32000);
                 assert!(e.message.contains("API key is missing"));
             }
@@ -556,7 +612,9 @@ mod tests {
         assert!(parse_line("[1]").is_err());
         assert!(parse_line(r#"{"jsonrpc":"2.0"}"#).is_err());
         // A string id on a request is kept as is.
-        match parse_line(r#"{"jsonrpc":"2.0","id":"x1","method":"fs/read_text_file","params":{}}"#).unwrap() {
+        match parse_line(r#"{"jsonrpc":"2.0","id":"x1","method":"fs/read_text_file","params":{}}"#)
+            .unwrap()
+        {
             Incoming::Request { id, .. } => assert_eq!(id, json!("x1")),
             other => panic!("{other:?}"),
         }
@@ -577,27 +635,60 @@ mod tests {
         assert_eq!(agy.session_id, "636be507-896c-4d66-a8ce-0cd6ff38b168");
         assert_eq!(agy.current_model.as_deref(), Some("gemini-4-neon-high"));
         assert_eq!(agy.models.len(), 4);
-        assert_eq!(agy.models[2], ("gemini-3.8-flash-low".to_string(), "Gemini 3.8 Flash (Low)".to_string()));
+        assert_eq!(
+            agy.models[2],
+            (
+                "gemini-3.8-flash-low".to_string(),
+                "Gemini 3.8 Flash (Low)".to_string()
+            )
+        );
         // The modes it offers: already in `default`, nothing to switch.
         assert_eq!(agy.current_mode.as_deref(), Some("default"));
         assert_eq!(agy.modes, vec!["default", "plan"]);
         assert_eq!(agy.safer_mode(), None);
         // Another current mode goes back to `default`; a read-only mode wins when offered.
-        let other = NewSession { current_mode: Some("auto".into()), modes: vec!["auto".into(), "default".into(), "plan".into()], ..agy.clone() };
+        let other = NewSession {
+            current_mode: Some("auto".into()),
+            modes: vec!["auto".into(), "default".into(), "plan".into()],
+            ..agy.clone()
+        };
         assert_eq!(other.safer_mode().as_deref(), Some("default"));
-        let ro = NewSession { modes: vec!["default".into(), "read-only".into()], ..agy.clone() };
+        let ro = NewSession {
+            modes: vec!["default".into(), "read-only".into()],
+            ..agy.clone()
+        };
         assert_eq!(ro.safer_mode().as_deref(), Some("read-only"));
         // Nothing usable offered (or no modes at all): left alone.
-        assert_eq!(NewSession { modes: vec!["auto".into(), "plan".into()], ..agy.clone() }.safer_mode(), None);
-        assert_eq!(NewSession { modes: vec![], ..agy.clone() }.safer_mode(), None);
+        assert_eq!(
+            NewSession {
+                modes: vec!["auto".into(), "plan".into()],
+                ..agy.clone()
+            }
+            .safer_mode(),
+            None
+        );
+        assert_eq!(
+            NewSession {
+                modes: vec![],
+                ..agy.clone()
+            }
+            .safer_mode(),
+            None
+        );
 
         // Result object or whole response: same list.
-        assert_eq!(agy.models, models_from_session_new(&fixture("agy_session_new.json")["result"]));
+        assert_eq!(
+            agy.models,
+            models_from_session_new(&fixture("agy_session_new.json")["result"])
+        );
         assert!(models_from_session_new(&json!({})).is_empty());
         assert!(parse_session_new(&json!({"result": {}})).is_err());
         // A model without a name shows its id.
         let v = json!({"models": {"availableModels": [{"modelId": "m1"}, {"name": "no id"}]}});
-        assert_eq!(models_from_session_new(&v), vec![("m1".to_string(), "m1".to_string())]);
+        assert_eq!(
+            models_from_session_new(&v),
+            vec![("m1".to_string(), "m1".to_string())]
+        );
     }
 
     #[test]
@@ -608,17 +699,27 @@ mod tests {
             Update::MessageChunk("According to the note, the launch date is March 3.".into())
         );
         assert_eq!(u("agy_update_thought_chunk.json"), Update::ThoughtChunk);
-        let Update::ToolCall(call) = u("agy_update_tool_call_read.json") else { panic!() };
+        let Update::ToolCall(call) = u("agy_update_tool_call_read.json") else {
+            panic!()
+        };
         assert_eq!(call.name, "read_file");
         assert_eq!(call.kind, "read");
         assert_eq!(call.status.as_deref(), Some("in_progress"));
         assert_eq!(call.locations, vec!["C:\\Users\\Vahid\\Notes\\falcon.md"]);
         assert!(!call.finished());
-        let Update::ToolCallUpdate(done) = u("agy_update_tool_call_update_failed.json") else { panic!() };
+        let Update::ToolCallUpdate(done) = u("agy_update_tool_call_update_failed.json") else {
+            panic!()
+        };
         assert!(done.finished() && done.failed());
         assert_eq!(done.id, call.id);
-        assert_eq!(parse_update(&json!({"sessionUpdate": "usage_update", "used": 3})), Update::Other);
-        assert_eq!(parse_update(&json!({"sessionUpdate": "available_commands_update"})), Update::Other);
+        assert_eq!(
+            parse_update(&json!({"sessionUpdate": "usage_update", "used": 3})),
+            Update::Other
+        );
+        assert_eq!(
+            parse_update(&json!({"sessionUpdate": "available_commands_update"})),
+            Update::Other
+        );
         // Non-text content is not answer text.
         let img = json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "image", "data": "x"}});
         assert_eq!(parse_update(&img), Update::Other);
@@ -641,7 +742,10 @@ mod tests {
         assert_eq!(r.text, "hi");
         assert!(!r.is_error);
         assert_eq!((r.input_tokens, r.output_tokens), (12518, 409));
-        assert_eq!((r.cache_read_tokens, r.cache_write_tokens, r.thinking_tokens), (8006, 0, 292));
+        assert_eq!(
+            (r.cache_read_tokens, r.cache_write_tokens, r.thinking_tokens),
+            (8006, 0, 292)
+        );
         assert_eq!(r.duration_ms, 1500);
         assert_eq!(r.cost_usd, 0.0);
         assert_eq!(r.prompt_tokens(), 12518 + 8006);
@@ -649,14 +753,23 @@ mod tests {
 
     #[test]
     fn activity_names_match_what_the_chips_expect() {
-        let servers = vec!["probe-srv".to_string(), "my_notes".to_string(), "my".to_string()];
+        let servers = vec![
+            "probe-srv".to_string(),
+            "my_notes".to_string(),
+            "my".to_string(),
+        ];
         let call = |v: &str| {
-            let Update::ToolCall(c) = parse_update(update_of(&fixture(v)["params"])) else { panic!() };
+            let Update::ToolCall(c) = parse_update(update_of(&fixture(v)["params"])) else {
+                panic!()
+            };
             c
         };
         let read = tool_use_for_activity(&call("agy_update_tool_call_read.json"), &servers);
         assert_eq!(read.name, "Read");
-        assert_eq!(read.input["file_path"], "C:\\Users\\Vahid\\Notes\\falcon.md");
+        assert_eq!(
+            read.input["file_path"],
+            "C:\\Users\\Vahid\\Notes\\falcon.md"
+        );
         let mcp = tool_use_for_activity(&call("agy_update_tool_call_mcp.json"), &servers);
         assert_eq!(mcp.name, "mcp__probe-srv__get_secret_word");
 
@@ -674,10 +787,17 @@ mod tests {
         assert_eq!(split_mcp_tool_name("mcp_my_", &servers), None);
 
         // Search: pattern from the input, else the title. Unknown tools keep their name.
-        let search = parse_tool_call(&json!({"toolCallId": "g-1", "name": "grep_search", "kind": "search", "title": "Grep falcon", "rawInput": {"pattern": "falcon"}}));
+        let search = parse_tool_call(
+            &json!({"toolCallId": "g-1", "name": "grep_search", "kind": "search", "title": "Grep falcon", "rawInput": {"pattern": "falcon"}}),
+        );
         let t = tool_use_for_activity(&search, &[]);
-        assert_eq!((t.name.as_str(), t.input["pattern"].as_str()), ("Grep", Some("falcon")));
-        let other = parse_tool_call(&json!({"toolCallId": "x-1", "name": "run_command", "kind": "execute", "title": "Run it"}));
+        assert_eq!(
+            (t.name.as_str(), t.input["pattern"].as_str()),
+            ("Grep", Some("falcon"))
+        );
+        let other = parse_tool_call(
+            &json!({"toolCallId": "x-1", "name": "run_command", "kind": "execute", "title": "Run it"}),
+        );
         assert_eq!(tool_use_for_activity(&other, &[]).name, "run_command");
     }
 
@@ -688,21 +808,50 @@ mod tests {
             other => panic!("{other:?}"),
         };
         let e = err("err_not_logged_in.json");
-        assert_eq!(classify_acp_error(Some(e.code), &e.text()), AgentErrorKind::NotLoggedIn);
+        assert_eq!(
+            classify_acp_error(Some(e.code), &e.text()),
+            AgentErrorKind::NotLoggedIn
+        );
         let e = err("err_credits_depleted.json");
-        assert_eq!(classify_acp_error(Some(e.code), &e.text()), AgentErrorKind::RateLimited);
-        assert_eq!(classify_acp_error(None, "Your prepayment credits are depleted"), AgentErrorKind::RateLimited);
-        assert_eq!(classify_acp_error(None, "429 RESOURCE_EXHAUSTED"), AgentErrorKind::RateLimited);
-        assert_eq!(classify_acp_error(None, "Please log in first"), AgentErrorKind::NotLoggedIn);
-        assert_eq!(classify_acp_error(None, "agy exited unexpectedly (exit code 1)"), AgentErrorKind::Crashed);
-        assert_eq!(classify_acp_error(None, "something odd"), AgentErrorKind::Other);
+        assert_eq!(
+            classify_acp_error(Some(e.code), &e.text()),
+            AgentErrorKind::RateLimited
+        );
+        assert_eq!(
+            classify_acp_error(None, "Your prepayment credits are depleted"),
+            AgentErrorKind::RateLimited
+        );
+        assert_eq!(
+            classify_acp_error(None, "429 RESOURCE_EXHAUSTED"),
+            AgentErrorKind::RateLimited
+        );
+        assert_eq!(
+            classify_acp_error(None, "Please log in first"),
+            AgentErrorKind::NotLoggedIn
+        );
+        assert_eq!(
+            classify_acp_error(None, "agy exited unexpectedly (exit code 1)"),
+            AgentErrorKind::Crashed
+        );
+        assert_eq!(
+            classify_acp_error(None, "something odd"),
+            AgentErrorKind::Other
+        );
     }
 
     #[test]
     fn rpc_error_text_includes_details() {
-        let e = RpcError { code: -32603, message: "Internal error".into(), data: Some(json!({"details": "Directory does not exist"})) };
+        let e = RpcError {
+            code: -32603,
+            message: "Internal error".into(),
+            data: Some(json!({"details": "Directory does not exist"})),
+        };
         assert_eq!(e.text(), "Internal error: Directory does not exist");
-        let e = RpcError { code: 1, message: "plain".into(), data: None };
+        let e = RpcError {
+            code: 1,
+            message: "plain".into(),
+            data: None,
+        };
         assert_eq!(e.text(), "plain");
     }
 }

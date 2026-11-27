@@ -132,7 +132,7 @@ describe("adding files", () => {
   it("reads extensions and splits supported from the rest", () => {
     expect(extensionOf("C:\\a\\b\\Notes.MD")).toBe("md");
     expect(extensionOf("noext")).toBe("");
-    expect(supportedPaths(["a.pdf", "b.png", "c.docx", "d.pptx", "e"])).toEqual({ ok: ["a.pdf", "c.docx", "d.pptx"], skipped: ["b.png", "e"] });
+    expect(supportedPaths(["a.pdf", "b.png", "c.docx", "d.pptx", "e.csv", "e"])).toEqual({ ok: ["a.pdf", "c.docx", "d.pptx", "e.csv"], skipped: ["b.png", "e"] });
   });
   it("describes what happened in one line", () => {
     expect(describeAdd(2, 0, 0)).toBeNull();

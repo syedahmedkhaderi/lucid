@@ -180,7 +180,7 @@ describe("never starting in an archived workspace", () => {
     expect(screen.queryByRole("radio", { name: "Old job" })).toBeNull();
     await waitFor(() => expect(screen.getByRole("button", { name: "Start Meeting" })).toBeEnabled());
     screen.getByRole("button", { name: "Start Meeting" }).click();
-    expect(onStart).toHaveBeenCalledWith("online", "team_meeting", { workspaceId: "general", borrowed: [], documentIds: [] });
+    expect(onStart).toHaveBeenCalledWith("online", "team_meeting", { workspaceId: "general", borrowed: [], documentIds: [], meetingContext: "" });
   });
 });
 

@@ -27,13 +27,22 @@ pub const UPDATED_EVENT: &str = "automatic_model_updated";
 
 /// Providers whose list is kept: the ones "Automatic" picks a small model from.
 pub fn keeps_list(provider: &str) -> bool {
-    matches!(provider, "openai" | "anthropic" | "gemini" | "groq" | "openrouter")
+    matches!(
+        provider,
+        "openai" | "anthropic" | "gemini" | "groq" | "openrouter"
+    )
 }
 
 /// What identifies the account and endpoint a list was fetched for.
 pub fn fingerprint(config: &ProviderConfig) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (&config.api_key, &config.base_url, &config.auth_value, &config.auth_header).hash(&mut h);
+    (
+        &config.api_key,
+        &config.base_url,
+        &config.auth_value,
+        &config.auth_header,
+    )
+        .hash(&mut h);
     h.finish()
 }
 
@@ -53,7 +62,10 @@ impl ModelLists {
     /// fetched for another key or address.
     pub fn known(&self, provider: &str, fingerprint: u64) -> Option<Vec<String>> {
         let entries = self.entries.lock().unwrap();
-        entries.get(provider).filter(|e| e.fingerprint == fingerprint).and_then(|e| e.models.clone())
+        entries
+            .get(provider)
+            .filter(|e| e.fingerprint == fingerprint)
+            .and_then(|e| e.models.clone())
     }
 
     /// Is a fetch due? True when nothing is known for this key and address, the
@@ -70,7 +82,14 @@ impl ModelLists {
     }
 
     pub fn store(&self, provider: &str, fingerprint: u64, models: Option<Vec<String>>) {
-        self.entries.lock().unwrap().insert(provider.to_string(), Entry { fingerprint, models, at: Instant::now() });
+        self.entries.lock().unwrap().insert(
+            provider.to_string(),
+            Entry {
+                fingerprint,
+                models,
+                at: Instant::now(),
+            },
+        );
     }
 }
 
@@ -94,15 +113,25 @@ mod tests {
     #[test]
     fn a_list_belongs_to_one_key_and_address() {
         let lists = ModelLists::default();
-        let (a, b, c) = (fingerprint(&cfg("k1", None)), fingerprint(&cfg("k2", None)), fingerprint(&cfg("k1", Some("http://proxy"))));
+        let (a, b, c) = (
+            fingerprint(&cfg("k1", None)),
+            fingerprint(&cfg("k2", None)),
+            fingerprint(&cfg("k1", Some("http://proxy"))),
+        );
         assert!(a != b && a != c);
         assert_eq!(lists.known("openai", a), None);
         lists.store("openai", a, Some(vec!["gpt-5-nano".into()]));
-        assert_eq!(lists.known("openai", a), Some(vec!["gpt-5-nano".to_string()]));
+        assert_eq!(
+            lists.known("openai", a),
+            Some(vec!["gpt-5-nano".to_string()])
+        );
         assert_eq!(lists.known("openai", b), None, "another key: not this list");
         assert!(lists.due("openai", b, LIST_TTL, RETRY_AFTER));
         assert!(!lists.due("openai", a, LIST_TTL, RETRY_AFTER));
-        assert!(lists.due("openai", a, Duration::ZERO, RETRY_AFTER), "older than the ttl");
+        assert!(
+            lists.due("openai", a, Duration::ZERO, RETRY_AFTER),
+            "older than the ttl"
+        );
     }
 
     #[test]
@@ -120,7 +149,15 @@ mod tests {
         for p in ["openai", "anthropic", "gemini", "groq", "openrouter"] {
             assert!(keeps_list(p), "{p}");
         }
-        for p in ["ollama", "lm_studio", "custom", "claude_cli", "codex_cli", "antigravity_cli", "nope"] {
+        for p in [
+            "ollama",
+            "lm_studio",
+            "custom",
+            "claude_cli",
+            "codex_cli",
+            "antigravity_cli",
+            "nope",
+        ] {
             assert!(!keeps_list(p), "{p}");
         }
     }

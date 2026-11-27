@@ -25,14 +25,22 @@ fn fake_bin() -> PathBuf {
     static BIN: OnceLock<PathBuf> = OnceLock::new();
     BIN.get_or_init(|| {
         let mut cmd = std::process::Command::new(env!("CARGO"));
-        cmd.args(["build", "--example", "fake_codex"]).current_dir(env!("CARGO_MANIFEST_DIR"));
+        cmd.args(["build", "--example", "fake_codex"])
+            .current_dir(env!("CARGO_MANIFEST_DIR"));
         // Drop the per-crate vars cargo injects into test processes: build scripts
         // watch CARGO_MANIFEST_DIR / OUT_DIR, so inheriting them would force a
         // full rebuild on every run.
         for (key, _) in std::env::vars() {
-            let injected = ["CARGO_MANIFEST_", "CARGO_PKG_", "CARGO_CRATE_", "CARGO_PRIMARY_PACKAGE", "CARGO_BIN_", "OUT_DIR"]
-                .iter()
-                .any(|p| key.starts_with(p));
+            let injected = [
+                "CARGO_MANIFEST_",
+                "CARGO_PKG_",
+                "CARGO_CRATE_",
+                "CARGO_PRIMARY_PACKAGE",
+                "CARGO_BIN_",
+                "OUT_DIR",
+            ]
+            .iter()
+            .any(|p| key.starts_with(p));
             if injected {
                 cmd.env_remove(key);
             }
@@ -41,9 +49,15 @@ fn fake_bin() -> PathBuf {
             cmd.arg("--release");
         }
         let out = cmd.output().expect("run cargo build --example fake_codex");
-        assert!(out.status.success(), "building fake_codex failed:\n{}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "building fake_codex failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         let profile_dir = cargo_profile_dir();
-        let bin = profile_dir.join("examples").join(format!("fake_codex{}", std::env::consts::EXE_SUFFIX));
+        let bin = profile_dir
+            .join("examples")
+            .join(format!("fake_codex{}", std::env::consts::EXE_SUFFIX));
         assert!(bin.is_file(), "missing {}", bin.display());
         bin
     })
@@ -54,7 +68,12 @@ fn cargo_profile_dir() -> PathBuf {
     std::env::current_exe()
         .unwrap()
         .ancestors()
-        .find(|path| matches!(path.file_name().and_then(|name| name.to_str()), Some("debug" | "release")))
+        .find(|path| {
+            matches!(
+                path.file_name().and_then(|name| name.to_str()),
+                Some("debug" | "release")
+            )
+        })
         .expect("Cargo profile directory in test executable path")
         .to_path_buf()
 }
@@ -85,7 +104,9 @@ fn recorded(path: &Path) -> String {
 }
 
 async fn spawn(fake: &[&str]) -> CodexSession {
-    CodexSession::spawn(launch(fake)).await.expect("spawn fake codex")
+    CodexSession::spawn(launch(fake))
+        .await
+        .expect("spawn fake codex")
 }
 
 type Deltas = Arc<Mutex<Vec<String>>>;
@@ -96,7 +117,10 @@ type OnDelta = Box<dyn Fn(&str) + Send + Sync>;
 fn collector() -> (Deltas, OnDelta) {
     let buf: Deltas = Arc::new(Mutex::new(Vec::new()));
     let sink = buf.clone();
-    (buf, Box::new(move |d: &str| sink.lock().unwrap().push(d.to_string())))
+    (
+        buf,
+        Box::new(move |d: &str| sink.lock().unwrap().push(d.to_string())),
+    )
 }
 
 fn token() -> Arc<CancelToken> {
@@ -104,7 +128,13 @@ fn token() -> Arc<CancelToken> {
 }
 
 fn text_of(deltas: &Deltas) -> String {
-    deltas.lock().unwrap().iter().filter(|d| !is_activity(d)).cloned().collect()
+    deltas
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|d| !is_activity(d))
+        .cloned()
+        .collect()
 }
 
 #[tokio::test]
@@ -123,7 +153,10 @@ async fn streams_an_answer_and_reports_per_turn_usage() {
     assert_eq!(r.text, "Hello world");
     // The thinking signal first, then the answer's own deltas; the model's
     // narration ("Let me look.") is not streamed.
-    assert_eq!(*deltas.lock().unwrap(), [THINKING_SIGNAL, "Hello", " world"]);
+    assert_eq!(
+        *deltas.lock().unwrap(),
+        [THINKING_SIGNAL, "Hello", " world"]
+    );
     // Codex counts the cached part inside `input`; NexQ's input is uncached only.
     assert_eq!(r.input_tokens, 200);
     assert_eq!(r.cache_read_tokens, 1000);
@@ -136,7 +169,10 @@ async fn streams_an_answer_and_reports_per_turn_usage() {
     let (_, on_delta) = collector();
     let r2 = s.ask("again", on_delta, token()).await.unwrap();
     assert_eq!(r2.text, "answer:again");
-    assert_eq!((r2.input_tokens, r2.cache_read_tokens, r2.output_tokens), (200, 1000, 80));
+    assert_eq!(
+        (r2.input_tokens, r2.cache_read_tokens, r2.output_tokens),
+        (200, 1000, 80)
+    );
 
     s.close().await;
     assert!(!s.is_alive());
@@ -146,7 +182,10 @@ async fn streams_an_answer_and_reports_per_turn_usage() {
     assert!(rec.contains("ARGV app-server"), "{rec}");
     assert!(rec.contains("mcp_servers.mira.enabled=false"), "{rec}");
     assert!(rec.contains("--disable plugins"), "{rec}");
-    let thread_start = rec.lines().find(|l| l.contains("\"thread/start\"")).expect("thread/start");
+    let thread_start = rec
+        .lines()
+        .find(|l| l.contains("\"thread/start\""))
+        .expect("thread/start");
     for needle in [
         "\"sandbox\":\"read-only\"",
         "\"approvalPolicy\":\"untrusted\"",
@@ -156,7 +195,10 @@ async fn streams_an_answer_and_reports_per_turn_usage() {
     ] {
         assert!(thread_start.contains(needle), "{needle} in {thread_start}");
     }
-    let turn_start = rec.lines().find(|l| l.contains("\"turn/start\"")).expect("turn/start");
+    let turn_start = rec
+        .lines()
+        .find(|l| l.contains("\"turn/start\""))
+        .expect("turn/start");
     assert!(turn_start.contains("\"effort\":\"high\""), "{turn_start}");
 }
 
@@ -186,10 +228,19 @@ async fn the_shell_tool_is_always_off_and_secrets_stay_off_the_command_line() {
     s.close().await;
     let text = recorded(&record);
     let argv = text.lines().find(|l| l.starts_with("ARGV")).expect("argv");
-    assert!(argv.contains("--disable shell_tool"), "notes must not bring the shell back: {argv}");
+    assert!(
+        argv.contains("--disable shell_tool"),
+        "notes must not bring the shell back: {argv}"
+    );
     assert!(argv.contains("--disable view_image"), "{argv}");
-    assert!(!argv.contains("s3cret-token"), "a secret reached the command line: {argv}");
-    let thread_start = text.lines().find(|l| l.contains("\"thread/start\"")).expect("thread/start");
+    assert!(
+        !argv.contains("s3cret-token"),
+        "a secret reached the command line: {argv}"
+    );
+    let thread_start = text
+        .lines()
+        .find(|l| l.contains("\"thread/start\""))
+        .expect("thread/start");
     let v: serde_json::Value = serde_json::from_str(thread_start).unwrap();
     let server = &v["params"]["config"]["mcp_servers"]["mira"];
     assert_eq!(server["env"]["TOKEN"], "s3cret-token");
@@ -211,16 +262,31 @@ async fn context_is_queued_and_sent_with_the_next_question_only() {
     // The fake answers the question that follows "Now answer this:".
     assert_eq!(r.text, "answer:Summarise");
     let rec_text = recorded(&record);
-    let turn_start = rec_text.lines().find(|l| l.contains("\"turn/start\"")).unwrap();
-    assert!(turn_start.contains("Them: what is the budget?"), "{turn_start}");
-    assert!(turn_start.contains("You: about two million"), "{turn_start}");
+    let turn_start = rec_text
+        .lines()
+        .find(|l| l.contains("\"turn/start\""))
+        .unwrap();
+    assert!(
+        turn_start.contains("Them: what is the budget?"),
+        "{turn_start}"
+    );
+    assert!(
+        turn_start.contains("You: about two million"),
+        "{turn_start}"
+    );
 
     // It is not sent twice.
     let (_, on_delta) = collector();
     s.ask("Next", on_delta, token()).await.unwrap();
     let rec_text = recorded(&record);
-    let last_turn = rec_text.lines().rfind(|l| l.contains("\"turn/start\"")).unwrap();
-    assert!(!last_turn.contains("Them: what is the budget?"), "{last_turn}");
+    let last_turn = rec_text
+        .lines()
+        .rfind(|l| l.contains("\"turn/start\""))
+        .unwrap();
+    assert!(
+        !last_turn.contains("Them: what is the budget?"),
+        "{last_turn}"
+    );
     s.close().await;
 }
 
@@ -233,10 +299,16 @@ async fn tool_activity_is_reported_like_a_claude_session_does() {
     s.ask("mcp", on_delta, token()).await.unwrap();
     {
         let all = deltas.lock().unwrap();
-        let tool = all.iter().find_map(|d| decode_activity(d)).expect("a tool activity");
+        let tool = all
+            .iter()
+            .find_map(|d| decode_activity(d))
+            .expect("a tool activity");
         assert_eq!(tool.name, "mcp__mira__kb_search");
         assert_eq!(tool.input["query"], "budget");
-        let done = all.iter().find_map(|d| decode_tool_result(d)).expect("a tool result");
+        let done = all
+            .iter()
+            .find_map(|d| decode_tool_result(d))
+            .expect("a tool result");
         assert_eq!(done.tool_use_id, tool.id);
         assert!(!done.is_error);
         // The chip comes before the answer text.
@@ -259,7 +331,10 @@ async fn a_command_or_file_change_that_starts_ends_the_session() {
         assert!(err.to_string().contains("does not allow"), "{err}");
         assert!(!s.is_alive(), "{query}: the process must be killed");
         let (_, on_delta) = collector();
-        assert!(s.ask("hello", on_delta, token()).await.is_err(), "{query}: no further turn");
+        assert!(
+            s.ask("hello", on_delta, token()).await.is_err(),
+            "{query}: no further turn"
+        );
         s.close().await;
     }
 }
@@ -300,9 +375,18 @@ async fn inert_items_and_allowed_mcp_tools_pass() {
     l.policy.allowed_tools.insert("mcp__mira__kb_search".into());
     l.policy.allowed_tools.insert("mcp__wiki__*".into());
     let s = CodexSession::spawn(l).await.unwrap();
-    for query in ["item:plan", "item:contextCompaction", "item:userMessage", "item:mcpToolCall:mira:kb_search", "item:mcpToolCall:wiki:anything"] {
+    for query in [
+        "item:plan",
+        "item:contextCompaction",
+        "item:userMessage",
+        "item:mcpToolCall:mira:kb_search",
+        "item:mcpToolCall:wiki:anything",
+    ] {
         let (_, on_delta) = collector();
-        let r = s.ask(query, on_delta, token()).await.unwrap_or_else(|e| panic!("{query}: {e:?}"));
+        let r = s
+            .ask(query, on_delta, token())
+            .await
+            .unwrap_or_else(|e| panic!("{query}: {e:?}"));
         assert_eq!(r.text, format!("answer:{query}"));
     }
     assert!(s.is_alive());
@@ -322,7 +406,10 @@ async fn an_unexpected_mcp_server_that_starts_fails_the_session() {
     // NexQ's own server is fine, and an unexpected one that failed never ran.
     let mut l = launch(&["fake_mcp=nexq_notes:ready,other:failed"]);
     l.has_notes = true;
-    l.mcp_servers.insert("nexq_notes".into(), serde_json::json!({ "command": "nexq", "args": ["--notes-mcp"] }));
+    l.mcp_servers.insert(
+        "nexq_notes".into(),
+        serde_json::json!({ "command": "nexq", "args": ["--notes-mcp"] }),
+    );
     let s = CodexSession::spawn(l).await.unwrap();
     s.close().await;
 }
@@ -339,11 +426,23 @@ async fn decision(fake: &[&str], configure: impl FnOnce(&mut CodexLaunch), query
 
 #[tokio::test]
 async fn commands_and_file_changes_are_declined_even_the_legacy_ones() {
-    assert_eq!(decision(&[], |_| {}, "approve:cmd").await, "decision:decline");
-    assert_eq!(decision(&[], |_| {}, "approve:file").await, "decision:decline");
+    assert_eq!(
+        decision(&[], |_| {}, "approve:cmd").await,
+        "decision:decline"
+    );
+    assert_eq!(
+        decision(&[], |_| {}, "approve:file").await,
+        "decision:decline"
+    );
     // The legacy requests carry an argv or a patch: refused outright.
-    assert_eq!(decision(&[], |_| {}, "approve:legacy-cmd").await, "decision:denied");
-    assert_eq!(decision(&[], |_| {}, "approve:legacy-patch").await, "decision:denied");
+    assert_eq!(
+        decision(&[], |_| {}, "approve:legacy-cmd").await,
+        "decision:denied"
+    );
+    assert_eq!(
+        decision(&[], |_| {}, "approve:legacy-patch").await,
+        "decision:denied"
+    );
 }
 
 #[tokio::test]
@@ -352,24 +451,48 @@ async fn a_plain_read_is_declined_too_whatever_the_session_has() {
     // not even a read inside a notes folder.
     let notes = scratch("notes");
     let directive = format!("fake_notes={}", notes.display());
-    assert_eq!(decision(&[&directive], |_| {}, "approve:read").await, "decision:decline");
+    assert_eq!(
+        decision(&[&directive], |_| {}, "approve:read").await,
+        "decision:decline"
+    );
     let rich = |l: &mut CodexLaunch| {
         l.has_notes = true;
-        l.policy = CodexPolicy { allowed_tools: ["mcp__nexq_notes__read_note".to_string()].into_iter().collect() };
+        l.policy = CodexPolicy {
+            allowed_tools: ["mcp__nexq_notes__read_note".to_string()]
+                .into_iter()
+                .collect(),
+        };
     };
-    assert_eq!(decision(&[&directive], rich, "approve:read").await, "decision:decline");
-    assert_eq!(decision(&[&directive], rich, "approve:legacy-cmd").await, "decision:denied");
+    assert_eq!(
+        decision(&[&directive], rich, "approve:read").await,
+        "decision:decline"
+    );
+    assert_eq!(
+        decision(&[&directive], rich, "approve:legacy-cmd").await,
+        "decision:denied"
+    );
 }
 
 #[tokio::test]
 async fn an_mcp_tool_is_approved_only_when_it_is_in_the_allowed_set() {
     let allow = |l: &mut CodexLaunch| {
-        l.policy = CodexPolicy { allowed_tools: ["mcp__mira__kb_search".to_string()].into_iter().collect() };
+        l.policy = CodexPolicy {
+            allowed_tools: ["mcp__mira__kb_search".to_string()].into_iter().collect(),
+        };
     };
-    assert_eq!(decision(&[], allow, "approve:mcp-ok").await, "decision:accept");
-    assert_eq!(decision(&[], allow, "approve:mcp-no").await, "decision:decline");
+    assert_eq!(
+        decision(&[], allow, "approve:mcp-ok").await,
+        "decision:accept"
+    );
+    assert_eq!(
+        decision(&[], allow, "approve:mcp-no").await,
+        "decision:decline"
+    );
     // Nothing allowed: nothing approved.
-    assert_eq!(decision(&[], |_| {}, "approve:mcp-ok").await, "decision:decline");
+    assert_eq!(
+        decision(&[], |_| {}, "approve:mcp-ok").await,
+        "decision:decline"
+    );
 }
 
 #[tokio::test]
@@ -387,11 +510,18 @@ async fn cancel_interrupts_the_turn_and_the_next_one_still_runs() {
         }
     });
     let started = Instant::now();
-    let err = s.ask("a long question", on_delta, cancel).await.unwrap_err();
+    let err = s
+        .ask("a long question", on_delta, cancel)
+        .await
+        .unwrap_err();
     assert!(err.is_cancel(), "{err:?}");
     assert!(*seen_first.lock().unwrap());
     // Cancelled right after the first character, not after the whole answer.
-    assert!(started.elapsed() < Duration::from_millis(1500), "{:?}", started.elapsed());
+    assert!(
+        started.elapsed() < Duration::from_millis(1500),
+        "{:?}",
+        started.elapsed()
+    );
 
     // The next question waits for the interrupted turn to end, then runs.
     let (_, on_delta) = collector();
@@ -423,7 +553,10 @@ async fn a_crash_mid_turn_is_reported_as_a_crash() {
     assert!(!s.is_alive());
     // A dead session says so instead of hanging.
     let (_, on_delta) = collector();
-    assert!(matches!(s.ask("again", on_delta, token()).await, Err(AgentError::Crashed(_))));
+    assert!(matches!(
+        s.ask("again", on_delta, token()).await,
+        Err(AgentError::Crashed(_))
+    ));
     assert!(s.append_context("x").await.is_err());
 }
 
@@ -442,7 +575,10 @@ async fn the_usage_limit_is_a_rate_limit_with_the_reset_time() {
     // The session survives: the next question works.
     assert!(s.is_alive());
     let (_, on_delta) = collector();
-    assert_eq!(s.ask("hello", on_delta, token()).await.unwrap().text, "Hello world");
+    assert_eq!(
+        s.ask("hello", on_delta, token()).await.unwrap().text,
+        "Hello world"
+    );
     s.close().await;
 }
 
@@ -450,10 +586,16 @@ async fn the_usage_limit_is_a_rate_limit_with_the_reset_time() {
 async fn a_failed_turn_without_a_cause_is_classified_from_its_text() {
     let s = spawn(&[]).await;
     let (_, on_delta) = collector();
-    let err = s.ask("fail:Not logged in. Run codex login", on_delta, token()).await.unwrap_err();
+    let err = s
+        .ask("fail:Not logged in. Run codex login", on_delta, token())
+        .await
+        .unwrap_err();
     assert_eq!(err.kind(), AgentErrorKind::NotLoggedIn);
     let (_, on_delta) = collector();
-    let err = s.ask("fail:something odd", on_delta, token()).await.unwrap_err();
+    let err = s
+        .ask("fail:something odd", on_delta, token())
+        .await
+        .unwrap_err();
     assert_eq!(err.kind(), AgentErrorKind::Other);
     s.close().await;
 }
@@ -494,7 +636,9 @@ async fn a_hung_codex_is_killed_by_the_inactivity_guard() {
         inactivity: Duration::from_millis(800),
         drain: Duration::from_secs(5),
     };
-    let s = CodexSession::spawn_with_timeouts(launch(&["fake_mode=hang"]), timeouts).await.unwrap();
+    let s = CodexSession::spawn_with_timeouts(launch(&["fake_mode=hang"]), timeouts)
+        .await
+        .unwrap();
     let (_, on_delta) = collector();
     let err = s.ask("hello", on_delta, token()).await.unwrap_err();
     assert!(matches!(err, AgentError::Timeout), "{err:?}");
@@ -506,12 +650,21 @@ async fn nexqs_own_mcp_servers_are_waited_for_and_their_failure_reported() {
     let own = "mcp_servers.notes.command=\"x\"";
     // Ready: starts, and the state is in init_info.
     let s = spawn(&[own, "fake_mcp=notes:ready"]).await;
-    let states: Vec<_> = s.init_info().mcp_servers.iter().map(|m| (m.name.clone(), m.status.clone())).collect();
+    let states: Vec<_> = s
+        .init_info()
+        .mcp_servers
+        .iter()
+        .map(|m| (m.name.clone(), m.status.clone()))
+        .collect();
     assert_eq!(states, [("notes".to_string(), "connected".to_string())]);
     s.close().await;
 
     // Failed, but another server is up: starts, with the failure listed.
-    let both = [own, "mcp_servers.mira.command=\"x\"", "fake_mcp=notes:failed,mira:ready"];
+    let both = [
+        own,
+        "mcp_servers.mira.command=\"x\"",
+        "fake_mcp=notes:failed,mira:ready",
+    ];
     let s = CodexSession::spawn(launch(&both)).await.unwrap();
     assert_eq!(s.init_info().mcp_servers[0].status, "failed");
     s.close().await;
@@ -533,7 +686,9 @@ async fn nexqs_own_mcp_servers_are_waited_for_and_their_failure_reported() {
 #[tokio::test]
 async fn the_users_mcp_servers_are_found_and_switched_off() {
     let fake = fake_bin();
-    let names = discover_user_mcp_servers(&fake, &[]).await.expect("mcp list");
+    let names = discover_user_mcp_servers(&fake, &[])
+        .await
+        .expect("mcp list");
     assert_eq!(names, ["mira", "web search"]);
 
     // A launch that does not know the names asks Codex, and switches them off.
@@ -545,7 +700,10 @@ async fn the_users_mcp_servers_are_found_and_switched_off() {
     s.close().await;
     let rec = recorded(&record);
     assert!(rec.contains("mcp_servers.mira.enabled=false"), "{rec}");
-    assert!(rec.contains("mcp_servers.\"web search\".enabled=false"), "{rec}");
+    assert!(
+        rec.contains("mcp_servers.\"web search\".enabled=false"),
+        "{rec}"
+    );
 }
 
 #[tokio::test]
@@ -589,15 +747,26 @@ async fn live_real_codex_starts_fast_and_answers_or_reports_the_limit() {
 
     let t0 = Instant::now();
     let s = CodexSession::spawn(l).await.expect("spawn real codex");
-    eprintln!("LIVE: session ready in {:?} (includes `codex mcp list`), model {}", t0.elapsed(), s.model());
-    assert!(s.init_info().mcp_servers.is_empty(), "the user's MCP servers must not start");
+    eprintln!(
+        "LIVE: session ready in {:?} (includes `codex mcp list`), model {}",
+        t0.elapsed(),
+        s.model()
+    );
+    assert!(
+        s.init_info().mcp_servers.is_empty(),
+        "the user's MCP servers must not start"
+    );
 
     let (deltas, on_delta) = collector();
     let t1 = Instant::now();
     match s.ask("Say hi.", on_delta, token()).await {
         Ok(r) => eprintln!("LIVE: answered in {:?}: {:?} ({r:?})", t1.elapsed(), r.text),
         Err(e) => {
-            eprintln!("LIVE: turn failed after {:?}: {e} (kind {:?})", t1.elapsed(), e.kind());
+            eprintln!(
+                "LIVE: turn failed after {:?}: {e} (kind {:?})",
+                t1.elapsed(),
+                e.kind()
+            );
             assert_eq!(e.kind(), AgentErrorKind::RateLimited, "{e:?}");
         }
     }
@@ -608,12 +777,17 @@ async fn live_real_codex_starts_fast_and_answers_or_reports_the_limit() {
 #[tokio::test]
 #[ignore = "talks to the real Codex CLI"]
 async fn live_real_codex_lists_models() {
-    let Some((program, prefix)) = find_codex() else { return };
+    let Some((program, prefix)) = find_codex() else {
+        return;
+    };
     let t0 = Instant::now();
     let models = probe_models(&program, &prefix).await.expect("models");
     eprintln!("LIVE: {} models in {:?}", models.len(), t0.elapsed());
     for m in &models {
-        eprintln!("LIVE:   {} ({}) default {} efforts {:?}", m.slug, m.display_name, m.default_effort, m.efforts);
+        eprintln!(
+            "LIVE:   {} ({}) default {} efforts {:?}",
+            m.slug, m.display_name, m.default_effort, m.efforts
+        );
     }
     assert!(!models.is_empty());
 }
@@ -626,14 +800,28 @@ async fn live_real_codex_lists_models() {
 async fn live_real_codex_reads_a_note_through_the_notes_server() {
     use lucid_lib::llm::cli_agent::command::SourcesLaunch;
     use lucid_lib::llm::cli_agent::sources_convert::{adapt_system_prompt, codex_sources_for};
-    let Some((program, prefix)) = find_codex() else { return };
+    let Some((program, prefix)) = find_codex() else {
+        return;
+    };
     let notes = scratch("live-notes");
-    std::fs::write(notes.join("falcon.md"), "Project Falcon launches on March 3.").unwrap();
+    std::fs::write(
+        notes.join("falcon.md"),
+        "Project Falcon launches on March 3.",
+    )
+    .unwrap();
     let sources = codex_sources_for(
-        Some(&SourcesLaunch { add_dirs: vec![notes.clone()], ..Default::default() }),
+        Some(&SourcesLaunch {
+            add_dirs: vec![notes.clone()],
+            ..Default::default()
+        }),
         Some(Path::new(env!("CARGO_BIN_EXE_lucid"))),
     );
-    let mut l = CodexLaunch::new(program, prefix, lucid_lib::llm::cli_agent::command::sandbox_dir(), String::new());
+    let mut l = CodexLaunch::new(
+        program,
+        prefix,
+        lucid_lib::llm::cli_agent::command::sandbox_dir(),
+        String::new(),
+    );
     l.effort = Some("low".into());
     l.system_prompt = adapt_system_prompt("Answer in one short sentence.", true);
     l.mcp_servers = sources.mcp_servers;
@@ -641,15 +829,39 @@ async fn live_real_codex_reads_a_note_through_the_notes_server() {
     l.policy = sources.policy;
     let s = CodexSession::spawn(l).await.expect("spawn real codex");
     eprintln!("LIVE: mcp servers {:?}", s.init_info().mcp_servers);
-    assert!(s.init_info().mcp_servers.iter().any(|m| m.name == "nexq_notes" && m.status == "connected"));
+    assert!(s
+        .init_info()
+        .mcp_servers
+        .iter()
+        .any(|m| m.name == "nexq_notes" && m.status == "connected"));
     let (deltas, on_delta) = collector();
-    match s.ask("What is the Project Falcon launch date? Look it up in my notes.", on_delta, token()).await {
+    match s
+        .ask(
+            "What is the Project Falcon launch date? Look it up in my notes.",
+            on_delta,
+            token(),
+        )
+        .await
+    {
         Ok(r) => {
             eprintln!("LIVE: answer {:?}", r.text);
-            let tools: Vec<String> = deltas.lock().unwrap().iter().filter_map(|d| decode_activity(d)).map(|t| t.name).collect();
+            let tools: Vec<String> = deltas
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(|d| decode_activity(d))
+                .map(|t| t.name)
+                .collect();
             eprintln!("LIVE: tools {tools:?}");
-            assert!(r.text.contains("March 3") || r.text.contains("3 March"), "{}", r.text);
-            assert!(tools.iter().any(|t| t.starts_with("mcp__nexq_notes__")), "{tools:?}");
+            assert!(
+                r.text.contains("March 3") || r.text.contains("3 March"),
+                "{}",
+                r.text
+            );
+            assert!(
+                tools.iter().any(|t| t.starts_with("mcp__nexq_notes__")),
+                "{tools:?}"
+            );
         }
         Err(e) => {
             eprintln!("LIVE: turn failed: {e} (kind {:?})", e.kind());

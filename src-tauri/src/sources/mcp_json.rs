@@ -95,7 +95,9 @@ fn parse_server(name: &str, entry: &Value, claude_code: bool) -> Result<RawServe
     };
 
     if kind == "sse" {
-        return Err(format!("Server \"{name}\" uses SSE, which is not supported yet"));
+        return Err(format!(
+            "Server \"{name}\" uses SSE, which is not supported yet"
+        ));
     }
     if kind == "http" || (kind.is_empty() && url.is_some() && command.is_none()) {
         let url = url.ok_or_else(|| format!("Server \"{name}\" is missing its \"url\""))?;
@@ -119,7 +121,10 @@ fn parse_server(name: &str, entry: &Value, claude_code: bool) -> Result<RawServe
         .map(|a| a.iter().map(scalar_text).collect())
         .unwrap_or_default();
     Ok(RawServer {
-        transport: McpTransport::Stdio { command: command.to_string(), args },
+        transport: McpTransport::Stdio {
+            command: command.to_string(),
+            args,
+        },
         env: pairs("env"),
         headers: Vec::new(),
         oauth: false,
@@ -136,32 +141,133 @@ fn scalar_text(v: &Value) -> String {
 /// An env var whose name contains KEY, TOKEN, SECRET or PASSWORD.
 pub fn is_secret_name(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
-    ["KEY", "TOKEN", "SECRET", "PASSWORD"].iter().any(|w| upper.contains(w))
+    ["KEY", "TOKEN", "SECRET", "PASSWORD"]
+        .iter()
+        .any(|w| upper.contains(w))
 }
 
 /// Verbs that mean a tool changes something somewhere, or does something that
 /// cannot be undone. Any one of them in a name keeps the tool off.
 const WRITE_VERBS: &[&str] = &[
-    "add", "create", "insert", "update", "edit", "modify", "patch", "put", "set", "write", "save",
-    "store", "delete", "remove", "archive", "move", "rename", "complete", "close", "send", "post",
-    "reply", "forward", "draft", "invite", "schedule", "cancel", "approve", "assign", "mark",
-    "upload", "publish", "merge", "run", "execute", "apply", "remember", "log", "transfer", "pay",
-    "charge", "buy", "order", "submit", "nuke", "drop", "truncate", "wipe", "purge", "destroy",
-    "kill", "stop", "start", "restart", "reset", "clear", "revoke", "grant", "deploy", "import",
-    "sync", "trigger", "call", "invoke", "exec", "shell", "enable", "disable", "install",
-    "uninstall", "push", "replace", "overwrite", "append", "attach", "share", "tag", "label",
-    "pin", "subscribe", "unsubscribe", "ban", "block", "lock", "unlock", "rotate", "restore",
-    "revert", "commit", "rollback", "migrate", "flush", "terminate", "abort", "retry", "confirm",
-    "reject", "accept", "decline", "snooze", "dismiss", "undo", "redo", "copy", "clone", "fork",
-    "duplicate", "rebase", "fire", "launch", "open",
+    "add",
+    "create",
+    "insert",
+    "update",
+    "edit",
+    "modify",
+    "patch",
+    "put",
+    "set",
+    "write",
+    "save",
+    "store",
+    "delete",
+    "remove",
+    "archive",
+    "move",
+    "rename",
+    "complete",
+    "close",
+    "send",
+    "post",
+    "reply",
+    "forward",
+    "draft",
+    "invite",
+    "schedule",
+    "cancel",
+    "approve",
+    "assign",
+    "mark",
+    "upload",
+    "publish",
+    "merge",
+    "run",
+    "execute",
+    "apply",
+    "remember",
+    "log",
+    "transfer",
+    "pay",
+    "charge",
+    "buy",
+    "order",
+    "submit",
+    "nuke",
+    "drop",
+    "truncate",
+    "wipe",
+    "purge",
+    "destroy",
+    "kill",
+    "stop",
+    "start",
+    "restart",
+    "reset",
+    "clear",
+    "revoke",
+    "grant",
+    "deploy",
+    "import",
+    "sync",
+    "trigger",
+    "call",
+    "invoke",
+    "exec",
+    "shell",
+    "enable",
+    "disable",
+    "install",
+    "uninstall",
+    "push",
+    "replace",
+    "overwrite",
+    "append",
+    "attach",
+    "share",
+    "tag",
+    "label",
+    "pin",
+    "subscribe",
+    "unsubscribe",
+    "ban",
+    "block",
+    "lock",
+    "unlock",
+    "rotate",
+    "restore",
+    "revert",
+    "commit",
+    "rollback",
+    "migrate",
+    "flush",
+    "terminate",
+    "abort",
+    "retry",
+    "confirm",
+    "reject",
+    "accept",
+    "decline",
+    "snooze",
+    "dismiss",
+    "undo",
+    "redo",
+    "copy",
+    "clone",
+    "fork",
+    "duplicate",
+    "rebase",
+    "fire",
+    "launch",
+    "open",
 ];
 
 /// Verbs that clearly mean "look something up". `query` is deliberately not one:
 /// a query tool can be a SQL console. Neither is `fetch`: a fetch tool can send
 /// a request out (a URL fetcher is also a way to leak what it was given).
 const READ_VERBS: &[&str] = &[
-    "get", "list", "search", "read", "find", "lookup", "show", "describe", "status",
-    "brief", "view", "count", "check",
+    "get", "list", "search", "read", "find", "lookup", "show", "describe", "status", "brief",
+    "view", "count", "check",
 ];
 
 /// Lowercase words of a tool name, split on `_`, `-`, `.` and camelCase.
@@ -278,20 +384,38 @@ pub fn header_credential_id(server_key: &str, header: &str) -> String {
 /// Turn a raw server into a config entry plus the secrets to store. Secret env
 /// values and every header value leave the entry. A new server comes back off
 /// (the user switches it on after a successful Check).
-pub fn into_server(name: &str, raw: RawServer, taken_keys: &[String]) -> (McpServer, Vec<SecretValue>) {
+pub fn into_server(
+    name: &str,
+    raw: RawServer,
+    taken_keys: &[String],
+) -> (McpServer, Vec<SecretValue>) {
     let key = unique_key(name, taken_keys);
     let mut secrets = Vec::new();
     let mut env = Vec::new();
     for (var, value) in raw.env {
         if is_secret_name(&var) {
-            secrets.push(SecretValue { credential_id: credential_id(&key, &var), value });
-            env.push(EnvVar { name: var, value: None, secret: true });
+            secrets.push(SecretValue {
+                credential_id: credential_id(&key, &var),
+                value,
+            });
+            env.push(EnvVar {
+                name: var,
+                value: None,
+                secret: true,
+            });
         } else {
-            env.push(EnvVar { name: var, value: Some(value), secret: false });
+            env.push(EnvVar {
+                name: var,
+                value: Some(value),
+                secret: false,
+            });
         }
     }
     for (header, value) in raw.headers {
-        secrets.push(SecretValue { credential_id: header_credential_id(&key, &header), value });
+        secrets.push(SecretValue {
+            credential_id: header_credential_id(&key, &header),
+            value,
+        });
     }
     let server = McpServer {
         id: uuid::Uuid::new_v4().to_string(),
@@ -316,44 +440,92 @@ mod tests {
     fn parse_mcp_json_accepts_wrapper_bare_map_and_many() {
         let w = parse_mcp_json(r#"{"mcpServers":{"a":{"command":"npx","args":["-y","x"],"env":{"API_KEY":"k","MODE":"ro"}},"b":{"type":"http","url":"https://h/mcp","headers":{"Authorization":"Bearer t"}}}}"#).unwrap();
         assert_eq!(w.len(), 2);
-        assert_eq!(parse_mcp_json(r#"{"a":{"command":"node","args":["s.js"]}}"#).unwrap().len(), 1);
+        assert_eq!(
+            parse_mcp_json(r#"{"a":{"command":"node","args":["s.js"]}}"#)
+                .unwrap()
+                .len(),
+            1
+        );
         assert!(parse_mcp_json("not json").unwrap_err().contains("JSON"));
-        assert!(parse_mcp_json(r#"{"mcpServers":{}}"#).unwrap_err().contains("No servers"));
+        assert!(parse_mcp_json(r#"{"mcpServers":{}}"#)
+            .unwrap_err()
+            .contains("No servers"));
     }
 
     #[test]
     fn parse_rejects_entries_that_are_not_servers() {
-        assert!(parse_mcp_json(r#"{"a":{"args":["x"]}}"#).unwrap_err().contains("command"));
-        assert!(parse_mcp_json(r#"{"a":{"type":"sse","url":"https://h"}}"#).unwrap_err().contains("SSE"));
-        assert!(parse_mcp_json(r#"{"a":"npx"}"#).unwrap_err().contains("object"));
+        assert!(parse_mcp_json(r#"{"a":{"args":["x"]}}"#)
+            .unwrap_err()
+            .contains("command"));
+        assert!(parse_mcp_json(r#"{"a":{"type":"sse","url":"https://h"}}"#)
+            .unwrap_err()
+            .contains("SSE"));
+        assert!(parse_mcp_json(r#"{"a":"npx"}"#)
+            .unwrap_err()
+            .contains("object"));
     }
 
     #[test]
     fn secrets_are_split_out_and_never_kept_in_the_server() {
-        let (name, raw) = parse_mcp_json(r#"{"a":{"command":"x","env":{"GITHUB_TOKEN":"t","db_password":"p","MODE":"ro"}}}"#).unwrap().remove(0);
+        let (name, raw) = parse_mcp_json(
+            r#"{"a":{"command":"x","env":{"GITHUB_TOKEN":"t","db_password":"p","MODE":"ro"}}}"#,
+        )
+        .unwrap()
+        .remove(0);
         let (server, secrets) = into_server(&name, raw, &[]);
         assert_eq!(secrets.len(), 2);
-        assert!(secrets.iter().any(|s| s.credential_id == "mcp:a:GITHUB_TOKEN" && s.value == "t"));
-        assert!(server.env.iter().filter(|e| e.secret).all(|e| e.value.is_none()));
-        assert_eq!(server.env.iter().find(|e| e.name == "MODE").unwrap().value.as_deref(), Some("ro"));
+        assert!(secrets
+            .iter()
+            .any(|s| s.credential_id == "mcp:a:GITHUB_TOKEN" && s.value == "t"));
+        assert!(server
+            .env
+            .iter()
+            .filter(|e| e.secret)
+            .all(|e| e.value.is_none()));
+        assert_eq!(
+            server
+                .env
+                .iter()
+                .find(|e| e.name == "MODE")
+                .unwrap()
+                .value
+                .as_deref(),
+            Some("ro")
+        );
         assert!(!serde_json::to_string(&server).unwrap().contains("\"t\""));
     }
 
     #[test]
     fn header_values_are_secrets_and_only_their_names_stay() {
-        let (name, raw) = parse_mcp_json(r#"{"b":{"type":"http","url":"https://h/mcp","headers":{"Authorization":"Bearer t"}}}"#).unwrap().remove(0);
+        let (name, raw) = parse_mcp_json(
+            r#"{"b":{"type":"http","url":"https://h/mcp","headers":{"Authorization":"Bearer t"}}}"#,
+        )
+        .unwrap()
+        .remove(0);
         let (server, secrets) = into_server(&name, raw, &[]);
         assert_eq!(secrets.len(), 1);
         assert_eq!(secrets[0].credential_id, "mcp:b:header:Authorization");
         assert_eq!(secrets[0].value, "Bearer t");
-        assert_eq!(server.transport, McpTransport::Http { url: "https://h/mcp".into(), header_names: vec!["Authorization".into()] });
+        assert_eq!(
+            server.transport,
+            McpTransport::Http {
+                url: "https://h/mcp".into(),
+                header_names: vec!["Authorization".into()]
+            }
+        );
         assert!(!serde_json::to_string(&server).unwrap().contains("Bearer"));
         assert!(!format!("{:?}", secrets[0]).contains("Bearer"));
     }
 
     #[test]
     fn secret_names() {
-        for n in ["API_KEY", "api_key", "GITHUB_TOKEN", "CLIENT_SECRET", "DB_PASSWORD"] {
+        for n in [
+            "API_KEY",
+            "api_key",
+            "GITHUB_TOKEN",
+            "CLIENT_SECRET",
+            "DB_PASSWORD",
+        ] {
             assert!(is_secret_name(n), "{n}");
         }
         for n in ["MODE", "VAULT_PATH", "PORT"] {
@@ -363,17 +535,51 @@ mod tests {
 
     #[test]
     fn read_only_heuristic_defaults() {
-        for t in ["kb_search", "kb_read", "person_brief", "list_tasks", "get_calendar", "find_email", "read_email", "read_thread", "status", "getNote", "search-notes"] {
+        for t in [
+            "kb_search",
+            "kb_read",
+            "person_brief",
+            "list_tasks",
+            "get_calendar",
+            "find_email",
+            "read_email",
+            "read_thread",
+            "status",
+            "getNote",
+            "search-notes",
+        ] {
             assert!(tool_allowed_by_default(t), "{t}");
         }
         for t in [
-            "add_task", "update_task", "complete_task", "add_history", "delete_note", "send_email",
-            "create_event", "draft_email", "draft_reply", "remember", "writeFile", "moveItem",
-            "set_status", "post_message", "transfer_funds", "nuke_db", "run_query", "execute_sql",
+            "add_task",
+            "update_task",
+            "complete_task",
+            "add_history",
+            "delete_note",
+            "send_email",
+            "create_event",
+            "draft_email",
+            "draft_reply",
+            "remember",
+            "writeFile",
+            "moveItem",
+            "set_status",
+            "post_message",
+            "transfer_funds",
+            "nuke_db",
+            "run_query",
+            "execute_sql",
             // No verb at all, or a name that does not clearly read: off until the user says so.
-            "calendar", "free_slots", "tasks", "inbox", "query", "get_and_delete",
+            "calendar",
+            "free_slots",
+            "tasks",
+            "inbox",
+            "query",
+            "get_and_delete",
             // A fetcher can send a request out.
-            "fetch", "fetch_url", "web_fetch",
+            "fetch",
+            "fetch_url",
+            "web_fetch",
         ] {
             assert!(!tool_allowed_by_default(t), "{t}");
         }
@@ -382,24 +588,58 @@ mod tests {
     #[test]
     fn merge_checked_tools_keeps_choices_defaults_new_drops_gone() {
         let old = vec![
-            McpTool { name: "kb_search".into(), full_name: "mcp__m__kb_search".into(), allowed: false, ..Default::default() },
-            McpTool { name: "gone".into(), full_name: "mcp__m__gone".into(), allowed: true, ..Default::default() },
+            McpTool {
+                name: "kb_search".into(),
+                full_name: "mcp__m__kb_search".into(),
+                allowed: false,
+                ..Default::default()
+            },
+            McpTool {
+                name: "gone".into(),
+                full_name: "mcp__m__gone".into(),
+                allowed: true,
+                ..Default::default()
+            },
         ];
-        let found = vec!["mcp__m__kb_search".into(), "mcp__m__delete_note".into(), "mcp__m__kb_read".into(), "mcp__other__x".into()];
+        let found = vec![
+            "mcp__m__kb_search".into(),
+            "mcp__m__delete_note".into(),
+            "mcp__m__kb_read".into(),
+            "mcp__other__x".into(),
+        ];
         let mut found = found;
         found.push("mcp__m__--add-dir".into());
         found.push("mcp__m__a b".into());
         let merged = merge_checked_tools(&old, &found, "m", &Default::default());
         let get = |n: &str| merged.iter().find(|t| t.name == n).map(|t| t.allowed);
-        assert_eq!((get("kb_search"), get("delete_note"), get("kb_read"), get("gone"), get("x")), (Some(false), Some(false), Some(true), None, None));
-        assert_eq!(merged.iter().find(|t| t.name == "kb_read").unwrap().full_name, "mcp__m__kb_read");
+        assert_eq!(
+            (
+                get("kb_search"),
+                get("delete_note"),
+                get("kb_read"),
+                get("gone"),
+                get("x")
+            ),
+            (Some(false), Some(false), Some(true), None, None)
+        );
+        assert_eq!(
+            merged
+                .iter()
+                .find(|t| t.name == "kb_read")
+                .unwrap()
+                .full_name,
+            "mcp__m__kb_read"
+        );
     }
 
     #[test]
     fn claude_code_import_reads_user_scope_and_flags_oauth() {
         let json = r#"{"mcpServers":{"local":{"command":"node","args":["s.js"]},"hdr":{"type":"http","url":"https://a/mcp","headers":{"X-Api-Key":"v"}},"oauth":{"type":"http","url":"https://b/mcp"}},"projects":{"D:/p":{"mcpServers":{"proj":{"command":"x"}}}}}"#;
         let servers = read_claude_code_servers(json).unwrap();
-        assert_eq!(servers.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["hdr", "local", "oauth"]);
+        assert_eq!(
+            servers.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+            ["hdr", "local", "oauth"]
+        );
         assert!(servers.iter().find(|(n, _)| n == "oauth").unwrap().1.oauth);
         assert!(!servers.iter().find(|(n, _)| n == "hdr").unwrap().1.oauth);
         assert!(read_claude_code_servers("{}").unwrap().is_empty());
@@ -416,15 +656,24 @@ mod tests {
 
     #[test]
     fn every_new_server_starts_off() {
-        let (name, raw) = parse_mcp_json(r#"{"a":{"command":"node","args":["s.js"]}}"#).unwrap().remove(0);
+        let (name, raw) = parse_mcp_json(r#"{"a":{"command":"node","args":["s.js"]}}"#)
+            .unwrap()
+            .remove(0);
         assert!(!into_server(&name, raw, &[]).0.enabled);
     }
 
     #[test]
     fn claude_code_entries_keep_the_unreadable_ones_apart() {
-        let json = r#"{"mcpServers":{"ok":{"command":"x"},"sse":{"type":"sse","url":"https://h"}}}"#;
+        let json =
+            r#"{"mcpServers":{"ok":{"command":"x"},"sse":{"type":"sse","url":"https://h"}}}"#;
         let entries = read_claude_code_entries(json).unwrap();
-        assert_eq!(entries.iter().map(|(n, e)| (n.as_str(), e.is_ok())).collect::<Vec<_>>(), [("ok", true), ("sse", false)]);
+        assert_eq!(
+            entries
+                .iter()
+                .map(|(n, e)| (n.as_str(), e.is_ok()))
+                .collect::<Vec<_>>(),
+            [("ok", true), ("sse", false)]
+        );
         assert!(read_claude_code_servers(json).unwrap_err().contains("SSE"));
     }
 
@@ -432,7 +681,10 @@ mod tests {
     fn unique_keys() {
         assert_eq!(unique_key("My Server!", &[]), "my-server");
         assert_eq!(unique_key("mira", &["mira".into()]), "mira-2");
-        assert_eq!(unique_key("mira", &["mira".into(), "mira-2".into()]), "mira-3");
+        assert_eq!(
+            unique_key("mira", &["mira".into(), "mira-2".into()]),
+            "mira-3"
+        );
         assert_eq!(unique_key("a__b", &[]), "a-b");
         assert_eq!(unique_key("Ünï", &[]), "n");
         assert_eq!(unique_key("!!!", &[]), "server");
@@ -441,7 +693,10 @@ mod tests {
     #[test]
     fn credential_ids() {
         assert_eq!(credential_id("a", "API_KEY"), "mcp:a:API_KEY");
-        assert_eq!(header_credential_id("a", "Authorization"), "mcp:a:header:Authorization");
+        assert_eq!(
+            header_credential_id("a", "Authorization"),
+            "mcp:a:header:Authorization"
+        );
     }
 
     #[test]
@@ -457,12 +712,31 @@ mod tests {
         let found = vec!["mcp__m__kb".to_string(), "mcp__m__new".to_string()];
         // The check read nothing: both unknown, the user's switch kept.
         let blind = merge_checked_tools(&old, &found, "m", &HashMap::new());
-        assert_eq!((blind[0].read_only_hint, blind[0].destructive_hint, blind[0].allowed), (None, None, true));
+        assert_eq!(
+            (
+                blind[0].read_only_hint,
+                blind[0].destructive_hint,
+                blind[0].allowed
+            ),
+            (None, None, true)
+        );
         // The check read hints: exactly those.
         let mut read = HashMap::new();
-        read.insert("mcp__m__kb".to_string(), ToolHints { read_only: Some(false), destructive: Some(true) });
+        read.insert(
+            "mcp__m__kb".to_string(),
+            ToolHints {
+                read_only: Some(false),
+                destructive: Some(true),
+            },
+        );
         let seen = merge_checked_tools(&old, &found, "m", &read);
-        assert_eq!((seen[0].read_only_hint, seen[0].destructive_hint), (Some(false), Some(true)));
-        assert_eq!((seen[1].read_only_hint, seen[1].destructive_hint), (None, None));
+        assert_eq!(
+            (seen[0].read_only_hint, seen[0].destructive_hint),
+            (Some(false), Some(true))
+        );
+        assert_eq!(
+            (seen[1].read_only_hint, seen[1].destructive_hint),
+            (None, None)
+        );
     }
 }

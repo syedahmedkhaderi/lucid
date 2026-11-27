@@ -69,7 +69,11 @@ pub struct PlanLimit {
 impl PlanLimit {
     /// The more serious of two signals (`Hit` beats `Near`; later wins a tie).
     pub fn merge(self, newer: PlanLimit) -> PlanLimit {
-        if newer.level >= self.level { newer } else { self }
+        if newer.level >= self.level {
+            newer
+        } else {
+            self
+        }
     }
 }
 
@@ -191,8 +195,8 @@ pub fn parse_line(line: &str) -> Result<AgentEvent, String> {
     if line.is_empty() {
         return Ok(AgentEvent::Other);
     }
-    let v: Value = serde_json::from_str(line)
-        .map_err(|e| format!("invalid stream-json line: {e}"))?;
+    let v: Value =
+        serde_json::from_str(line).map_err(|e| format!("invalid stream-json line: {e}"))?;
     let kind = v.get("type").and_then(Value::as_str).unwrap_or("");
     let sub = v.get("subtype").and_then(Value::as_str).unwrap_or("");
     match (kind, sub) {
@@ -201,7 +205,11 @@ pub fn parse_line(line: &str) -> Result<AgentEvent, String> {
             model: str_field(&v, "model"),
             tools: v["tools"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|t| t.as_str().map(str::to_string)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|t| t.as_str().map(str::to_string))
+                        .collect()
+                })
                 .unwrap_or_default(),
             mcp_servers: v["mcp_servers"]
                 .as_array()
@@ -230,7 +238,11 @@ pub fn parse_line(line: &str) -> Result<AgentEvent, String> {
                         .collect()
                 })
                 .unwrap_or_default();
-            Ok(if uses.is_empty() { AgentEvent::Other } else { AgentEvent::ToolUses(uses) })
+            Ok(if uses.is_empty() {
+                AgentEvent::Other
+            } else {
+                AgentEvent::ToolUses(uses)
+            })
         }
         ("user", _) => {
             let results: Vec<ToolResult> = v["message"]["content"]
@@ -246,7 +258,11 @@ pub fn parse_line(line: &str) -> Result<AgentEvent, String> {
                         .collect()
                 })
                 .unwrap_or_default();
-            Ok(if results.is_empty() { AgentEvent::Other } else { AgentEvent::ToolResults(results) })
+            Ok(if results.is_empty() {
+                AgentEvent::Other
+            } else {
+                AgentEvent::ToolResults(results)
+            })
         }
         // `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed|allowed_warning|rejected",
         //   "resetsAt":<unix s>,"rateLimitType":"five_hour",...}}`; read from the
@@ -275,11 +291,17 @@ pub fn parse_line(line: &str) -> Result<AgentEvent, String> {
             Ok(AgentEvent::PermissionRequest(PermissionAsk {
                 request_id,
                 tool_name,
-                input: req.get("input").cloned().filter(|i| !i.is_null()).unwrap_or_else(|| json!({})),
+                input: req
+                    .get("input")
+                    .cloned()
+                    .filter(|i| !i.is_null())
+                    .unwrap_or_else(|| json!({})),
                 tool_use_id: str_field(req, "tool_use_id"),
             }))
         }
-        ("control_cancel_request", _) => Ok(AgentEvent::PermissionCancelled(str_field(&v, "request_id"))),
+        ("control_cancel_request", _) => {
+            Ok(AgentEvent::PermissionCancelled(str_field(&v, "request_id")))
+        }
         ("stream_event", _) => {
             let delta = &v["event"]["delta"];
             if v["event"]["type"] == "content_block_delta" {
@@ -327,7 +349,11 @@ fn result_text(v: &Value) -> String {
         .as_array()
         .map(|a| {
             a.iter()
-                .map(|e| e.as_str().map(str::to_string).unwrap_or_else(|| e.to_string()))
+                .map(|e| {
+                    e.as_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| e.to_string())
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -510,16 +536,23 @@ pub(crate) mod tests {
 
     #[test]
     fn parse_init_lists_tools_and_mcp_servers() {
-        let AgentEvent::Init { tools, mcp_servers, .. } =
-            parse_line(include_str!("testdata/init_with_mcp.json")).unwrap()
+        let AgentEvent::Init {
+            tools, mcp_servers, ..
+        } = parse_line(include_str!("testdata/init_with_mcp.json")).unwrap()
         else {
             panic!("not an init");
         };
         assert!(!tools.is_empty());
-        assert!(tools.iter().any(|t| t.starts_with("mcp__My-Server__")), "{tools:?}");
+        assert!(
+            tools.iter().any(|t| t.starts_with("mcp__My-Server__")),
+            "{tools:?}"
+        );
         assert_eq!(
             mcp_servers,
-            vec![McpServerState { name: "My-Server".into(), status: "connected".into() }]
+            vec![McpServerState {
+                name: "My-Server".into(),
+                status: "connected".into()
+            }]
         );
     }
 
@@ -552,15 +585,22 @@ pub(crate) mod tests {
         let ok = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"x"}]}}"#;
         assert_eq!(
             parse_line(ok).unwrap(),
-            AgentEvent::ToolResults(vec![ToolResult { tool_use_id: "toolu_1".into(), is_error: false }])
+            AgentEvent::ToolResults(vec![ToolResult {
+                tool_use_id: "toolu_1".into(),
+                is_error: false
+            }])
         );
         let denied = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"denied","is_error":true,"tool_use_id":"toolu_2"}]}}"#;
         assert_eq!(
             parse_line(denied).unwrap(),
-            AgentEvent::ToolResults(vec![ToolResult { tool_use_id: "toolu_2".into(), is_error: true }])
+            AgentEvent::ToolResults(vec![ToolResult {
+                tool_use_id: "toolu_2".into(),
+                is_error: true
+            }])
         );
         // A plain user message is nothing to act on.
-        let text = r#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}"#;
+        let text =
+            r#"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}"#;
         assert_eq!(parse_line(text).unwrap(), AgentEvent::Other);
     }
 
@@ -629,8 +669,14 @@ pub(crate) mod tests {
 
     #[test]
     fn parse_unknown_is_other() {
-        assert_eq!(parse_line(r#"{"type":"system","subtype":"status"}"#).unwrap(), AgentEvent::Other);
-        assert_eq!(parse_line(r#"{"type":"assistant","message":{}}"#).unwrap(), AgentEvent::Other);
+        assert_eq!(
+            parse_line(r#"{"type":"system","subtype":"status"}"#).unwrap(),
+            AgentEvent::Other
+        );
+        assert_eq!(
+            parse_line(r#"{"type":"assistant","message":{}}"#).unwrap(),
+            AgentEvent::Other
+        );
         let non_text = r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"input_json_delta"}}}"#;
         assert_eq!(parse_line(non_text).unwrap(), AgentEvent::Other);
         assert!(parse_line("not json").is_err());
@@ -650,8 +696,14 @@ pub(crate) mod tests {
     #[test]
     fn user_message_with_images_sends_image_blocks_before_the_text() {
         let images = [
-            ImageAttachment { media_type: "image/png".into(), data: "AAAA".into() },
-            ImageAttachment { media_type: "image/jpeg".into(), data: "BBBB".into() },
+            ImageAttachment {
+                media_type: "image/png".into(),
+                data: "AAAA".into(),
+            },
+            ImageAttachment {
+                media_type: "image/jpeg".into(),
+                data: "BBBB".into(),
+            },
         ];
         let line = user_message_with_images("What is this?", true, &images);
         assert!(!line.contains('\n'));
@@ -663,21 +715,33 @@ pub(crate) mod tests {
         assert_eq!(blocks[0]["source"]["media_type"], "image/png");
         assert_eq!(blocks[0]["source"]["data"], "AAAA");
         assert_eq!(blocks[1]["source"]["media_type"], "image/jpeg");
-        assert_eq!(blocks[2], json!({ "type": "text", "text": "What is this?" }));
+        assert_eq!(
+            blocks[2],
+            json!({ "type": "text", "text": "What is this?" })
+        );
         assert!(v.get("shouldQuery").is_none());
     }
 
     #[test]
     fn validate_images_enforces_count_type_and_size() {
-        let png = |data: &str| ImageAttachment { media_type: "image/png".into(), data: data.into() };
+        let png = |data: &str| ImageAttachment {
+            media_type: "image/png".into(),
+            data: data.into(),
+        };
         assert!(validate_images(&[]).is_ok());
         assert!(validate_images(&[png("AAAA"), png("AAAA"), png("AAAA")]).is_ok());
         assert!(validate_images(&[png("A"), png("A"), png("A"), png("A")])
             .unwrap_err()
             .contains("up to 3"));
-        let bmp = ImageAttachment { media_type: "image/bmp".into(), data: "AAAA".into() };
+        let bmp = ImageAttachment {
+            media_type: "image/bmp".into(),
+            data: "AAAA".into(),
+        };
         assert!(validate_images(&[bmp]).unwrap_err().contains("PNG, JPEG"));
-        let svg = ImageAttachment { media_type: "image/svg+xml".into(), data: "AAAA".into() };
+        let svg = ImageAttachment {
+            media_type: "image/svg+xml".into(),
+            data: "AAAA".into(),
+        };
         assert!(validate_images(&[svg]).is_err());
         assert!(validate_images(&[png("")]).unwrap_err().contains("empty"));
         let at_limit = "A".repeat(MAX_IMAGE_BASE64_LEN);
@@ -697,8 +761,14 @@ pub(crate) mod tests {
     #[test]
     fn parse_blank_whitespace_and_truncated() {
         assert_eq!(parse_line("").unwrap(), AgentEvent::Other);
-        assert_eq!(parse_line("  
-").unwrap(), AgentEvent::Other);
+        assert_eq!(
+            parse_line(
+                "
+"
+            )
+            .unwrap(),
+            AgentEvent::Other
+        );
         assert!(parse_line(r#"{"type":"stream_event","event":{"type":"content_blo"#).is_err());
     }
 
@@ -723,33 +793,59 @@ pub(crate) mod tests {
     #[test]
     fn classify_os_error_2_precisely() {
         assert_eq!(
-            classify_error("program not found: The system cannot find the file specified. (os error 2)"),
+            classify_error(
+                "program not found: The system cannot find the file specified. (os error 2)"
+            ),
             AgentErrorKind::NotInstalled
         );
-        assert_eq!(classify_error("The directory name is invalid. (os error 267)"), AgentErrorKind::Other);
-        assert_eq!(classify_error("Access is denied. (os error 5)"), AgentErrorKind::Other);
-        assert_eq!(classify_error("pipe error (os error 232)"), AgentErrorKind::Other);
+        assert_eq!(
+            classify_error("The directory name is invalid. (os error 267)"),
+            AgentErrorKind::Other
+        );
+        assert_eq!(
+            classify_error("Access is denied. (os error 5)"),
+            AgentErrorKind::Other
+        );
+        assert_eq!(
+            classify_error("pipe error (os error 232)"),
+            AgentErrorKind::Other
+        );
     }
 
     #[test]
     fn classify_outdated() {
         let refusal = "Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer.";
         assert_eq!(classify_error(refusal), AgentErrorKind::Outdated);
-        assert_eq!(classify_error("Claude Code 2.1.206 is too old for NexQ."), AgentErrorKind::Outdated);
-        assert_eq!(classify_error(&format!("could not start the CLI agent: {refusal}")), AgentErrorKind::Outdated);
+        assert_eq!(
+            classify_error("Claude Code 2.1.206 is too old for NexQ."),
+            AgentErrorKind::Outdated
+        );
+        assert_eq!(
+            classify_error(&format!("could not start the CLI agent: {refusal}")),
+            AgentErrorKind::Outdated
+        );
         // Before the crash pattern.
-        assert_eq!(classify_error(&format!("claude exited unexpectedly: {refusal}")), AgentErrorKind::Outdated);
+        assert_eq!(
+            classify_error(&format!("claude exited unexpectedly: {refusal}")),
+            AgentErrorKind::Outdated
+        );
         // The old binary's own crash stays a crash; other "too old" texts are not ours.
         assert_eq!(
             classify_error("claude exited unexpectedly (exit code 1): error: unknown option '--permission-prompts'"),
             AgentErrorKind::Crashed
         );
-        assert_eq!(classify_error("your token is too old"), AgentErrorKind::Other);
+        assert_eq!(
+            classify_error("your token is too old"),
+            AgentErrorKind::Other
+        );
     }
 
     #[test]
     fn classify_not_logged_in() {
-        assert_eq!(classify_error("Not logged in · Please run /login"), AgentErrorKind::NotLoggedIn);
+        assert_eq!(
+            classify_error("Not logged in · Please run /login"),
+            AgentErrorKind::NotLoggedIn
+        );
     }
 
     #[test]
@@ -765,8 +861,14 @@ pub(crate) mod tests {
 
     #[test]
     fn classify_rate_limit() {
-        assert_eq!(classify_error("You hit the Rate Limit"), AgentErrorKind::RateLimited);
-        assert_eq!(classify_error("5-hour usage limit reached"), AgentErrorKind::RateLimited);
+        assert_eq!(
+            classify_error("You hit the Rate Limit"),
+            AgentErrorKind::RateLimited
+        );
+        assert_eq!(
+            classify_error("5-hour usage limit reached"),
+            AgentErrorKind::RateLimited
+        );
         assert_eq!(classify_error("boom"), AgentErrorKind::Other);
     }
 
@@ -779,7 +881,11 @@ pub(crate) mod tests {
             "Context window exceeded",
             "Context limit reached",
         ] {
-            assert_eq!(classify_error(text), AgentErrorKind::ContextOverflow, "{text}");
+            assert_eq!(
+                classify_error(text),
+                AgentErrorKind::ContextOverflow,
+                "{text}"
+            );
         }
         for text in [
             "Too many tokens per minute",
@@ -807,18 +913,45 @@ pub(crate) mod tests {
             }
             other => panic!("{other:?}"),
         }
-        assert!(matches!(parse_line(&line("rejected")).unwrap(), AgentEvent::RateLimit(l) if l.level == PlanLimitLevel::Hit));
+        assert!(
+            matches!(parse_line(&line("rejected")).unwrap(), AgentEvent::RateLimit(l) if l.level == PlanLimitLevel::Hit)
+        );
         // Odd shapes never fail a turn.
-        assert_eq!(parse_line(r#"{"type":"rate_limit_event"}"#).unwrap(), AgentEvent::Other);
+        assert_eq!(
+            parse_line(r#"{"type":"rate_limit_event"}"#).unwrap(),
+            AgentEvent::Other
+        );
     }
 
     #[test]
     fn the_worse_plan_limit_signal_wins() {
-        let near = PlanLimit { level: PlanLimitLevel::Near, resets_at: Some(1), window: None, used: None };
-        let hit = PlanLimit { level: PlanLimitLevel::Hit, resets_at: Some(2), window: None, used: None };
+        let near = PlanLimit {
+            level: PlanLimitLevel::Near,
+            resets_at: Some(1),
+            window: None,
+            used: None,
+        };
+        let hit = PlanLimit {
+            level: PlanLimitLevel::Hit,
+            resets_at: Some(2),
+            window: None,
+            used: None,
+        };
         assert_eq!(near.clone().merge(hit.clone()), hit);
-        assert_eq!(hit.clone().merge(near.clone()), hit, "a later warning does not hide a hit");
-        assert_eq!(near.clone().merge(PlanLimit { resets_at: Some(3), ..near.clone() }).resets_at, Some(3));
+        assert_eq!(
+            hit.clone().merge(near.clone()),
+            hit,
+            "a later warning does not hide a hit"
+        );
+        assert_eq!(
+            near.clone()
+                .merge(PlanLimit {
+                    resets_at: Some(3),
+                    ..near.clone()
+                })
+                .resets_at,
+            Some(3)
+        );
     }
 
     // Captured live from claude 2.1.330 (ids scrubbed); the first shape is what the CLI sent.
@@ -837,23 +970,38 @@ pub(crate) mod tests {
     fn a_can_use_tool_control_request_is_parsed_with_its_exact_input() {
         match parse_line(CAN_USE_TOOL).unwrap() {
             AgentEvent::PermissionRequest(q) => {
-                assert_eq!((q.request_id.as_str(), q.tool_name.as_str(), q.tool_use_id.as_str()), ("req-7", "mcp__mira__send_mail", "toolu_01"));
+                assert_eq!(
+                    (
+                        q.request_id.as_str(),
+                        q.tool_name.as_str(),
+                        q.tool_use_id.as_str()
+                    ),
+                    ("req-7", "mcp__mira__send_mail", "toolu_01")
+                );
                 assert_eq!(q.input, json!({"to": "a@b.c", "body": "hi"}));
             }
             other => panic!("{other:?}"),
         }
         // Other control requests, and ones missing what we need, are not questions.
         assert_eq!(
-            parse_line(r#"{"type":"control_request","request_id":"r","request":{"subtype":"interrupt"}}"#).unwrap(),
+            parse_line(
+                r#"{"type":"control_request","request_id":"r","request":{"subtype":"interrupt"}}"#
+            )
+            .unwrap(),
             AgentEvent::Other
         );
         assert_eq!(
-            parse_line(r#"{"type":"control_request","request":{"subtype":"can_use_tool","tool_name":"x"}}"#).unwrap(),
+            parse_line(
+                r#"{"type":"control_request","request":{"subtype":"can_use_tool","tool_name":"x"}}"#
+            )
+            .unwrap(),
             AgentEvent::Other
         );
         // A question with no input still has an (empty) input to return.
         let bare = r#"{"type":"control_request","request_id":"r","request":{"subtype":"can_use_tool","tool_name":"x"}}"#;
-        assert!(matches!(parse_line(bare).unwrap(), AgentEvent::PermissionRequest(q) if q.input == json!({})));
+        assert!(
+            matches!(parse_line(bare).unwrap(), AgentEvent::PermissionRequest(q) if q.input == json!({}))
+        );
         assert_eq!(
             parse_line(r#"{"type":"control_cancel_request","request_id":"req-7"}"#).unwrap(),
             AgentEvent::PermissionCancelled("req-7".into())
@@ -868,7 +1016,10 @@ pub(crate) mod tests {
         assert_eq!(allow["response"]["subtype"], "success");
         assert_eq!(allow["response"]["request_id"], "req-7");
         assert_eq!(allow["response"]["response"]["behavior"], "allow");
-        assert_eq!(allow["response"]["response"]["updatedInput"], input, "what runs is what was shown");
+        assert_eq!(
+            allow["response"]["response"]["updatedInput"], input,
+            "what runs is what was shown"
+        );
         let deny: Value = serde_json::from_str(&permission_deny("req-7", "no")).unwrap();
         assert_eq!(deny["response"]["response"]["behavior"], "deny");
         assert_eq!(deny["response"]["response"]["message"], "no");

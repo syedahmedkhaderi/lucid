@@ -430,12 +430,14 @@ export async function startMeeting(
   workspaceId?: string,
   borrowedWorkspaceIds?: string[],
   documentIds?: string[],
+  meetingContext?: string,
 ): Promise<Meeting> {
   const result = await invoke<string>("start_meeting", {
     title,
     ...(workspaceId ? { workspaceId } : {}),
     ...(borrowedWorkspaceIds ? { borrowedWorkspaceIds } : {}),
     ...(documentIds ? { documentIds } : {}),
+    ...(meetingContext ? { meetingContext } : {}),
   });
   return JSON.parse(result);
 }

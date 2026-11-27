@@ -12,11 +12,11 @@
 //! failed Check of either kind then starts the server alone to find the cause.
 
 use super::command::SessionConfig;
-use super::CliAgentKind;
 use super::detect::find_current_claude;
 use super::mcp_diagnose::diagnose_start;
 use super::mcp_handshake;
 use super::session::{AgentError, ClaudeSession, InitInfo, SessionTimeouts};
+use super::CliAgentKind;
 use crate::sources::config::McpServer;
 use crate::sources::launch::single_server_launch;
 use std::time::Duration;
@@ -35,7 +35,11 @@ const CHECK_SYSTEM_PROMPT: &str = "Lucid is checking an MCP server. No answer is
 /// why the server is not usable: it did not connect (`failed`, `needs-auth`),
 /// is still connecting, or is not in the list at all.
 pub fn tools_of_server(info: &InitInfo, key: &str) -> Result<Vec<String>, String> {
-    let status = info.mcp_servers.iter().find(|s| s.name == key).map(|s| s.status.as_str());
+    let status = info
+        .mcp_servers
+        .iter()
+        .find(|s| s.name == key)
+        .map(|s| s.status.as_str());
     match status {
         Some("connected") => {
             let prefix = format!("mcp__{key}__");
@@ -72,7 +76,9 @@ pub async fn list_server_tools(
     server: &McpServer,
     secret: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Result<Vec<String>, String> {
-    list_server_tools_with_hints(server, secret).await.map(|(names, _)| names)
+    list_server_tools_with_hints(server, secret)
+        .await
+        .map(|(names, _)| names)
 }
 
 /// [`list_server_tools`] with the server's own hints (`readOnlyHint`,
@@ -86,7 +92,10 @@ pub async fn list_server_tools_with_hints(
     let launch = check_launch(server, secret)?;
     // A Claude that is too old counts as no Claude here: the Check is about the
     // server, so Lucid's own client answers (Settings says Claude needs an update).
-    let bin = tokio::task::spawn_blocking(|| find_current_claude().ok()).await.ok().flatten();
+    let bin = tokio::task::spawn_blocking(|| find_current_claude().ok())
+        .await
+        .ok()
+        .flatten();
     let bin_was_used = bin.is_some();
     let failure = match bin {
         Some(bin) => {
@@ -99,7 +108,10 @@ pub async fn list_server_tools_with_hints(
                 sources: Some(launch),
                 approvals: None,
             };
-            let timeouts = SessionTimeouts { init: CHECK_INIT_TIMEOUT, ..SessionTimeouts::default() };
+            let timeouts = SessionTimeouts {
+                init: CHECK_INIT_TIMEOUT,
+                ..SessionTimeouts::default()
+            };
             match ClaudeSession::spawn_with_timeouts(bin, cfg, timeouts).await {
                 Ok(session) => {
                     let info = session.init_info();
@@ -107,7 +119,9 @@ pub async fn list_server_tools_with_hints(
                     tools_of_server(&info, &server.key)
                 }
                 // Nothing usable left: the statuses say why, no error text to parse.
-                Err(AgentError::NoUsableSources { info, .. }) => tools_of_server(&info, &server.key),
+                Err(AgentError::NoUsableSources { info, .. }) => {
+                    tools_of_server(&info, &server.key)
+                }
                 Err(AgentError::Timeout) => Err("The server took too long to start.".to_string()),
                 // Claude itself is the problem, not the server: no point diagnosing it.
                 Err(e) => return Err(e.to_string()),
@@ -131,8 +145,16 @@ pub async fn list_server_tools_with_hints(
             // effort: without them a tool simply asks before it runs. Hints
             // count only for tools the CLI listed too.
             let hints = if bin_was_used {
-                match tokio::time::timeout(CHECK_INIT_TIMEOUT, mcp_handshake::list_tools_with_hints(server, secret)).await {
-                    Ok(Ok((_, hints))) => hints.into_iter().filter(|(name, _)| tools.contains(name)).collect(),
+                match tokio::time::timeout(
+                    CHECK_INIT_TIMEOUT,
+                    mcp_handshake::list_tools_with_hints(server, secret),
+                )
+                .await
+                {
+                    Ok(Ok((_, hints))) => hints
+                        .into_iter()
+                        .filter(|(name, _)| tools.contains(name))
+                        .collect(),
                     _ => Default::default(),
                 }
             } else {
@@ -158,27 +180,47 @@ mod tests {
             tools: tools.iter().map(|t| t.to_string()).collect(),
             mcp_servers: servers
                 .iter()
-                .map(|(n, s)| McpServerState { name: n.to_string(), status: s.to_string() })
+                .map(|(n, s)| McpServerState {
+                    name: n.to_string(),
+                    status: s.to_string(),
+                })
                 .collect(),
         }
     }
 
     #[test]
     fn tools_of_server_filters_by_key_and_reports_failure() {
-        let ok = info(&["Read", "mcp__mira__kb_search", "mcp__other__x"], &[("mira", "connected")]);
-        assert_eq!(tools_of_server(&ok, "mira"), Ok(vec!["mcp__mira__kb_search".to_string()]));
+        let ok = info(
+            &["Read", "mcp__mira__kb_search", "mcp__other__x"],
+            &[("mira", "connected")],
+        );
+        assert_eq!(
+            tools_of_server(&ok, "mira"),
+            Ok(vec!["mcp__mira__kb_search".to_string()])
+        );
         let failed = info(&[], &[("mira", "failed")]);
-        assert!(tools_of_server(&failed, "mira").unwrap_err().contains("failed"));
+        assert!(tools_of_server(&failed, "mira")
+            .unwrap_err()
+            .contains("failed"));
     }
 
     #[test]
     fn a_check_waits_longer_for_the_server_than_a_meeting_session() {
-        let server = McpServer { key: "s".into(), label: "S".into(), ..Default::default() };
+        let server = McpServer {
+            key: "s".into(),
+            label: "S".into(),
+            ..Default::default()
+        };
         let launch = check_launch(&server, &|_| None).unwrap();
         assert_eq!(launch.mcp_startup_timeout_ms, Some(60_000));
         assert!(CHECK_INIT_TIMEOUT > Duration::from_millis(CHECK_MCP_TIMEOUT_MS as u64));
         // A meeting session keeps the default.
-        assert_eq!(single_server_launch(&server, &|_| None).unwrap().mcp_startup_timeout_ms, None);
+        assert_eq!(
+            single_server_launch(&server, &|_| None)
+                .unwrap()
+                .mcp_startup_timeout_ms,
+            None
+        );
     }
 
     #[test]
@@ -186,15 +228,25 @@ mod tests {
         let auth = info(&[], &[("a", "needs-auth")]);
         assert!(tools_of_server(&auth, "a").unwrap_err().contains("sign-in"));
         let pending = info(&[], &[("a", "pending")]);
-        assert!(tools_of_server(&pending, "a").unwrap_err().contains("didn't answer in time"));
+        assert!(tools_of_server(&pending, "a")
+            .unwrap_err()
+            .contains("didn't answer in time"));
         let other = info(&[], &[("a", "disabled")]);
-        assert!(tools_of_server(&other, "a").unwrap_err().contains("disabled"));
+        assert!(tools_of_server(&other, "a")
+            .unwrap_err()
+            .contains("disabled"));
         assert!(tools_of_server(&info(&[], &[]), "a").is_err());
         // A server with no tools is fine: an empty list.
-        assert_eq!(tools_of_server(&info(&[], &[("a", "connected")]), "a"), Ok(vec![]));
+        assert_eq!(
+            tools_of_server(&info(&[], &[("a", "connected")]), "a"),
+            Ok(vec![])
+        );
         // Another server's failure does not matter.
         let mixed = info(&["mcp__a__t"], &[("a", "connected"), ("b", "failed")]);
-        assert_eq!(tools_of_server(&mixed, "a"), Ok(vec!["mcp__a__t".to_string()]));
+        assert_eq!(
+            tools_of_server(&mixed, "a"),
+            Ok(vec!["mcp__a__t".to_string()])
+        );
     }
 
     /// Real `claude.exe` and a real stdio MCP server (a Node script that serves
@@ -203,23 +255,36 @@ mod tests {
     #[tokio::test]
     #[ignore = "needs claude.exe, node and NEXQ_TEST_MCP_SERVER_JS"]
     async fn real_cli_lists_the_tools_of_a_stdio_server() {
-        use crate::sources::config::{McpTransport, EnvVar};
+        use crate::sources::config::{EnvVar, McpTransport};
         let script = std::env::var("NEXQ_TEST_MCP_SERVER_JS").expect("NEXQ_TEST_MCP_SERVER_JS");
         let server = McpServer {
             key: "my-server".into(),
             label: "My Server".into(),
-            transport: McpTransport::Stdio { command: "node".into(), args: vec![script] },
-            env: vec![EnvVar { name: "API_KEY".into(), value: None, secret: true }],
+            transport: McpTransport::Stdio {
+                command: "node".into(),
+                args: vec![script],
+            },
+            env: vec![EnvVar {
+                name: "API_KEY".into(),
+                value: None,
+                secret: true,
+            }],
             ..Default::default()
         };
         let secret = |id: &str| (id == "mcp:my-server:API_KEY").then(|| "s3cret".to_string());
         let started = std::time::Instant::now();
         let tools = list_server_tools(&server, &secret).await.unwrap();
         eprintln!("tools after {:?}: {tools:?}", started.elapsed());
-        assert!(tools.contains(&"mcp__my-server__get_note".to_string()), "{tools:?}");
+        assert!(
+            tools.contains(&"mcp__my-server__get_note".to_string()),
+            "{tools:?}"
+        );
 
         let broken = McpServer {
-            transport: McpTransport::Stdio { command: "no-such-command-xyz".into(), args: vec![] },
+            transport: McpTransport::Stdio {
+                command: "no-such-command-xyz".into(),
+                args: vec![],
+            },
             ..server
         };
         let err = list_server_tools(&broken, &secret).await.unwrap_err();

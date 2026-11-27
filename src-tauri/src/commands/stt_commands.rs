@@ -74,7 +74,9 @@ pub async fn set_stt_provider(app: AppHandle, provider: String) -> Result<(), St
                 STTProviderType::WebSpeech => {
                     // Frontend-only — no API key needed
                 }
-                STTProviderType::SherpaOnnx | STTProviderType::OrtStreaming | STTProviderType::ParakeetTdt => {
+                STTProviderType::SherpaOnnx
+                | STTProviderType::OrtStreaming
+                | STTProviderType::ParakeetTdt => {
                     // Local providers — no API key needed
                 }
             }
@@ -169,7 +171,9 @@ pub async fn test_stt_connection(
                 }
                 STTProviderType::WindowsNative | STTProviderType::WhisperCpp => {}
                 STTProviderType::WebSpeech => {}
-                STTProviderType::SherpaOnnx | STTProviderType::OrtStreaming | STTProviderType::ParakeetTdt => {
+                STTProviderType::SherpaOnnx
+                | STTProviderType::OrtStreaming
+                | STTProviderType::ParakeetTdt => {
                     // Local providers — no API key needed
                 }
             }
@@ -277,7 +281,9 @@ pub async fn test_stt_connection(
             }
         }
         if provider_type == STTProviderType::AzureSpeech {
-            if let (Some(region), Some(credentials)) = (region.as_deref(), state.credentials.as_ref()) {
+            if let (Some(region), Some(credentials)) =
+                (region.as_deref(), state.credentials.as_ref())
+            {
                 let credentials = credentials
                     .lock()
                     .map_err(|_| "Credential store lock poisoned".to_string())?;
@@ -350,9 +356,7 @@ fn restore_test_provider_credentials(
         STTProviderType::WhisperApi => load_whisper_api_credentials(router, cred),
         STTProviderType::AzureSpeech => {
             router.set_azure_speech_key(get("azure_speech").as_deref().unwrap_or(""));
-            router.set_azure_speech_region(
-                get("azure_speech_region").as_deref().unwrap_or(""),
-            );
+            router.set_azure_speech_region(get("azure_speech_region").as_deref().unwrap_or(""));
         }
         STTProviderType::GroqWhisper => {
             router.set_groq_whisper_api_key(get("groq_whisper").as_deref().unwrap_or(""));
@@ -435,8 +439,7 @@ pub async fn update_whisper_dual_pass_config(
 #[command]
 pub async fn get_available_stt_providers() -> Result<String, String> {
     let providers = provider::list_available_providers();
-    serde_json::to_string(&providers)
-        .map_err(|e| format!("Failed to serialize providers: {}", e))
+    serde_json::to_string(&providers).map_err(|e| format!("Failed to serialize providers: {}", e))
 }
 
 /// Ensure the STTRouter is initialized in the app state.
@@ -577,6 +580,5 @@ pub async fn estimate_deepgram_cost(duration_minutes: f32) -> Result<String, Str
         "streams": streams,
         "rate_per_min": rate,
     });
-    serde_json::to_string(&result)
-        .map_err(|e| format!("Failed to serialize cost estimate: {}", e))
+    serde_json::to_string(&result).map_err(|e| format!("Failed to serialize cost estimate: {}", e))
 }

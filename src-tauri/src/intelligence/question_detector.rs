@@ -20,38 +20,91 @@ pub struct QuestionDetector;
 
 /// Interrogative words that commonly start questions.
 const INTERROGATIVE_STARTERS: &[&str] = &[
-    "what", "why", "how", "when", "where", "who", "which",
-    "can", "could", "would", "should",
-    "do", "does", "is", "are", "will", "have", "has",
-    "tell",
+    "what", "why", "how", "when", "where", "who", "which", "can", "could", "would", "should", "do",
+    "does", "is", "are", "will", "have", "has", "tell",
 ];
 
 /// Common Chinese question words, including simplified and traditional forms.
 const CHINESE_QUESTION_WORDS: &[&str] = &[
-    "什么", "什麼", "怎么", "怎麼", "为什么", "為什麼",
-    "哪", "谁", "誰", "多少", "如何",
+    "什么",
+    "什麼",
+    "怎么",
+    "怎麼",
+    "为什么",
+    "為什麼",
+    "哪",
+    "谁",
+    "誰",
+    "多少",
+    "如何",
 ];
 
 /// Phrases where a Chinese question word means "any" or "no matter" rather
 /// than asking (没什么问题 "no problem", 无论如何 "no matter what").
 const CHINESE_NON_QUESTION_PHRASES: &[&str] = &[
-    "没什么", "沒什麼", "什么都", "什麼都", "什么也", "什麼也",
-    "不怎么", "不怎麼", "哪怕", "谁都", "誰都", "谁也", "誰也",
-    "无论", "無論", "不管", "多多少少",
+    "没什么",
+    "沒什麼",
+    "什么都",
+    "什麼都",
+    "什么也",
+    "什麼也",
+    "不怎么",
+    "不怎麼",
+    "哪怕",
+    "谁都",
+    "誰都",
+    "谁也",
+    "誰也",
+    "无论",
+    "無論",
+    "不管",
+    "多多少少",
 ];
 
 /// Japanese question endings. A bare か also ends ordinary words
 /// (静か "quiet", 確か "surely", とか "and so on"), so it isn't enough alone.
 const JAPANESE_QUESTION_ENDINGS: &[&str] = &[
-    "ですか", "ますか", "ませんか", "でしたか", "ましたか",
-    "でしょうか", "ましょうか", "のか", "ないか",
+    "ですか",
+    "ますか",
+    "ませんか",
+    "でしたか",
+    "ましたか",
+    "でしょうか",
+    "ましょうか",
+    "のか",
+    "ないか",
 ];
 
 /// A tag on its own ("Right?", "You know?") asks nothing the AI could answer.
 const TAG_QUESTIONS: &[&str] = &[
-    "right", "okay", "ok", "yeah", "yep", "yes", "no", "nope", "sure", "correct", "true", "really",
-    "agreed", "alright", "all right", "huh", "hmm", "hm", "eh", "see", "you see", "you know",
-    "isn't it", "sorry", "pardon", "hello", "cool", "good",
+    "right",
+    "okay",
+    "ok",
+    "yeah",
+    "yep",
+    "yes",
+    "no",
+    "nope",
+    "sure",
+    "correct",
+    "true",
+    "really",
+    "agreed",
+    "alright",
+    "all right",
+    "huh",
+    "hmm",
+    "hm",
+    "eh",
+    "see",
+    "you see",
+    "you know",
+    "isn't it",
+    "sorry",
+    "pardon",
+    "hello",
+    "cool",
+    "good",
 ];
 
 /// Words that can come before a tag ("So, right?").
@@ -90,7 +143,12 @@ impl QuestionDetector {
 
     /// Detect questions in the given text.
     /// Returns a list of detected questions with confidence scores.
-    pub fn detect_questions(&self, text: &str, timestamp_ms: u64, source: &str) -> Vec<DetectedQuestion> {
+    pub fn detect_questions(
+        &self,
+        text: &str,
+        timestamp_ms: u64,
+        source: &str,
+    ) -> Vec<DetectedQuestion> {
         let mut questions: Vec<DetectedQuestion> = Vec::new();
 
         // Split text into sentences
@@ -157,7 +215,10 @@ impl QuestionDetector {
 /// handle that"). Used only to decide that a newer question replaces an older
 /// one; it does not change what `detect_questions` reports.
 pub fn looks_like_new_question(text: &str) -> bool {
-    if !QuestionDetector::new().detect_questions(text, 0, "").is_empty() {
+    if !QuestionDetector::new()
+        .detect_questions(text, 0, "")
+        .is_empty()
+    {
         return true;
     }
     split_sentences(text).iter().any(|sentence| {
@@ -205,9 +266,15 @@ fn is_tag_question(sentence: &str) -> bool {
 fn is_cjk_question(sentence: &str) -> bool {
     let body = sentence.trim_end_matches(['.', '!', '。', '！', '…']);
     body.ends_with(['吗', '嗎', '呢'])
-        || JAPANESE_QUESTION_ENDINGS.iter().any(|ending| body.ends_with(ending))
-        || (CHINESE_QUESTION_WORDS.iter().any(|word| body.contains(word))
-            && !CHINESE_NON_QUESTION_PHRASES.iter().any(|phrase| body.contains(phrase)))
+        || JAPANESE_QUESTION_ENDINGS
+            .iter()
+            .any(|ending| body.ends_with(ending))
+        || (CHINESE_QUESTION_WORDS
+            .iter()
+            .any(|word| body.contains(word))
+            && !CHINESE_NON_QUESTION_PHRASES
+                .iter()
+                .any(|phrase| body.contains(phrase)))
 }
 
 /// Split text into sentences using common sentence terminators.
@@ -253,7 +320,16 @@ mod tests {
 
     #[test]
     fn skips_a_bare_tag_but_keeps_short_questions() {
-        for text in ["Right?", "right?", "Okay?", "Yeah, right?", "So, right?", "You know?", "Isn't it?", "Really?"] {
+        for text in [
+            "Right?",
+            "right?",
+            "Okay?",
+            "Yeah, right?",
+            "So, right?",
+            "You know?",
+            "Isn't it?",
+            "Really?",
+        ] {
             let questions = QuestionDetector::new().detect_questions(text, 0, "Them");
             assert!(questions.is_empty(), "{text}");
         }
@@ -266,10 +342,15 @@ mod tests {
     #[test]
     fn a_trailing_tag_leaves_the_question_before_it() {
         let questions = QuestionDetector::new().detect_questions(
-            "Is that what you were thinking about? Right?", 0, "Them",
+            "Is that what you were thinking about? Right?",
+            0,
+            "Them",
         );
         assert_eq!(
-            questions.iter().map(|q| q.text.as_str()).collect::<Vec<_>>(),
+            questions
+                .iter()
+                .map(|q| q.text.as_str())
+                .collect::<Vec<_>>(),
             ["Is that what you were thinking about?"]
         );
     }
@@ -277,10 +358,21 @@ mod tests {
     #[test]
     fn detects_chinese_questions_without_question_marks() {
         for text in [
-            "准备好了吗", "準備好了嗎。", "你的计划呢",
-            "这是什么", "這是什麼", "这个问题怎么解决", "這個問題怎麼解決",
-            "为什么需要重试", "為什麼需要重試", "哪天发布", "选哪个方案",
-            "谁来负责", "誰來負責", "需要多少时间", "如何开始",
+            "准备好了吗",
+            "準備好了嗎。",
+            "你的计划呢",
+            "这是什么",
+            "這是什麼",
+            "这个问题怎么解决",
+            "這個問題怎麼解決",
+            "为什么需要重试",
+            "為什麼需要重試",
+            "哪天发布",
+            "选哪个方案",
+            "谁来负责",
+            "誰來負責",
+            "需要多少时间",
+            "如何开始",
         ] {
             let questions = QuestionDetector::new().detect_questions(text, 0, "You");
             assert_eq!(questions.len(), 1, "{text}");
@@ -290,7 +382,13 @@ mod tests {
 
     #[test]
     fn detects_japanese_question_endings() {
-        for text in ["準備できましたか", "いつ始めますか。", "これでよいですか！", "一緒に行きませんか", "どうでしょうか"] {
+        for text in [
+            "準備できましたか",
+            "いつ始めますか。",
+            "これでよいですか！",
+            "一緒に行きませんか",
+            "どうでしょうか",
+        ] {
             let questions = QuestionDetector::new().detect_questions(text, 0, "Them");
             assert_eq!(questions.len(), 1, "{text}");
             assert_eq!(questions[0].confidence, 0.6, "{text}");
@@ -300,10 +398,15 @@ mod tests {
     #[test]
     fn separates_cjk_sentences_and_unpunctuated_lines() {
         let questions = QuestionDetector::new().detect_questions(
-            "今天讨论进度。计划完成了吗？谢谢！\n準備できましたか\nCan we start?", 7, "Them",
+            "今天讨论进度。计划完成了吗？谢谢！\n準備できましたか\nCan we start?",
+            7,
+            "Them",
         );
         assert_eq!(
-            questions.iter().map(|q| q.text.as_str()).collect::<Vec<_>>(),
+            questions
+                .iter()
+                .map(|q| q.text.as_str())
+                .collect::<Vec<_>>(),
             ["计划完成了吗？", "準備できましたか", "Can we start?"]
         );
     }
@@ -320,21 +423,40 @@ mod tests {
             assert_eq!(questions[0].confidence, confidence);
         }
         for text in [
-            "", "   ", "！？??...", "会议结束了。谢谢大家！", "会議は終了しました。", "The meeting is over.",
+            "",
+            "   ",
+            "！？??...",
+            "会议结束了。谢谢大家！",
+            "会議は終了しました。",
+            "The meeting is over.",
             // Suggestions and indefinite uses of question words are statements.
-            "我们开始吧", "好，那就这样吧。", "没什么问题", "我什么都可以", "无论如何都要按时完成",
-            "不管怎么样，我们明天发布", "哪怕晚一点也没关系",
+            "我们开始吧",
+            "好，那就这样吧。",
+            "没什么问题",
+            "我什么都可以",
+            "无论如何都要按时完成",
+            "不管怎么样，我们明天发布",
+            "哪怕晚一点也没关系",
             // Words that merely end in か.
-            "とても静か", "確か", "コーヒーとか",
+            "とても静か",
+            "確か",
+            "コーヒーとか",
         ] {
-            assert!(QuestionDetector::new().detect_questions(text, 0, "Them").is_empty(), "{text}");
+            assert!(
+                QuestionDetector::new()
+                    .detect_questions(text, 0, "Them")
+                    .is_empty(),
+                "{text}"
+            );
         }
     }
 
     #[test]
     fn a_new_question_may_start_with_a_lead_in_or_a_contraction() {
         assert!(looks_like_new_question("So what's your current role"));
-        assert!(looks_like_new_question("So what\u{2019}s your current role"));
+        assert!(looks_like_new_question(
+            "So what\u{2019}s your current role"
+        ));
         assert!(looks_like_new_question("And how'd you do that"));
         assert!(!looks_like_new_question("That's fine"));
         assert!(!looks_like_new_question("Can't say I mind"));

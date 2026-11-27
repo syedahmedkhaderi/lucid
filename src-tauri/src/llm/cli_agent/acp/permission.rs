@@ -27,11 +27,17 @@ pub struct McpToolRule {
 
 impl McpToolRule {
     pub fn tool(server: &str, tool: &str) -> Self {
-        Self { server: server.to_string(), tool: Some(tool.to_string()) }
+        Self {
+            server: server.to_string(),
+            tool: Some(tool.to_string()),
+        }
     }
 
     pub fn whole_server(server: &str) -> Self {
-        Self { server: server.to_string(), tool: None }
+        Self {
+            server: server.to_string(),
+            tool: None,
+        }
     }
 
     /// Does this rule cover `tool` of `server` (already split from the agent's name)?
@@ -49,7 +55,8 @@ impl McpToolRule {
     /// Only this rule's own server is known here; a policy splits with every
     /// server key it knows (see [`split_tool`]).
     pub fn matches(&self, name: &str) -> bool {
-        split_tool(name, std::slice::from_ref(&self.server)).is_some_and(|(s, t)| self.covers(&s, &t))
+        split_tool(name, std::slice::from_ref(&self.server))
+            .is_some_and(|(s, t)| self.covers(&s, &t))
     }
 }
 
@@ -88,7 +95,11 @@ impl PermissionPolicy {
     /// `allow_mcp`/`deny_mcp`: tool rules; a denied tool is refused even when
     /// a rule allows it.
     pub fn new(allow_mcp: Vec<McpToolRule>, deny_mcp: Vec<McpToolRule>) -> Self {
-        Self { allow_mcp, deny_mcp, other_servers: Vec::new() }
+        Self {
+            allow_mcp,
+            deny_mcp,
+            other_servers: Vec::new(),
+        }
     }
 
     /// Also know these server keys (every `mcpServers` name of the session)
@@ -121,7 +132,8 @@ impl PermissionPolicy {
         let Some((server, tool)) = split_tool(name, &self.server_keys()) else {
             return false;
         };
-        !self.deny_mcp.iter().any(|r| r.covers(&server, &tool)) && self.allow_mcp.iter().any(|r| r.covers(&server, &tool))
+        !self.deny_mcp.iter().any(|r| r.covers(&server, &tool))
+            && self.allow_mcp.iter().any(|r| r.covers(&server, &tool))
     }
 }
 
@@ -164,7 +176,12 @@ pub fn parse_request(params: &Value) -> PermissionRequest {
                 .collect()
         })
         .unwrap_or_default();
-    PermissionRequest { tool_call_id: info.id, tool_name: info.name, kind: info.kind, options }
+    PermissionRequest {
+        tool_call_id: info.id,
+        tool_name: info.name,
+        kind: info.kind,
+        options,
+    }
 }
 
 // ---- the decision -----------------------------------------------------
@@ -180,14 +197,19 @@ impl Outcome {
     /// The JSON-RPC `result` of the permission request.
     pub fn to_result(&self) -> Value {
         match self {
-            Outcome::Selected(id) => json!({ "outcome": { "outcome": "selected", "optionId": id } }),
+            Outcome::Selected(id) => {
+                json!({ "outcome": { "outcome": "selected", "optionId": id } })
+            }
             Outcome::Cancelled => json!({ "outcome": { "outcome": "cancelled" } }),
         }
     }
 
     pub fn is_allow(&self, req: &PermissionRequest) -> bool {
         match self {
-            Outcome::Selected(id) => req.options.iter().any(|o| &o.id == id && o.kind.starts_with("allow")),
+            Outcome::Selected(id) => req
+                .options
+                .iter()
+                .any(|o| &o.id == id && o.kind.starts_with("allow")),
             Outcome::Cancelled => false,
         }
     }
@@ -202,7 +224,12 @@ pub fn is_allowed(req: &PermissionRequest, policy: &PermissionPolicy) -> bool {
 /// remember a grant Lucid did not give) when the policy allows the call; every
 /// other call gets `reject_once`, else `reject_always`, else `cancelled`.
 pub fn decide(req: &PermissionRequest, policy: &PermissionPolicy) -> Outcome {
-    let find = |kind: &str| req.options.iter().find(|o| o.kind == kind).map(|o| o.id.clone());
+    let find = |kind: &str| {
+        req.options
+            .iter()
+            .find(|o| o.kind == kind)
+            .map(|o| o.id.clone())
+    };
     if is_allowed(req, policy) {
         if let Some(id) = find("allow_once") {
             return Outcome::Selected(id);
@@ -226,7 +253,12 @@ mod tests {
     use super::*;
 
     fn options(pairs: &[(&str, &str)]) -> Value {
-        Value::Array(pairs.iter().map(|(id, kind)| json!({"optionId": id, "name": id, "kind": kind})).collect())
+        Value::Array(
+            pairs
+                .iter()
+                .map(|(id, kind)| json!({"optionId": id, "name": id, "kind": kind}))
+                .collect(),
+        )
     }
 
     fn req(kind: &str, name: &str, input: Value) -> PermissionRequest {
@@ -246,7 +278,10 @@ mod tests {
 
     fn notes_policy() -> PermissionPolicy {
         PermissionPolicy::new(
-            ["list_notes", "search_notes", "read_note"].iter().map(|t| McpToolRule::tool("nexq_notes", t)).collect(),
+            ["list_notes", "search_notes", "read_note"]
+                .iter()
+                .map(|t| McpToolRule::tool("nexq_notes", t))
+                .collect(),
             vec![],
         )
     }
@@ -258,8 +293,18 @@ mod tests {
             let r = req("other", &format!("mcp_nexq_notes_{tool}"), json!({}));
             assert_eq!(selected(&decide(&r, &p)), "allow", "{tool}");
         }
-        for name in ["mcp_nexq_notes_write_note", "mcp_nexq_notes_", "mcp_other_read_note", "read_note", "nexq_notes"] {
-            assert_eq!(selected(&decide(&req("other", name, json!({})), &p)), "deny", "{name}");
+        for name in [
+            "mcp_nexq_notes_write_note",
+            "mcp_nexq_notes_",
+            "mcp_other_read_note",
+            "read_note",
+            "nexq_notes",
+        ] {
+            assert_eq!(
+                selected(&decide(&req("other", name, json!({})), &p)),
+                "deny",
+                "{name}"
+            );
         }
     }
 
@@ -281,19 +326,33 @@ mod tests {
             ("think", "ask_question"),
             ("weird-kind", "whatever"),
         ] {
-            let r = req(kind, name, json!({ "Path": "C:\\Notes\\a.md", "CommandLine": "echo hi" }));
+            let r = req(
+                kind,
+                name,
+                json!({ "Path": "C:\\Notes\\a.md", "CommandLine": "echo hi" }),
+            );
             assert_eq!(selected(&decide(&r, &p)), "deny", "{kind} {name}");
         }
         // A read of a file in the (empty) working directory is rejected too.
-        assert!(!is_allowed(&req("read", "read_file", json!({ "Path": "inside.txt" })), &p));
+        assert!(!is_allowed(
+            &req("read", "read_file", json!({ "Path": "inside.txt" })),
+            &p
+        ));
         // Nothing allowed: nothing runs.
-        assert!(!is_allowed(&req("other", "mcp_nexq_notes_read_note", json!({})), &PermissionPolicy::deny_all()));
+        assert!(!is_allowed(
+            &req("other", "mcp_nexq_notes_read_note", json!({})),
+            &PermissionPolicy::deny_all()
+        ));
     }
 
     #[test]
     fn user_tools_follow_the_allow_and_deny_rules() {
         let p = PermissionPolicy::new(
-            vec![McpToolRule::tool("mira", "kb_search"), McpToolRule::whole_server("wiki"), McpToolRule::tool("mira", "kb_read")],
+            vec![
+                McpToolRule::tool("mira", "kb_search"),
+                McpToolRule::whole_server("wiki"),
+                McpToolRule::tool("mira", "kb_read"),
+            ],
             vec![McpToolRule::tool("mira", "kb_read")],
         );
         let ok = |name: &str| is_allowed(&req("other", name, json!({})), &p);
@@ -313,18 +372,43 @@ mod tests {
     #[test]
     fn a_server_key_that_prefixes_another_never_swallows_its_tools() {
         // Server `a` allows tool `b_x`; the session also has a server `a_b`: `mcp_a_b_x` is a_b's `x`.
-        let p = PermissionPolicy::new(vec![McpToolRule::tool("a", "b_x")], vec![]).with_servers(&["a".into(), "a_b".into()]);
-        assert!(!is_allowed(&req("other", "mcp_a_b_x", json!({})), &p), "a_b allows nothing");
-        assert!(is_allowed(&req("other", "mcp__a__b_x", json!({})), &p), "the unambiguous form is a's");
+        let p = PermissionPolicy::new(vec![McpToolRule::tool("a", "b_x")], vec![])
+            .with_servers(&["a".into(), "a_b".into()]);
+        assert!(
+            !is_allowed(&req("other", "mcp_a_b_x", json!({})), &p),
+            "a_b allows nothing"
+        );
+        assert!(
+            is_allowed(&req("other", "mcp__a__b_x", json!({})), &p),
+            "the unambiguous form is a's"
+        );
         // Both servers have rules: each tool goes to its own server.
-        let both = PermissionPolicy::new(vec![McpToolRule::tool("a", "b_x"), McpToolRule::tool("a_b", "x")], vec![]);
+        let both = PermissionPolicy::new(
+            vec![McpToolRule::tool("a", "b_x"), McpToolRule::tool("a_b", "x")],
+            vec![],
+        );
         assert!(is_allowed(&req("other", "mcp_a_b_x", json!({})), &both));
         // A deny of the longer key's tool wins, and a rule of `a` cannot allow it.
-        let deny = PermissionPolicy::new(vec![McpToolRule::tool("a", "b_x"), McpToolRule::whole_server("a_b")], vec![McpToolRule::tool("a_b", "x")]);
+        let deny = PermissionPolicy::new(
+            vec![
+                McpToolRule::tool("a", "b_x"),
+                McpToolRule::whole_server("a_b"),
+            ],
+            vec![McpToolRule::tool("a_b", "x")],
+        );
         assert!(!is_allowed(&req("other", "mcp_a_b_x", json!({})), &deny));
-        assert_eq!(split_tool("mcp_a_b_x", &["a", "a_b"]), Some(("a_b".to_string(), "x".to_string())));
-        assert_eq!(split_tool("mcp__a__b_x", &["a", "a_b"]), Some(("a".to_string(), "b_x".to_string())));
-        assert_eq!(split_tool("a__b_x", &["a"]), Some(("a".to_string(), "b_x".to_string())));
+        assert_eq!(
+            split_tool("mcp_a_b_x", &["a", "a_b"]),
+            Some(("a_b".to_string(), "x".to_string()))
+        );
+        assert_eq!(
+            split_tool("mcp__a__b_x", &["a", "a_b"]),
+            Some(("a".to_string(), "b_x".to_string()))
+        );
+        assert_eq!(
+            split_tool("a__b_x", &["a"]),
+            Some(("a".to_string(), "b_x".to_string()))
+        );
         assert_eq!(split_tool("mcp_a_", &["a"]), None);
         assert_eq!(split_tool("mcp_zzz_t", &["a"]), None);
         assert!(McpToolRule::tool("a", "b_x").matches("mcp_a_b_x"));
@@ -334,21 +418,37 @@ mod tests {
     #[test]
     fn captured_requests() {
         let p = notes_policy();
-        let parse = |s: &str| -> Value { serde_json::from_str::<Value>(s).unwrap()["params"].clone() };
-        let (r, o) = decide_params(&parse(include_str!("testdata/agy_permission_run_command.json")), &p);
-        assert_eq!((r.kind.as_str(), r.tool_name.as_str()), ("execute", "run_command"));
+        let parse =
+            |s: &str| -> Value { serde_json::from_str::<Value>(s).unwrap()["params"].clone() };
+        let (r, o) = decide_params(
+            &parse(include_str!("testdata/agy_permission_run_command.json")),
+            &p,
+        );
+        assert_eq!(
+            (r.kind.as_str(), r.tool_name.as_str()),
+            ("execute", "run_command")
+        );
         assert_eq!(selected(&o), "deny");
-        let (r, o) = decide_params(&parse(include_str!("testdata/agy_permission_read_outside.json")), &p);
+        let (r, o) = decide_params(
+            &parse(include_str!("testdata/agy_permission_read_outside.json")),
+            &p,
+        );
         assert_eq!(r.kind, "read");
         assert_eq!(selected(&o), "deny");
         // A captured MCP request: allowed when the policy names its server and tool.
-        let fixture: Value = serde_json::from_str(include_str!("testdata/agy_permission_mcp.json")).unwrap();
-        let mcp = PermissionPolicy::new(vec![McpToolRule::tool("probe-srv", "get_secret_word")], vec![]);
+        let fixture: Value =
+            serde_json::from_str(include_str!("testdata/agy_permission_mcp.json")).unwrap();
+        let mcp = PermissionPolicy::new(
+            vec![McpToolRule::tool("probe-srv", "get_secret_word")],
+            vec![],
+        );
         let (r, o) = decide_params(&fixture["params"], &mcp);
         assert_eq!(r.tool_name, "mcp_probe-srv_get_secret_word");
         assert_eq!(r.tool_call_id, "call_3");
         assert!(o.is_allow(&r));
-        assert!(!decide_params(&fixture["params"], &notes_policy()).1.is_allow(&r));
+        assert!(!decide_params(&fixture["params"], &notes_policy())
+            .1
+            .is_allow(&r));
     }
 
     #[test]
@@ -356,21 +456,58 @@ mod tests {
         let p = notes_policy();
         let with = |name: &str, pairs: &[(&str, &str)]| {
             let mut r = req("other", name, json!({}));
-            r.options = pairs.iter().map(|(id, k)| PermissionOption { id: id.to_string(), kind: k.to_string() }).collect();
+            r.options = pairs
+                .iter()
+                .map(|(id, k)| PermissionOption {
+                    id: id.to_string(),
+                    kind: k.to_string(),
+                })
+                .collect();
             decide(&r, &p)
         };
         let ours = "mcp_nexq_notes_read_note";
         // allow_once only: never allow_always.
-        assert_eq!(with(ours, &[("a", "allow_always"), ("b", "allow_once")]), Outcome::Selected("b".into()));
-        assert_eq!(with(ours, &[("a", "allow_always"), ("r", "reject_once")]), Outcome::Selected("r".into()));
+        assert_eq!(
+            with(ours, &[("a", "allow_always"), ("b", "allow_once")]),
+            Outcome::Selected("b".into())
+        );
+        assert_eq!(
+            with(ours, &[("a", "allow_always"), ("r", "reject_once")]),
+            Outcome::Selected("r".into())
+        );
         assert_eq!(with(ours, &[("a", "allow_always")]), Outcome::Cancelled);
         // Rejecting: reject_once first, reject_always next, else cancelled.
-        assert_eq!(with("run_command", &[("y", "allow_once"), ("n", "reject_always"), ("m", "reject_once")]), Outcome::Selected("m".into()));
-        assert_eq!(with("run_command", &[("y", "allow_once"), ("n", "reject_always")]), Outcome::Selected("n".into()));
-        assert_eq!(with("run_command", &[("y", "allow_once"), ("a", "allow_always")]), Outcome::Cancelled);
+        assert_eq!(
+            with(
+                "run_command",
+                &[
+                    ("y", "allow_once"),
+                    ("n", "reject_always"),
+                    ("m", "reject_once")
+                ]
+            ),
+            Outcome::Selected("m".into())
+        );
+        assert_eq!(
+            with(
+                "run_command",
+                &[("y", "allow_once"), ("n", "reject_always")]
+            ),
+            Outcome::Selected("n".into())
+        );
+        assert_eq!(
+            with("run_command", &[("y", "allow_once"), ("a", "allow_always")]),
+            Outcome::Cancelled
+        );
         assert_eq!(with("run_command", &[]), Outcome::Cancelled);
         // The JSON-RPC result shapes.
-        assert_eq!(Outcome::Selected("x".into()).to_result(), json!({"outcome": {"outcome": "selected", "optionId": "x"}}));
-        assert_eq!(Outcome::Cancelled.to_result(), json!({"outcome": {"outcome": "cancelled"}}));
+        assert_eq!(
+            Outcome::Selected("x".into()).to_result(),
+            json!({"outcome": {"outcome": "selected", "optionId": "x"}})
+        );
+        assert_eq!(
+            Outcome::Cancelled.to_result(),
+            json!({"outcome": {"outcome": "cancelled"}})
+        );
     }
 }

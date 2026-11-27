@@ -130,14 +130,16 @@ impl SwapSignal {
     /// Record an outgoing generation whose interim must not become final at
     /// the swap boundary. The watermark is the generation being replaced.
     pub fn swapped_without_interim(&self) {
-        let mut preserve_only = self.preserve_only
+        let mut preserve_only = self
+            .preserve_only
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let outgoing_generation = self.generation.load(Ordering::Acquire);
         preserve_only.insert(outgoing_generation);
         // Publish the marker before the increment that makes this boundary
         // visible to generation() readers.
-        self.generation.store(outgoing_generation.wrapping_add(1), Ordering::Release);
+        self.generation
+            .store(outgoing_generation.wrapping_add(1), Ordering::Release);
         drop(preserve_only);
         self.flush.notify_one();
     }
@@ -154,7 +156,11 @@ impl SwapSignal {
     /// meeting's time base.
     pub fn attach(&self, main: &SideTx) -> ResultTx {
         let generation = self.generation();
-        let offset_ms = if generation == 0 { 0 } else { self.origin.elapsed().as_millis() as u64 };
+        let offset_ms = if generation == 0 {
+            0
+        } else {
+            self.origin.elapsed().as_millis() as u64
+        };
         let (tx, mut rx) = mpsc::channel::<TranscriptResult>(256);
         let main = main.clone();
         let handle = tokio::spawn(async move {
@@ -323,10 +329,17 @@ pub struct TakenSide<P> {
 /// A message to the audio loop.
 pub enum SideSwapMsg<P> {
     /// Hand over the side's provider; answers None when the side has nothing to swap.
-    Take { side: Side, reply: oneshot::Sender<Option<TakenSide<P>>> },
+    Take {
+        side: Side,
+        reply: oneshot::Sender<Option<TakenSide<P>>>,
+    },
     /// Give the side its new provider (None: it goes without STT).
     /// `muted` is the mute state the provider was started with.
-    Put { side: Side, provider: Option<P>, muted: bool },
+    Put {
+        side: Side,
+        provider: Option<P>,
+        muted: bool,
+    },
 }
 
 pub type SideSwapSender = mpsc::UnboundedSender<SideSwapMsg<Box<dyn STTProvider>>>;
@@ -341,7 +354,11 @@ pub fn handle_take<P>(
     reply: oneshot::Sender<Option<TakenSide<P>>>,
 ) {
     let taken = match (provider.take(), tx) {
-        (Some(p), Some(tx)) => Some(TakenSide { provider: p, tx: tx.clone(), signal: signal.clone() }),
+        (Some(p), Some(tx)) => Some(TakenSide {
+            provider: p,
+            tx: tx.clone(),
+            signal: signal.clone(),
+        }),
         (p, _) => {
             *provider = p;
             None
@@ -354,7 +371,12 @@ pub fn handle_take<P>(
 
 /// The audio loop installs a side's new provider. The mute state the provider
 /// started with is recorded, so the loop's next mute check passes on any change since.
-pub fn handle_put<P>(provider: &mut Option<P>, muted_applied: &mut bool, new: Option<P>, started_muted: bool) {
+pub fn handle_put<P>(
+    provider: &mut Option<P>,
+    muted_applied: &mut bool,
+    new: Option<P>,
+    started_muted: bool,
+) {
     *provider = new;
     *muted_applied = started_muted;
 }
@@ -415,14 +437,17 @@ async fn swap_side_provider_within(
     if sender.send(SideSwapMsg::Take { side, reply }).is_err() {
         return SwapOutcome::NotRunning;
     }
-    let TakenSide { provider: mut old, tx, signal } =
-        match tokio::time::timeout(TAKE_TIMEOUT, answer).await {
-            Ok(Ok(Some(taken))) => taken,
-            _ => return SwapOutcome::NotRunning,
-        };
+    let TakenSide {
+        provider: mut old,
+        tx,
+        signal,
+    } = match tokio::time::timeout(TAKE_TIMEOUT, answer).await {
+        Ok(Ok(Some(taken))) => taken,
+        _ => return SwapOutcome::NotRunning,
+    };
 
-    let preserve_only = old.provider_type()
-        == crate::stt::provider::STTProviderType::AzureMaiStreaming;
+    let preserve_only =
+        old.provider_type() == crate::stt::provider::STTProviderType::AzureMaiStreaming;
     if let Err(e) = old.stop_stream().await {
         log::warn!("{:?} STT stop before a language swap: {}", side, e);
     }
@@ -441,9 +466,14 @@ async fn swap_side_provider_within(
         Ok(()) => (Some(new_provider), SwapOutcome::Swapped),
         Err(e) => (None, SwapOutcome::StartFailed(e.to_string())),
     };
-    if let Err(mpsc::error::SendError(SideSwapMsg::Put { provider: Some(mut orphan), .. })) =
-        sender.send(SideSwapMsg::Put { side, provider: started, muted })
-    {
+    if let Err(mpsc::error::SendError(SideSwapMsg::Put {
+        provider: Some(mut orphan),
+        ..
+    })) = sender.send(SideSwapMsg::Put {
+        side,
+        provider: started,
+        muted,
+    }) {
         // The meeting ended while we swapped: nobody is left to run it.
         let _ = orphan.stop_stream().await;
     }
@@ -471,13 +501,23 @@ mod tests {
 
     impl Mock {
         fn new(name: &'static str, log: &Log) -> Mock {
-            Mock { name, log: log.clone(), fail_start: false, on_start: vec![], late_after_stop: None, tx: None }
+            Mock {
+                name,
+                log: log.clone(),
+                fail_start: false,
+                on_start: vec![],
+                late_after_stop: None,
+                tx: None,
+            }
         }
         fn boxed(name: &'static str, log: &Log) -> Box<dyn STTProvider> {
             Box::new(Mock::new(name, log))
         }
         fn note(&self, what: &str) {
-            self.log.lock().unwrap().push(format!("{}:{}", self.name, what));
+            self.log
+                .lock()
+                .unwrap()
+                .push(format!("{}:{}", self.name, what));
         }
     }
 
@@ -507,7 +547,10 @@ mod tests {
             self.tx = Some(tx);
             Ok(())
         }
-        async fn feed_audio(&mut self, _c: AudioChunk) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        async fn feed_audio(
+            &mut self,
+            _c: AudioChunk,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             Ok(())
         }
         async fn stop_stream(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -558,11 +601,25 @@ mod tests {
             match msg {
                 SideSwapMsg::Take { side, reply } => {
                     let i = side.index();
-                    handle_take(&mut self.providers[i], self.txs[i].as_ref(), &self.signals[i], reply);
+                    handle_take(
+                        &mut self.providers[i],
+                        self.txs[i].as_ref(),
+                        &self.signals[i],
+                        reply,
+                    );
                 }
-                SideSwapMsg::Put { side, provider, muted } => {
+                SideSwapMsg::Put {
+                    side,
+                    provider,
+                    muted,
+                } => {
                     let i = side.index();
-                    handle_put(&mut self.providers[i], &mut self.muted_applied[i], provider, muted);
+                    handle_put(
+                        &mut self.providers[i],
+                        &mut self.muted_applied[i],
+                        provider,
+                        muted,
+                    );
                 }
             }
         }
@@ -631,15 +688,39 @@ mod tests {
     #[tokio::test]
     async fn a_swap_restarts_only_the_targeted_side() {
         let log: Log = Default::default();
-        let mut fake = FakeLoop::new(Some(Mock::boxed("you_old", &log)), Some(Mock::boxed("them_old", &log)));
+        let mut fake = FakeLoop::new(
+            Some(Mock::boxed("you_old", &log)),
+            Some(Mock::boxed("them_old", &log)),
+        );
 
-        let outcome = swap(&mut fake, Side::Them, Mock::boxed("them_new", &log), &AtomicBool::new(false)).await;
+        let outcome = swap(
+            &mut fake,
+            Side::Them,
+            Mock::boxed("them_new", &log),
+            &AtomicBool::new(false),
+        )
+        .await;
 
         assert_eq!(outcome, SwapOutcome::Swapped);
         // The old Them provider stopped and the new one started; "You" saw nothing.
-        assert_eq!(events(&log), ["them_old:stop", "them_new:muted=false", "them_new:start"]);
-        assert_eq!(fake.providers[Side::Them.index()].as_ref().unwrap().provider_name(), "them_new");
-        assert_eq!(fake.providers[Side::You.index()].as_ref().unwrap().provider_name(), "you_old");
+        assert_eq!(
+            events(&log),
+            ["them_old:stop", "them_new:muted=false", "them_new:start"]
+        );
+        assert_eq!(
+            fake.providers[Side::Them.index()]
+                .as_ref()
+                .unwrap()
+                .provider_name(),
+            "them_new"
+        );
+        assert_eq!(
+            fake.providers[Side::You.index()]
+                .as_ref()
+                .unwrap()
+                .provider_name(),
+            "you_old"
+        );
         assert_eq!(fake.signals[Side::Them.index()].generation(), 1);
         assert_eq!(fake.signals[Side::You.index()].generation(), 0);
     }
@@ -668,18 +749,27 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(8);
         let signal = SwapSignal::default();
         let partial = result("unconfirmed hypothesis", false, T0 + 600);
-        tx.send(Tagged { generation: 0, result: result("Confirmed.", true, T0) })
-            .await
-            .unwrap();
-        tx.send(Tagged { generation: 0, result: partial.clone() })
-            .await
-            .unwrap();
+        tx.send(Tagged {
+            generation: 0,
+            result: result("Confirmed.", true, T0),
+        })
+        .await
+        .unwrap();
+        tx.send(Tagged {
+            generation: 0,
+            result: partial.clone(),
+        })
+        .await
+        .unwrap();
 
         // Simulate an explicit interim clear lost while the MAI adapter drained.
         signal.swapped_without_interim();
-        tx.send(Tagged { generation: 1, result: result("Next.", true, T0 + 1_000) })
-            .await
-            .unwrap();
+        tx.send(Tagged {
+            generation: 1,
+            result: result("Next.", true, T0 + 1_000),
+        })
+        .await
+        .unwrap();
         drop(tx);
 
         let mut accumulator = SegmentAccumulator::new(3_000);
@@ -709,7 +799,9 @@ mod tests {
         assert!(confirmed.is_final);
         assert_eq!(confirmed.text, "Confirmed.");
         assert_eq!(confirmed.id, clear_id);
-        assert!(outputs.iter().any(|output| output.is_final && output.text == "Next."));
+        assert!(outputs
+            .iter()
+            .any(|output| output.is_final && output.text == "Next."));
     }
 
     #[tokio::test]
@@ -717,7 +809,13 @@ mod tests {
         let log: Log = Default::default();
         let mut fake = FakeLoop::new(Some(Mock::boxed("you_old", &log)), None);
 
-        swap(&mut fake, Side::You, Mock::boxed("you_new", &log), &AtomicBool::new(true)).await;
+        swap(
+            &mut fake,
+            Side::You,
+            Mock::boxed("you_new", &log),
+            &AtomicBool::new(true),
+        )
+        .await;
 
         assert!(events(&log).contains(&"you_new:muted=true".to_string()));
         assert!(fake.muted_applied[Side::You.index()]);
@@ -729,26 +827,53 @@ mod tests {
         let log: Log = Default::default();
         let mut fake = FakeLoop::new(None, Some(Mock::boxed("them_old", &log)));
 
-        let outcome = swap(&mut fake, Side::You, Mock::boxed("you_new", &log), &AtomicBool::new(false)).await;
+        let outcome = swap(
+            &mut fake,
+            Side::You,
+            Mock::boxed("you_new", &log),
+            &AtomicBool::new(false),
+        )
+        .await;
 
         assert_eq!(outcome, SwapOutcome::NotRunning);
         assert!(events(&log).is_empty(), "nothing started or stopped");
         assert!(fake.providers[Side::You.index()].is_none());
-        assert_eq!(fake.providers[Side::Them.index()].as_ref().unwrap().provider_name(), "them_old");
+        assert_eq!(
+            fake.providers[Side::Them.index()]
+                .as_ref()
+                .unwrap()
+                .provider_name(),
+            "them_old"
+        );
     }
 
     #[tokio::test]
     async fn a_new_provider_that_cant_start_leaves_that_side_without_stt_and_the_other_running() {
         let log: Log = Default::default();
-        let mut fake = FakeLoop::new(Some(Mock::boxed("you_old", &log)), Some(Mock::boxed("them_old", &log)));
+        let mut fake = FakeLoop::new(
+            Some(Mock::boxed("you_old", &log)),
+            Some(Mock::boxed("them_old", &log)),
+        );
         let mut failing = Mock::new("you_new", &log);
         failing.fail_start = true;
 
-        let outcome = swap(&mut fake, Side::You, Box::new(failing), &AtomicBool::new(false)).await;
+        let outcome = swap(
+            &mut fake,
+            Side::You,
+            Box::new(failing),
+            &AtomicBool::new(false),
+        )
+        .await;
 
         assert_eq!(outcome, SwapOutcome::StartFailed("no connection".into()));
         assert!(fake.providers[Side::You.index()].is_none());
-        assert_eq!(fake.providers[Side::Them.index()].as_ref().unwrap().provider_name(), "them_old");
+        assert_eq!(
+            fake.providers[Side::Them.index()]
+                .as_ref()
+                .unwrap()
+                .provider_name(),
+            "them_old"
+        );
     }
 
     #[test]
@@ -767,8 +892,13 @@ mod tests {
         let log: Log = Default::default();
         let (sender, rx) = mpsc::unbounded_channel();
         drop(rx);
-        let outcome =
-            swap_side_provider(&sender, Side::You, Mock::boxed("you_new", &log), &AtomicBool::new(false)).await;
+        let outcome = swap_side_provider(
+            &sender,
+            Side::You,
+            Mock::boxed("you_new", &log),
+            &AtomicBool::new(false),
+        )
+        .await;
         assert_eq!(outcome, SwapOutcome::NotRunning);
     }
 
@@ -778,8 +908,14 @@ mod tests {
         let mut fake = FakeLoop::new(Some(Mock::boxed("you_old", &log)), None);
         let (reply, answer) = oneshot::channel();
         drop(answer);
-        fake.handle(SideSwapMsg::Take { side: Side::You, reply });
-        assert_eq!(fake.providers[0].as_ref().unwrap().provider_name(), "you_old");
+        fake.handle(SideSwapMsg::Take {
+            side: Side::You,
+            reply,
+        });
+        assert_eq!(
+            fake.providers[0].as_ref().unwrap().provider_name(),
+            "you_old"
+        );
     }
 
     // ---- results are tagged by provider, and late ones arrive before the boundary
@@ -795,14 +931,24 @@ mod tests {
         let signal = fake.signals[Side::Them.index()].clone();
         let mut old = Mock::new("them_old", &log);
         // Sends its last chunk 50 ms after stop_stream, like a provider with a request in flight.
-        old.late_after_stop = Some((vec![result("last words", true, 4_000)], Duration::from_millis(50)));
+        old.late_after_stop = Some((
+            vec![result("last words", true, 4_000)],
+            Duration::from_millis(50),
+        ));
         let mut old: Box<dyn STTProvider> = Box::new(old);
         old.start_stream(signal.attach(&tx)).await.unwrap();
         fake.providers[Side::Them.index()] = Some(old);
         let mut new = Mock::new("them_new", &log);
         new.on_start = vec![result("nuevas palabras", true, 100)];
 
-        let outcome = swap_within(&mut fake, Side::Them, Box::new(new), &AtomicBool::new(false), Duration::from_secs(2)).await;
+        let outcome = swap_within(
+            &mut fake,
+            Side::Them,
+            Box::new(new),
+            &AtomicBool::new(false),
+            Duration::from_secs(2),
+        )
+        .await;
         assert_eq!(outcome, SwapOutcome::Swapped);
         tokio::time::sleep(Duration::from_millis(50)).await; // the forwarding task is asynchronous
 
@@ -820,17 +966,32 @@ mod tests {
         fake.rxs[0] = Some(rx);
         let signal = fake.signals[0].clone();
         let mut old = Mock::new("you_old", &log);
-        old.late_after_stop = Some((vec![result("very late", true, 4_000)], Duration::from_millis(300)));
+        old.late_after_stop = Some((
+            vec![result("very late", true, 4_000)],
+            Duration::from_millis(300),
+        ));
         let mut old: Box<dyn STTProvider> = Box::new(old);
         old.start_stream(signal.attach(&tx)).await.unwrap();
         fake.providers[0] = Some(old);
 
-        swap_within(&mut fake, Side::You, Mock::boxed("you_new", &log), &AtomicBool::new(false), Duration::from_millis(20)).await;
+        swap_within(
+            &mut fake,
+            Side::You,
+            Mock::boxed("you_new", &log),
+            &AtomicBool::new(false),
+            Duration::from_millis(20),
+        )
+        .await;
         tokio::time::sleep(Duration::from_millis(400)).await;
 
         let got = fake.received(Side::You);
         // The pump drops it: its generation (0) is older than the current one (1).
-        assert_eq!(got.iter().map(|(g, t, _)| (*g, t.as_str())).collect::<Vec<_>>(), [(0, "very late")]);
+        assert_eq!(
+            got.iter()
+                .map(|(g, t, _)| (*g, t.as_str()))
+                .collect::<Vec<_>>(),
+            [(0, "very late")]
+        );
         assert_eq!(fake.signals[0].generation(), 1);
     }
 
@@ -863,7 +1024,11 @@ mod tests {
 
         let got = fake.received(Side::You);
         assert_eq!(got.len(), 2);
-        assert!(got[0].2 >= 90 && got[0].2 < 2_000, "relative stamp moved onto the meeting's clock: {}", got[0].2);
+        assert!(
+            got[0].2 >= 90 && got[0].2 < 2_000,
+            "relative stamp moved onto the meeting's clock: {}",
+            got[0].2
+        );
         assert_eq!(got[1].2, 1_800_000_000_000, "epoch stamp unchanged");
     }
 
@@ -878,12 +1043,23 @@ mod tests {
         let pause = AtomicU64::new(60_000);
         let mut acc = SegmentAccumulator::new(60_000);
         let sink = out.clone();
-        pump_accumulated(&mut rx, &signal, &mut acc, &pause, |_| {}, move |o| {
-            sink.lock().unwrap().push((format!("{}:{}", o.id, o.text), o.is_final));
-        })
+        pump_accumulated(
+            &mut rx,
+            &signal,
+            &mut acc,
+            &pause,
+            |_| {},
+            move |o| {
+                sink.lock()
+                    .unwrap()
+                    .push((format!("{}:{}", o.id, o.text), o.is_final));
+            },
+        )
         .await;
         if let Some(o) = acc.flush() {
-            out.lock().unwrap().push((format!("{}:{}", o.id, o.text), o.is_final));
+            out.lock()
+                .unwrap()
+                .push((format!("{}:{}", o.id, o.text), o.is_final));
         }
     }
 
@@ -905,20 +1081,45 @@ mod tests {
         let out: Arc<Mutex<Vec<(String, bool)>>> = Default::default();
         let task = tokio::spawn(run_side(rx, signal.clone(), out.clone()));
 
-        tx.send(tag(0, result("hello there", true, 1_000))).await.unwrap();
-        tx.send(tag(0, result("how are you", true, 1_600))).await.unwrap();
+        tx.send(tag(0, result("hello there", true, 1_000)))
+            .await
+            .unwrap();
+        tx.send(tag(0, result("how are you", true, 1_600)))
+            .await
+            .unwrap();
         settle().await;
         signal.swapped();
         settle().await;
-        tx.send(tag(1, result("hola amigo", true, 2_200))).await.unwrap();
+        tx.send(tag(1, result("hola amigo", true, 2_200)))
+            .await
+            .unwrap();
         drop(tx);
         task.await.unwrap();
 
         let lines = out.lock().unwrap().clone();
-        let finals: Vec<&str> = lines.iter().filter(|(_, f)| *f).map(|(l, _)| l.as_str()).collect();
-        assert!(finals.iter().any(|l| l.starts_with("acc_1:") && l.contains("hello there") && l.contains("how are you")), "{finals:?}");
-        assert!(finals.iter().any(|l| l.starts_with("acc_2:") && l.ends_with("hola amigo")), "{finals:?}");
-        assert!(!finals.iter().any(|l| l.contains("how are you") && l.contains("hola amigo")), "{finals:?}");
+        let finals: Vec<&str> = lines
+            .iter()
+            .filter(|(_, f)| *f)
+            .map(|(l, _)| l.as_str())
+            .collect();
+        assert!(
+            finals.iter().any(|l| l.starts_with("acc_1:")
+                && l.contains("hello there")
+                && l.contains("how are you")),
+            "{finals:?}"
+        );
+        assert!(
+            finals
+                .iter()
+                .any(|l| l.starts_with("acc_2:") && l.ends_with("hola amigo")),
+            "{finals:?}"
+        );
+        assert!(
+            !finals
+                .iter()
+                .any(|l| l.contains("how are you") && l.contains("hola amigo")),
+            "{finals:?}"
+        );
     }
 
     #[tokio::test]
@@ -929,19 +1130,32 @@ mod tests {
         let task = tokio::spawn(run_side(rx, signal.clone(), out.clone()));
 
         // No final yet: the old provider only guessed.
-        tx.send(tag(0, result("good mor", false, 1_000))).await.unwrap();
+        tx.send(tag(0, result("good mor", false, 1_000)))
+            .await
+            .unwrap();
         settle().await;
         signal.swapped();
         settle().await;
-        tx.send(tag(1, result("buenos dias", true, 2_000))).await.unwrap();
+        tx.send(tag(1, result("buenos dias", true, 2_000)))
+            .await
+            .unwrap();
         drop(tx);
         task.await.unwrap();
 
         let lines = out.lock().unwrap().clone();
         // The interim ("acc_1") is closed as a final with its words, and the new one gets "acc_2".
-        assert!(lines.contains(&("acc_1:good mor".to_string(), true)), "{lines:?}");
-        assert!(lines.contains(&("acc_2:buenos dias".to_string(), true)), "{lines:?}");
-        assert!(!lines.contains(&("acc_1:buenos dias".to_string(), true)), "{lines:?}");
+        assert!(
+            lines.contains(&("acc_1:good mor".to_string(), true)),
+            "{lines:?}"
+        );
+        assert!(
+            lines.contains(&("acc_2:buenos dias".to_string(), true)),
+            "{lines:?}"
+        );
+        assert!(
+            !lines.contains(&("acc_1:buenos dias".to_string(), true)),
+            "{lines:?}"
+        );
     }
 
     #[tokio::test]
@@ -951,16 +1165,28 @@ mod tests {
         let out: Arc<Mutex<Vec<(String, bool)>>> = Default::default();
         let task = tokio::spawn(run_side(rx, signal.clone(), out.clone()));
 
-        tx.send(tag(0, result("hello there", true, 1_000))).await.unwrap();
+        tx.send(tag(0, result("hello there", true, 1_000)))
+            .await
+            .unwrap();
         // Both the new provider's result and, only after it, the notice are queued before the task runs.
-        tx.send(tag(1, result("hola amigo", true, 2_000))).await.unwrap();
+        tx.send(tag(1, result("hola amigo", true, 2_000)))
+            .await
+            .unwrap();
         signal.swapped();
         drop(tx);
         task.await.unwrap();
 
         let lines = out.lock().unwrap().clone();
-        assert!(lines.contains(&("acc_2:hola amigo".to_string(), true)), "{lines:?}");
-        assert!(!lines.iter().any(|(l, _)| l.contains("hello there") && l.contains("hola amigo")), "{lines:?}");
+        assert!(
+            lines.contains(&("acc_2:hola amigo".to_string(), true)),
+            "{lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|(l, _)| l.contains("hello there") && l.contains("hola amigo")),
+            "{lines:?}"
+        );
     }
 
     #[tokio::test]
@@ -970,44 +1196,83 @@ mod tests {
         let out: Arc<Mutex<Vec<(String, bool)>>> = Default::default();
         let task = tokio::spawn(run_side(rx, signal.clone(), out.clone()));
 
-        tx.send(tag(0, result("hello there", true, 1_000))).await.unwrap();
+        tx.send(tag(0, result("hello there", true, 1_000)))
+            .await
+            .unwrap();
         settle().await;
         signal.swapped();
         settle().await;
-        tx.send(tag(1, result("hola amigo", true, 2_000))).await.unwrap();
-        tx.send(tag(0, result("too late", true, 1_900))).await.unwrap();
+        tx.send(tag(1, result("hola amigo", true, 2_000)))
+            .await
+            .unwrap();
+        tx.send(tag(0, result("too late", true, 1_900)))
+            .await
+            .unwrap();
         drop(tx);
         task.await.unwrap();
 
         let lines = out.lock().unwrap().clone();
-        assert!(!lines.iter().any(|(l, _)| l.contains("too late")), "{lines:?}");
-        assert!(lines.contains(&("acc_2:hola amigo".to_string(), true)), "{lines:?}");
+        assert!(
+            !lines.iter().any(|(l, _)| l.contains("too late")),
+            "{lines:?}"
+        );
+        assert!(
+            lines.contains(&("acc_2:hola amigo".to_string(), true)),
+            "{lines:?}"
+        );
     }
 
     #[tokio::test]
     async fn swapping_one_side_leaves_the_other_sides_open_line_open() {
         let (you_tx, you_rx) = mpsc::channel(8);
         let (them_tx, them_rx) = mpsc::channel(8);
-        let (you_signal, them_signal): (Arc<SwapSignal>, Arc<SwapSignal>) = (Arc::default(), Arc::default());
-        let (you_out, them_out): (Arc<Mutex<Vec<(String, bool)>>>, Arc<Mutex<Vec<(String, bool)>>>) =
-            (Default::default(), Default::default());
+        let (you_signal, them_signal): (Arc<SwapSignal>, Arc<SwapSignal>) =
+            (Arc::default(), Arc::default());
+        let (you_out, them_out): (
+            Arc<Mutex<Vec<(String, bool)>>>,
+            Arc<Mutex<Vec<(String, bool)>>>,
+        ) = (Default::default(), Default::default());
         let you_task = tokio::spawn(run_side(you_rx, you_signal.clone(), you_out.clone()));
         let them_task = tokio::spawn(run_side(them_rx, them_signal.clone(), them_out.clone()));
 
-        you_tx.send(tag(0, result("you open line", true, 1_000))).await.unwrap();
-        them_tx.send(tag(0, result("them open line", true, 1_000))).await.unwrap();
+        you_tx
+            .send(tag(0, result("you open line", true, 1_000)))
+            .await
+            .unwrap();
+        them_tx
+            .send(tag(0, result("them open line", true, 1_000)))
+            .await
+            .unwrap();
         settle().await;
         // Only Them is swapped.
         them_signal.swapped();
         settle().await;
         // Both sides then get their next words: Them starts a new line, You's line goes on.
-        you_tx.send(tag(0, result("you more", true, 1_400))).await.unwrap();
-        them_tx.send(tag(1, result("them new words", true, 1_400))).await.unwrap();
+        you_tx
+            .send(tag(0, result("you more", true, 1_400)))
+            .await
+            .unwrap();
+        them_tx
+            .send(tag(1, result("them new words", true, 1_400)))
+            .await
+            .unwrap();
         settle().await;
         let last_id = |out: &Arc<Mutex<Vec<(String, bool)>>>| {
-            out.lock().unwrap().last().unwrap().0.split(':').next().unwrap().to_string()
+            out.lock()
+                .unwrap()
+                .last()
+                .unwrap()
+                .0
+                .split(':')
+                .next()
+                .unwrap()
+                .to_string()
         };
-        assert_eq!(last_id(&them_out), "acc_2", "Them's open line ended at the swap");
+        assert_eq!(
+            last_id(&them_out),
+            "acc_2",
+            "Them's open line ended at the swap"
+        );
         assert_eq!(last_id(&you_out), "acc_1", "You's open line is still open");
 
         drop((you_tx, them_tx));
@@ -1024,14 +1289,21 @@ mod tests {
         let task = {
             let signal = signal.clone();
             tokio::spawn(async move {
-                pump_direct(&mut rx, &signal, |_| {}, move |generation, r| {
-                    sink.lock().unwrap().push((generation, r.text, r.is_final));
-                })
+                pump_direct(
+                    &mut rx,
+                    &signal,
+                    |_| {},
+                    move |generation, r| {
+                        sink.lock().unwrap().push((generation, r.text, r.is_final));
+                    },
+                )
                 .await;
             })
         };
 
-        tx.send(tag(0, result("good mor", false, 1_000))).await.unwrap();
+        tx.send(tag(0, result("good mor", false, 1_000)))
+            .await
+            .unwrap();
         settle().await;
         signal.swapped();
         settle().await;
@@ -1039,7 +1311,13 @@ mod tests {
         task.await.unwrap();
 
         let got = lines.lock().unwrap().clone();
-        assert_eq!(got, [(0, "good mor".to_string(), false), (0, "good mor".to_string(), true)]);
+        assert_eq!(
+            got,
+            [
+                (0, "good mor".to_string(), false),
+                (0, "good mor".to_string(), true)
+            ]
+        );
     }
 
     #[test]

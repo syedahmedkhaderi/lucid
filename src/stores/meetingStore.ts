@@ -26,6 +26,8 @@ export interface StartMeetingOptions {
   borrowed?: string[];
   /** Explicit library documents selected for this meeting; omitted means all in scope. */
   documentIds?: string[];
+  /** Optional, meeting-only guidance about the documents and objective. */
+  meetingContext?: string;
 }
 
 interface MeetingState {
@@ -232,7 +234,7 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
         }
 
         // 1. Create meeting record in SQLite
-        const meeting = await ipcStartMeeting(title, options?.workspaceId, options?.borrowed, options?.documentIds);
+        const meeting = await ipcStartMeeting(title, options?.workspaceId, options?.borrowed, options?.documentIds, options?.meetingContext);
 
         // 1-. A request the backend could not honour: the meeting runs filed nowhere, and the person is told how to file it.
         if (options?.workspaceId && meeting.workspace_notice) {

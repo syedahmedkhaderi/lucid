@@ -56,7 +56,11 @@ impl McpServer {
     /// plain environment? (Secret values are not compared: they are not here.)
     pub fn target_differs(&self, other: &McpServer) -> bool {
         let plain = |s: &McpServer| -> Vec<(String, Option<String>)> {
-            let mut v: Vec<_> = s.env.iter().map(|e| (e.name.clone(), e.value.clone())).collect();
+            let mut v: Vec<_> = s
+                .env
+                .iter()
+                .map(|e| (e.name.clone(), e.value.clone()))
+                .collect();
             v.sort();
             v
         };
@@ -85,7 +89,10 @@ pub enum McpTransport {
 
 impl Default for McpTransport {
     fn default() -> Self {
-        McpTransport::Stdio { command: String::new(), args: Vec::new() }
+        McpTransport::Stdio {
+            command: String::new(),
+            args: Vec::new(),
+        }
     }
 }
 
@@ -147,13 +154,18 @@ pub struct SourceToggles {
 /// style string, a bare `Bash`, another server's tool) is not a tool of this
 /// server, and never reaches the command line.
 pub fn is_valid_tool_full_name(key: &str, full_name: &str) -> bool {
-    let Some(name) = full_name.strip_prefix("mcp__").and_then(|r| r.strip_prefix(key)).and_then(|r| r.strip_prefix("__"))
+    let Some(name) = full_name
+        .strip_prefix("mcp__")
+        .and_then(|r| r.strip_prefix(key))
+        .and_then(|r| r.strip_prefix("__"))
     else {
         return false;
     };
     !key.is_empty()
         && !name.is_empty()
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 impl McpServer {
@@ -232,7 +244,12 @@ mod tests {
     }
 
     fn folder(path: &str, enabled: bool) -> NotesFolder {
-        NotesFolder { id: path.into(), label: "Vault".into(), path: path.into(), enabled }
+        NotesFolder {
+            id: path.into(),
+            label: "Vault".into(),
+            path: path.into(),
+            enabled,
+        }
     }
 
     #[test]
@@ -246,9 +263,20 @@ mod tests {
 
     #[test]
     fn transport_uses_a_snake_case_type_tag() {
-        let t: McpTransport = serde_json::from_str(r#"{"type":"http","url":"https://h/mcp"}"#).unwrap();
-        assert_eq!(t, McpTransport::Http { url: "https://h/mcp".into(), header_names: vec![] });
-        let s = serde_json::to_string(&McpTransport::Stdio { command: "node".into(), args: vec![] }).unwrap();
+        let t: McpTransport =
+            serde_json::from_str(r#"{"type":"http","url":"https://h/mcp"}"#).unwrap();
+        assert_eq!(
+            t,
+            McpTransport::Http {
+                url: "https://h/mcp".into(),
+                header_names: vec![]
+            }
+        );
+        let s = serde_json::to_string(&McpTransport::Stdio {
+            command: "node".into(),
+            args: vec![],
+        })
+        .unwrap();
         assert!(s.contains(r#""type":"stdio""#), "{s}");
     }
 
@@ -257,8 +285,14 @@ mod tests {
         let mut cfg = PersonalSourcesConfig::default();
         cfg.mcp_servers = vec![
             server("ok", &[("kb_search", true)]),
-            McpServer { enabled: false, ..server("off", &[("a", true)]) },
-            McpServer { needs_sign_in: true, ..server("auth", &[("a", true)]) },
+            McpServer {
+                enabled: false,
+                ..server("off", &[("a", true)])
+            },
+            McpServer {
+                needs_sign_in: true,
+                ..server("auth", &[("a", true)])
+            },
             server("none", &[("add_task", false)]),
             server("unchecked", &[]),
         ];
@@ -323,15 +357,32 @@ b",
         assert_ne!(base, changed(&|c| c.notes_folders[1].enabled = true));
         assert_ne!(base, changed(&|c| c.mcp_servers[0].tools[1].allowed = true));
         assert_ne!(base, changed(&|c| c.mcp_servers[0].enabled = false));
-        assert_ne!(base, changed(&|c| c.notes_folders[0].path = "D:/other".into()));
-        assert_ne!(base, changed(&|c| c.mcp_servers[0].env.push(EnvVar { name: "MODE".into(), value: Some("ro".into()), secret: false })));
+        assert_ne!(
+            base,
+            changed(&|c| c.notes_folders[0].path = "D:/other".into())
+        );
+        assert_ne!(
+            base,
+            changed(&|c| c.mcp_servers[0].env.push(EnvVar {
+                name: "MODE".into(),
+                value: Some("ro".into()),
+                secret: false
+            }))
+        );
         // Not launch inputs.
-        assert_eq!(base, changed(&|c| c.notes_folders[1].label = "Renamed".into()));
+        assert_eq!(
+            base,
+            changed(&|c| c.notes_folders[1].label = "Renamed".into())
+        );
         assert_eq!(base, changed(&|c| c.mcp_notice_seen = true));
         assert_eq!(
             base,
-            changed(&|c| c.mcp_servers[0].last_check =
-                Some(McpCheckStatus { ok: true, tool_count: 2, error: None, checked_at_ms: 9 }))
+            changed(&|c| c.mcp_servers[0].last_check = Some(McpCheckStatus {
+                ok: true,
+                tool_count: 2,
+                error: None,
+                checked_at_ms: 9
+            }))
         );
     }
 }

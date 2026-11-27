@@ -72,7 +72,10 @@ impl Notes {
     }
 
     /// [`open`](Self::open) with the folder check passed in (tests).
-    pub fn open_with(dirs: &[PathBuf], problem: &dyn Fn(&Path) -> Option<String>) -> (Notes, Vec<String>) {
+    pub fn open_with(
+        dirs: &[PathBuf],
+        problem: &dyn Fn(&Path) -> Option<String>,
+    ) -> (Notes, Vec<String>) {
         let mut notes = Notes::default();
         let mut skipped = Vec::new();
         for dir in dirs {
@@ -95,7 +98,11 @@ impl Notes {
                 .unwrap_or_else(|| "notes".to_string());
             let mut label = base.clone();
             let mut n = 2;
-            while notes.roots.iter().any(|r| r.label.eq_ignore_ascii_case(&label)) {
+            while notes
+                .roots
+                .iter()
+                .any(|r| r.label.eq_ignore_ascii_case(&label))
+            {
                 label = format!("{base}-{n}");
                 n += 1;
             }
@@ -103,7 +110,11 @@ impl Notes {
             if notes.roots.iter().any(|r| r.key == key) {
                 continue;
             }
-            notes.roots.push(Root { label, path: real, key });
+            notes.roots.push(Root {
+                label,
+                path: real,
+                key,
+            });
         }
         (notes, skipped)
     }
@@ -137,14 +148,22 @@ impl Notes {
         let (root, rel) = match folder {
             Some(f) => (self.root_named(f)?, subpath.unwrap_or("").to_string()),
             None if self.roots.len() == 1 => (&self.roots[0], subpath.unwrap_or("").to_string()),
-            None => return Err(format!("Pass `folder`, one of: {}.", self.labels().join(", "))),
+            None => {
+                return Err(format!(
+                    "Pass `folder`, one of: {}.",
+                    self.labels().join(", ")
+                ))
+            }
         };
         let dir = self.resolve_in(root, &rel)?;
         if !dir.is_dir() {
             return Err("That is a file, not a folder. Use read_note.".into());
         }
         let mut entries: Vec<(bool, String, u64)> = Vec::new();
-        for entry in std::fs::read_dir(&dir).map_err(|e| format!("Can't list this folder: {e}"))?.flatten() {
+        for entry in std::fs::read_dir(&dir)
+            .map_err(|e| format!("Can't list this folder: {e}"))?
+            .flatten()
+        {
             let name = entry.file_name().to_string_lossy().into_owned();
             if segment_problem(&name).is_some() {
                 continue;
@@ -159,7 +178,10 @@ impl Notes {
                 entries.push((false, name, meta.len()));
             }
         }
-        entries.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+        entries.sort_by(|a, b| {
+            b.0.cmp(&a.0)
+                .then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase()))
+        });
         let shown = display(root, &dir);
         let mut out = format!("{shown}/ ({} entries)\n", entries.len());
         for (is_dir, name, size) in entries.iter().take(MAX_LIST_ENTRIES) {
@@ -170,7 +192,10 @@ impl Notes {
             }
         }
         if entries.len() > MAX_LIST_ENTRIES {
-            out.push_str(&format!("... {} more not shown; open a sub folder or search.\n", entries.len() - MAX_LIST_ENTRIES));
+            out.push_str(&format!(
+                "... {} more not shown; open a sub folder or search.\n",
+                entries.len() - MAX_LIST_ENTRIES
+            ));
         }
         Ok(out)
     }
@@ -200,7 +225,9 @@ impl Notes {
         'roots: for root in roots {
             let mut stack: Vec<(PathBuf, usize)> = vec![(root.path.clone(), 0)];
             while let Some((dir, depth)) = stack.pop() {
-                let Ok(read) = std::fs::read_dir(&dir) else { continue };
+                let Ok(read) = std::fs::read_dir(&dir) else {
+                    continue;
+                };
                 let mut entries: Vec<_> = read.flatten().collect();
                 entries.sort_by_key(|e| e.file_name().to_string_lossy().to_lowercase());
                 let mut subdirs = Vec::new();
@@ -236,7 +263,8 @@ impl Notes {
                     if name.to_lowercase().contains(&needle) {
                         hits.push(format!("{shown}: (file name matches)\n"));
                     }
-                    if meta.len() <= MAX_SEARCH_FILE_BYTES && self.inside_root(root, &entry.path()) {
+                    if meta.len() <= MAX_SEARCH_FILE_BYTES && self.inside_root(root, &entry.path())
+                    {
                         if let Ok(bytes) = std::fs::read(entry.path()) {
                             let text = String::from_utf8_lossy(&bytes);
                             for (i, line) in text.lines().enumerate() {
@@ -247,7 +275,9 @@ impl Notes {
                         }
                     }
                     for hit in hits {
-                        if found >= MAX_SEARCH_RESULTS || out.len() + hit.len() > MAX_SEARCH_OUTPUT_BYTES {
+                        if found >= MAX_SEARCH_RESULTS
+                            || out.len() + hit.len() > MAX_SEARCH_OUTPUT_BYTES
+                        {
                             stopped = Some("result limit reached");
                             break 'roots;
                         }
@@ -264,7 +294,9 @@ impl Notes {
             return Ok(format!("No matches for \"{query}\"."));
         }
         if let Some(why) = stopped {
-            out.push_str(&format!("(search stopped: {why}; narrow the query or pass `folder`)\n"));
+            out.push_str(&format!(
+                "(search stopped: {why}; narrow the query or pass `folder`)\n"
+            ));
         }
         Ok(out)
     }
@@ -281,14 +313,22 @@ impl Notes {
         if !meta.is_file() {
             return Err("That is a folder, not a note. Use list_notes.".into());
         }
-        if !is_note_name(&real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()) {
+        if !is_note_name(
+            &real
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        ) {
             return Err("Only .md, .markdown and .txt notes can be read.".into());
         }
         let mut buf = Vec::new();
         {
             use std::io::Read;
-            let file = std::fs::File::open(&real).map_err(|e| format!("Can't read this note: {e}"))?;
-            file.take(MAX_READ_BYTES as u64 + 1).read_to_end(&mut buf).map_err(|e| format!("Can't read this note: {e}"))?;
+            let file =
+                std::fs::File::open(&real).map_err(|e| format!("Can't read this note: {e}"))?;
+            file.take(MAX_READ_BYTES as u64 + 1)
+                .read_to_end(&mut buf)
+                .map_err(|e| format!("Can't read this note: {e}"))?;
         }
         let cut = buf.len() > MAX_READ_BYTES;
         buf.truncate(MAX_READ_BYTES);
@@ -297,7 +337,11 @@ impl Notes {
             text = rest.to_string();
         }
         if cut {
-            text.push_str(&format!("\n\n[Cut at {} KB; the note is {} bytes long.]\n", MAX_READ_BYTES / 1024, meta.len()));
+            text.push_str(&format!(
+                "\n\n[Cut at {} KB; the note is {} bytes long.]\n",
+                MAX_READ_BYTES / 1024,
+                meta.len()
+            ));
         }
         Ok(text)
     }
@@ -308,7 +352,12 @@ impl Notes {
         self.roots
             .iter()
             .find(|r| r.label.eq_ignore_ascii_case(name.trim()))
-            .ok_or_else(|| format!("No notes folder named \"{name}\". Folders: {}.", self.labels().join(", ")))
+            .ok_or_else(|| {
+                format!(
+                    "No notes folder named \"{name}\". Folders: {}.",
+                    self.labels().join(", ")
+                )
+            })
     }
 
     /// The canonical path of the file `input` names, inside an allowed folder.
@@ -330,10 +379,18 @@ impl Notes {
             return Ok(real);
         }
         let segments = split_segments(input)?;
-        let (root, rest): (&Root, Vec<&str>) = match segments.first().and_then(|f| self.roots.iter().find(|r| r.label.eq_ignore_ascii_case(f))) {
+        let (root, rest): (&Root, Vec<&str>) = match segments
+            .first()
+            .and_then(|f| self.roots.iter().find(|r| r.label.eq_ignore_ascii_case(f)))
+        {
             Some(root) => (root, segments[1..].to_vec()),
             None if self.roots.len() == 1 => (&self.roots[0], segments.clone()),
-            None => return Err(format!("Start the path with a folder name: {}.", self.labels().join(", "))),
+            None => {
+                return Err(format!(
+                    "Start the path with a folder name: {}.",
+                    self.labels().join(", ")
+                ))
+            }
         };
         self.resolve_in(root, &rest.join("/"))
     }
@@ -357,7 +414,9 @@ impl Notes {
         if !is_inside(&key, &root.key) {
             return Err("That path is outside the notes folders.".into());
         }
-        let rel = real.strip_prefix(&root.path).map_err(|_| "That path is outside the notes folders.".to_string())?;
+        let rel = real
+            .strip_prefix(&root.path)
+            .map_err(|_| "That path is outside the notes folders.".to_string())?;
         let mut cur = root.path.clone();
         for comp in rel.components() {
             cur.push(comp);
@@ -377,7 +436,9 @@ impl Notes {
     /// Is `path` (an existing item found by the walk) still inside `root`
     /// after the file system resolves it?
     fn inside_root(&self, root: &Root, path: &Path) -> bool {
-        std::fs::canonicalize(path).map(|p| is_inside(&comparable(&p), &root.key)).unwrap_or(false)
+        std::fs::canonicalize(path)
+            .map(|p| is_inside(&comparable(&p), &root.key))
+            .unwrap_or(false)
     }
 }
 
@@ -420,13 +481,18 @@ fn comparable(path: &Path) -> String {
 
 /// Is `path` the folder or below it (both from [`comparable`])?
 fn is_inside(path: &str, folder: &str) -> bool {
-    path == folder || path.strip_prefix(folder).is_some_and(|rest| rest.starts_with('\\'))
+    path == folder
+        || path
+            .strip_prefix(folder)
+            .is_some_and(|rest| rest.starts_with('\\'))
 }
 
 /// `X:\...` or `X:/...`, or a path that starts with a separator.
 fn is_absolute_input(input: &str) -> bool {
     let b = input.as_bytes();
-    (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':') || input.starts_with('/') || input.starts_with('\\')
+    (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':')
+        || input.starts_with('/')
+        || input.starts_with('\\')
 }
 
 /// An absolute input is accepted only as `X:\dir\file` or `X:/dir/file`, with
@@ -434,9 +500,15 @@ fn is_absolute_input(input: &str) -> bool {
 /// and a bare `\dir` are refused.
 fn absolute_check(input: &str) -> Res<String> {
     let b = input.as_bytes();
-    let drive_form = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
+    let drive_form = b.len() >= 3
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b':'
+        && (b[2] == b'\\' || b[2] == b'/');
     // On macOS and Linux a plain `/dir/file` is the absolute form (never `//` or a backslash).
-    let unix_form = cfg!(not(windows)) && b.first() == Some(&b'/') && b.get(1) != Some(&b'/') && !input.contains('\\');
+    let unix_form = cfg!(not(windows))
+        && b.first() == Some(&b'/')
+        && b.get(1) != Some(&b'/')
+        && !input.contains('\\');
     let rest = if drive_form {
         &input[3..]
     } else if unix_form {
@@ -444,10 +516,16 @@ fn absolute_check(input: &str) -> Res<String> {
     } else {
         return Err("Use a path inside a notes folder (`<folder>/<file>`).".into());
     };
-    for (i, seg) in rest.split(['\\', '/']).filter(|s| !s.is_empty() && *s != ".").enumerate() {
+    for (i, seg) in rest
+        .split(['\\', '/'])
+        .filter(|s| !s.is_empty() && *s != ".")
+        .enumerate()
+    {
         // Whatever starts with `$` at a drive's root belongs to the system.
         if i == 0 && seg.starts_with('$') {
-            return Err(format!("\"{seg}\" is not allowed: system names are not available."));
+            return Err(format!(
+                "\"{seg}\" is not allowed: system names are not available."
+            ));
         }
         if let Some(why) = segment_problem(seg) {
             return Err(format!("\"{seg}\" is not allowed: {why}."));
@@ -483,7 +561,10 @@ pub fn segment_problem(seg: &str) -> Option<&'static str> {
     if is_ntfs_system_name(seg) {
         return Some("system names are not available");
     }
-    if seg.chars().any(|c| c.is_control() || matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|')) {
+    if seg
+        .chars()
+        .any(|c| c.is_control() || matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+    {
         return Some("it has a character that is not allowed in a name");
     }
     if seg.ends_with('.') || seg.ends_with(' ') {
@@ -500,9 +581,29 @@ pub fn segment_problem(seg: &str) -> Option<&'static str> {
 /// ordinary files.
 fn is_ntfs_system_name(seg: &str) -> bool {
     const NAMES: [&str; 23] = [
-        "$MFT", "$MFTMirr", "$LogFile", "$Volume", "$AttrDef", "$Bitmap", "$Boot", "$BadClus", "$Secure", "$UpCase",
-        "$Extend", "$Quota", "$ObjId", "$Reparse", "$RmMetadata", "$Txf", "$TxfLog", "$Recycle.Bin", "$WinREAgent",
-        "$SysReset", "$Windows.~BT", "$Windows.~WS", "$GetCurrent",
+        "$MFT",
+        "$MFTMirr",
+        "$LogFile",
+        "$Volume",
+        "$AttrDef",
+        "$Bitmap",
+        "$Boot",
+        "$BadClus",
+        "$Secure",
+        "$UpCase",
+        "$Extend",
+        "$Quota",
+        "$ObjId",
+        "$Reparse",
+        "$RmMetadata",
+        "$Txf",
+        "$TxfLog",
+        "$Recycle.Bin",
+        "$WinREAgent",
+        "$SysReset",
+        "$Windows.~BT",
+        "$Windows.~WS",
+        "$GetCurrent",
     ];
     NAMES.iter().any(|n| seg.eq_ignore_ascii_case(n))
 }
@@ -510,8 +611,16 @@ fn is_ntfs_system_name(seg: &str) -> bool {
 /// `CON`, `PRN`, `AUX`, `NUL`, `COM1`..`COM9`, `LPT1`..`LPT9` (also with the
 /// superscript digits Windows treats the same, and with any extension).
 fn is_device_name(seg: &str) -> bool {
-    let stem = seg.split('.').next().unwrap_or("").trim_end().to_uppercase();
-    if matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$") {
+    let stem = seg
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end()
+        .to_uppercase();
+    if matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) {
         return true;
     }
     for prefix in ["COM", "LPT"] {
@@ -588,14 +697,27 @@ mod tests {
 
     impl Tree {
         fn new(tag: &str) -> Tree {
-            let dir = std::env::temp_dir().join(format!("nexq-vault-{tag}-{}", uuid::Uuid::new_v4()));
+            let dir =
+                std::env::temp_dir().join(format!("nexq-vault-{tag}-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(dir.join("notes").join("sub")).unwrap();
             std::fs::create_dir_all(dir.join("notes").join(".obsidian")).unwrap();
             std::fs::create_dir_all(dir.join("outside")).unwrap();
-            std::fs::write(dir.join("notes").join("a.md"), "Alpha plan\nProject Falcon launches on March 3.\n").unwrap();
-            std::fs::write(dir.join("notes").join("sub").join("b.txt"), "falcon budget is two million").unwrap();
+            std::fs::write(
+                dir.join("notes").join("a.md"),
+                "Alpha plan\nProject Falcon launches on March 3.\n",
+            )
+            .unwrap();
+            std::fs::write(
+                dir.join("notes").join("sub").join("b.txt"),
+                "falcon budget is two million",
+            )
+            .unwrap();
             std::fs::write(dir.join("notes").join("sub").join("pic.png"), "x").unwrap();
-            std::fs::write(dir.join("notes").join(".obsidian").join("app.md"), "falcon hidden").unwrap();
+            std::fs::write(
+                dir.join("notes").join(".obsidian").join("app.md"),
+                "falcon hidden",
+            )
+            .unwrap();
             std::fs::write(dir.join("notes").join(".hidden.md"), "falcon hidden").unwrap();
             std::fs::write(dir.join("outside").join("secret.md"), "falcon secret").unwrap();
             Tree(dir)
@@ -627,7 +749,10 @@ mod tests {
         );
         assert_eq!(notes.labels(), ["notes"]);
         assert_eq!(skipped.len(), 2, "{skipped:?}");
-        assert!(skipped.iter().any(|s| s.contains("private")) && skipped.iter().any(|s| s.contains("not found")));
+        assert!(
+            skipped.iter().any(|s| s.contains("private"))
+                && skipped.iter().any(|s| s.contains("not found"))
+        );
         // A drive root is refused by the real folder check.
         let (none, why) = Notes::open(&[PathBuf::from("C:\\")]);
         assert!(none.is_empty() && !why.is_empty());
@@ -647,9 +772,15 @@ mod tests {
         let out = t.notes().list(None, None).unwrap();
         assert!(out.contains("file  notes/a.md"), "{out}");
         assert!(out.contains("dir   notes/sub/"), "{out}");
-        assert!(!out.contains(".obsidian") && !out.contains(".hidden"), "{out}");
+        assert!(
+            !out.contains(".obsidian") && !out.contains(".hidden"),
+            "{out}"
+        );
         let sub = t.notes().list(None, Some("sub")).unwrap();
-        assert!(sub.contains("notes/sub/b.txt") && !sub.contains("pic.png"), "{sub}");
+        assert!(
+            sub.contains("notes/sub/b.txt") && !sub.contains("pic.png"),
+            "{sub}"
+        );
         // With several folders the folders are listed first.
         let two = t.two();
         assert!(two.list(None, None).unwrap().contains("- wiki"));
@@ -673,27 +804,46 @@ mod tests {
     fn search_finds_lines_case_insensitively_and_skips_hidden_and_outside() {
         let t = Tree::new("search");
         let out = t.notes().search("FALCON", None).unwrap();
-        assert!(out.contains("notes/a.md:2: Project Falcon launches on March 3."), "{out}");
+        assert!(
+            out.contains("notes/a.md:2: Project Falcon launches on March 3."),
+            "{out}"
+        );
         assert!(out.contains("notes/sub/b.txt:1:"), "{out}");
         assert!(!out.contains("hidden") && !out.contains("secret"), "{out}");
-        assert!(t.notes().search("zzz-nothing", None).unwrap().contains("No matches"));
+        assert!(t
+            .notes()
+            .search("zzz-nothing", None)
+            .unwrap()
+            .contains("No matches"));
         assert!(t.notes().search("   ", None).is_err());
         // A file name counts too.
-        assert!(t.notes().search("b.txt", None).unwrap().contains("file name matches"));
+        assert!(t
+            .notes()
+            .search("b.txt", None)
+            .unwrap()
+            .contains("file name matches"));
         // One folder of two.
         let two = t.two();
         let wiki = two.search("falcon", Some("wiki")).unwrap();
-        assert!(wiki.contains("wiki/w.md") && !wiki.contains("notes/"), "{wiki}");
+        assert!(
+            wiki.contains("wiki/w.md") && !wiki.contains("notes/"),
+            "{wiki}"
+        );
         assert!(two.search("falcon", None).unwrap().contains("notes/a.md"));
     }
 
     #[test]
     fn search_results_are_capped() {
         let t = Tree::new("searchcap");
-        let many: String = (0..MAX_SEARCH_RESULTS * 3).map(|i| format!("line {i} needle\n")).collect();
+        let many: String = (0..MAX_SEARCH_RESULTS * 3)
+            .map(|i| format!("line {i} needle\n"))
+            .collect();
         std::fs::write(t.0.join("notes").join("many.md"), many).unwrap();
         let out = t.notes().search("needle", None).unwrap();
-        assert!(out.lines().filter(|l| l.contains(": line")).count() <= MAX_SEARCH_RESULTS, "{out}");
+        assert!(
+            out.lines().filter(|l| l.contains(": line")).count() <= MAX_SEARCH_RESULTS,
+            "{out}"
+        );
         assert!(out.contains("search stopped"), "{out}");
         assert!(out.len() <= MAX_SEARCH_OUTPUT_BYTES + 200);
     }
@@ -709,8 +859,15 @@ mod tests {
         assert!(n.read("./sub//b.txt").unwrap().contains("two million"));
         // An absolute path inside the folder is fine.
         let abs = t.0.join("notes").join("a.md");
-        assert!(n.read(&abs.to_string_lossy()).unwrap().starts_with("Alpha plan"));
-        std::fs::write(t.0.join("notes").join("big.md"), "x".repeat(MAX_READ_BYTES + 1000)).unwrap();
+        assert!(n
+            .read(&abs.to_string_lossy())
+            .unwrap()
+            .starts_with("Alpha plan"));
+        std::fs::write(
+            t.0.join("notes").join("big.md"),
+            "x".repeat(MAX_READ_BYTES + 1000),
+        )
+        .unwrap();
         let big = n.read("big.md").unwrap();
         assert!(big.contains("Cut at") && big.len() < MAX_READ_BYTES + 200);
         // A BOM is dropped, a folder or a non-note file is refused.
@@ -775,7 +932,9 @@ mod tests {
         // A sibling whose name starts like the folder's is not inside it.
         std::fs::create_dir_all(t.0.join("notes-extra")).unwrap();
         std::fs::write(t.0.join("notes-extra").join("x.md"), "x").unwrap();
-        assert!(n.read(&t.0.join("notes-extra").join("x.md").to_string_lossy()).is_err());
+        assert!(n
+            .read(&t.0.join("notes-extra").join("x.md").to_string_lossy())
+            .is_err());
     }
 
     #[cfg(windows)]
@@ -803,7 +962,10 @@ mod tests {
         assert!(n.read("escape/secret.md").is_err());
         assert!(n.read(&link.join("secret.md").to_string_lossy()).is_err());
         assert!(n.list(None, Some("escape")).is_err());
-        assert!(n.search("secret", Some("notes")).unwrap().contains("No matches"));
+        assert!(n
+            .search("secret", Some("notes"))
+            .unwrap()
+            .contains("No matches"));
         // And it is not listed at all.
         assert!(!n.list(None, None).unwrap().contains("escape"));
         // A junction that stays inside the folder reads fine but is not listed or walked.
@@ -819,13 +981,29 @@ mod tests {
     #[test]
     fn ordinary_dollar_names_are_notes_but_ntfs_metafiles_are_not() {
         let t = Tree::new("dollar");
-        std::fs::write(t.0.join("notes").join("$100 budget.md"), "falcon budget $100").unwrap();
+        std::fs::write(
+            t.0.join("notes").join("$100 budget.md"),
+            "falcon budget $100",
+        )
+        .unwrap();
         let n = t.notes();
         assert!(n.list(None, None).unwrap().contains("$100 budget.md"));
         assert!(n.read("$100 budget.md").unwrap().contains("$100"));
-        assert!(n.read(&t.0.join("notes").join("$100 budget.md").to_string_lossy()).is_ok());
-        assert!(n.search("budget $100", None).unwrap().contains("$100 budget.md:1"));
-        for bad in ["$MFT", "$mft", "$Extend/x.md", "sub/$Recycle.Bin/x.md", "$RECYCLE.BIN/x.md", "$Secure"] {
+        assert!(n
+            .read(&t.0.join("notes").join("$100 budget.md").to_string_lossy())
+            .is_ok());
+        assert!(n
+            .search("budget $100", None)
+            .unwrap()
+            .contains("$100 budget.md:1"));
+        for bad in [
+            "$MFT",
+            "$mft",
+            "$Extend/x.md",
+            "sub/$Recycle.Bin/x.md",
+            "$RECYCLE.BIN/x.md",
+            "$Secure",
+        ] {
             assert!(n.read(bad).is_err(), "{bad}");
         }
         assert!(segment_problem("$Volume").is_some() && segment_problem("$Volumes.md").is_none());
@@ -851,8 +1029,14 @@ mod tests {
         let n = t.notes();
         let rel_path = format!("{}/deep.md", rel.join("/"));
         assert!(n.read(&rel_path).unwrap().contains("deep note"));
-        assert!(n.read(&dir.join("deep.md").to_string_lossy()).unwrap().contains("deep note"));
-        assert!(n.list(None, Some(&rel.join("/"))).unwrap().contains("deep.md"));
+        assert!(n
+            .read(&dir.join("deep.md").to_string_lossy())
+            .unwrap()
+            .contains("deep note"));
+        assert!(n
+            .list(None, Some(&rel.join("/")))
+            .unwrap()
+            .contains("deep.md"));
         assert!(n.search("deep note", None).unwrap().contains("deep.md:1"));
         // The shown path is still plain, never `\\?\`.
         assert!(!n.search("deep note", None).unwrap().contains("\\\\?\\"));
@@ -878,7 +1062,12 @@ mod tests {
         let t = Tree::new("attr");
         let file = t.0.join("notes").join("quiet.md");
         std::fs::write(&file, "falcon quiet").unwrap();
-        let ok = std::process::Command::new("attrib").arg("+h").arg(&file).output().map(|o| o.status.success()).unwrap_or(false);
+        let ok = std::process::Command::new("attrib")
+            .arg("+h")
+            .arg(&file)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
         if !ok {
             return;
         }
@@ -890,7 +1079,16 @@ mod tests {
 
     #[test]
     fn device_names_are_recognised_with_extensions_and_case() {
-        for name in ["CON", "con", "Nul.txt", "aux.tar.gz", "COM1", "lpt3.md", "COM0", "CONIN$"] {
+        for name in [
+            "CON",
+            "con",
+            "Nul.txt",
+            "aux.tar.gz",
+            "COM1",
+            "lpt3.md",
+            "COM0",
+            "CONIN$",
+        ] {
             assert!(is_device_name(name), "{name}");
         }
         for name in ["console.md", "COM10", "com", "notes.md", "LPT", "nul2"] {
@@ -901,6 +1099,10 @@ mod tests {
     #[test]
     fn nothing_is_available_without_folders() {
         let none = Notes::default();
-        assert!(none.list(None, None).is_err() && none.search("x", None).is_err() && none.read("a.md").is_err());
+        assert!(
+            none.list(None, None).is_err()
+                && none.search("x", None).is_err()
+                && none.read("a.md").is_err()
+        );
     }
 }

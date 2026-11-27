@@ -44,6 +44,17 @@ describe("AIResponsePanel", () => {
     expect(container.textContent).toContain("[Image: x]");
   });
 
+  it("uses adaptive answer typography without showing text adjustment controls", () => {
+    const { container } = render(<AIResponsePanel />);
+    answer("Assist", "A readable answer");
+    expect(container.querySelector('[aria-label="Larger AI text"]')).toBeNull();
+    expect(container.querySelector('[aria-label="AI text color"]')).toBeNull();
+    const answerBody = container.querySelector(".prose");
+    expect(answerBody?.className).toContain("text-[clamp(0.8rem,1.1vw,1rem)]");
+    expect(answerBody?.className).toContain("leading-[1.55]");
+    expect(answerBody?.className).toContain("px-[clamp(0.5rem,1.4vw,1.25rem)]");
+  });
+
   it("Current is the newest answer and is not repeated as a tab", () => {
     render(<AIResponsePanel />);
     answer("Assist", "first");

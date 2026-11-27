@@ -30,10 +30,18 @@ fn tx_err(e: impl std::fmt::Display) -> String {
 /// loading (`loaded`). A default or failed-load push (empty, not loaded) sets
 /// nothing, so the real config that follows is still seeded. Nothing else
 /// happens on a push: memberships are never removed here.
-pub fn sync_with_config(conn: &Connection, cfg: &PersonalSourcesConfig, loaded: bool) -> Result<(), String> {
+pub fn sync_with_config(
+    conn: &Connection,
+    cfg: &PersonalSourcesConfig,
+    loaded: bool,
+) -> Result<(), String> {
     let tx = crate::db::immediate_tx(conn).map_err(tx_err)?;
     let seeded: bool = tx
-        .query_row("SELECT EXISTS(SELECT 1 FROM app_state WHERE key = ?1)", params![MARKER], |row| row.get(0))
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM app_state WHERE key = ?1)",
+            params![MARKER],
+            |row| row.get(0),
+        )
         .map_err(tx_err)?;
     let real = loaded || !config_ids(cfg).is_empty();
     if !seeded && real {
@@ -45,15 +53,28 @@ pub fn sync_with_config(conn: &Connection, cfg: &PersonalSourcesConfig, loaded: 
             )
             .map_err(tx_err)?;
         }
-        tx.execute("INSERT OR REPLACE INTO app_state (key, value) VALUES (?1, '1')", params![MARKER]).map_err(tx_err)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO app_state (key, value) VALUES (?1, '1')",
+            params![MARKER],
+        )
+        .map_err(tx_err)?;
     }
     tx.commit().map_err(tx_err)
 }
 
 fn config_ids(cfg: &PersonalSourcesConfig) -> Vec<(ItemKind, String)> {
-    let folders = cfg.notes_folders.iter().map(|f| (ItemKind::Folder, f.id.clone()));
-    let servers = cfg.mcp_servers.iter().map(|s| (ItemKind::Server, s.id.clone()));
-    folders.chain(servers).filter(|(_, id)| !id.is_empty()).collect()
+    let folders = cfg
+        .notes_folders
+        .iter()
+        .map(|f| (ItemKind::Folder, f.id.clone()));
+    let servers = cfg
+        .mcp_servers
+        .iter()
+        .map(|s| (ItemKind::Server, s.id.clone()));
+    folders
+        .chain(servers)
+        .filter(|(_, id)| !id.is_empty())
+        .collect()
 }
 
 /// What the user's own action asks to file: the workspace and the ids of the
@@ -85,7 +106,11 @@ pub fn check_filing(conn: &Connection, filing: &Filing) -> Result<(), String> {
 /// item already in another workspace is linked here too: a server or folder
 /// exists once in Settings, and adding what is already there only links it.
 /// Returns how many were newly filed here.
-pub fn file_explicit(conn: &Connection, cfg: &PersonalSourcesConfig, filing: &Filing) -> Result<usize, String> {
+pub fn file_explicit(
+    conn: &Connection,
+    cfg: &PersonalSourcesConfig,
+    filing: &Filing,
+) -> Result<usize, String> {
     check_filing(conn, filing)?;
     let mut filed = 0;
     for item in &filing.items {
@@ -134,14 +159,24 @@ pub fn remove_item_everywhere(
 /// and "search its text" win, the kept label is kept unless it has none). What
 /// was indexed from a dropped folder goes; the kept one's index stays.
 /// Idempotent. Returns how many rows moved or merged.
-pub fn repoint_duplicates(conn: &Connection, kind: ItemKind, map: &[(String, String)]) -> Result<usize, String> {
+pub fn repoint_duplicates(
+    conn: &Connection,
+    kind: ItemKind,
+    map: &[(String, String)],
+) -> Result<usize, String> {
     repoint_all(conn, &[(kind, map)])
 }
 
 /// [`repoint_duplicates`] for several kinds at once, in one transaction: either
 /// every dropped item's links move or none does.
-pub fn repoint_all(conn: &Connection, maps: &[(ItemKind, &[(String, String)])]) -> Result<usize, String> {
-    if maps.iter().all(|(kind, map)| map.is_empty() || *kind == ItemKind::Document) {
+pub fn repoint_all(
+    conn: &Connection,
+    maps: &[(ItemKind, &[(String, String)])],
+) -> Result<usize, String> {
+    if maps
+        .iter()
+        .all(|(kind, map)| map.is_empty() || *kind == ItemKind::Document)
+    {
         return Ok(0);
     }
     let tx = crate::db::immediate_tx(conn).map_err(tx_err)?;
@@ -168,7 +203,9 @@ fn repoint_in(tx: &Connection, kind: ItemKind, map: &[(String, String)]) -> Resu
                 .prepare("SELECT workspace_id, label, pinned, index_opt_in, added_at FROM workspace_items WHERE kind = ?1 AND ref_id = ?2")
                 .map_err(tx_err)?;
             let found = stmt
-                .query_map(params![kind_text, dropped], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
+                .query_map(params![kind_text, dropped], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                })
                 .map_err(tx_err)?;
             found.collect::<Result<_, _>>().map_err(tx_err)?
         };
@@ -214,8 +251,11 @@ fn repoint_in(tx: &Connection, kind: ItemKind, map: &[(String, String)]) -> Resu
                         params![kept, dropped],
                     )
                     .map_err(tx_err)?;
-                tx.execute("DELETE FROM workspace_chat_item_prefs WHERE kind = 'folder' AND ref_id = ?1", params![dropped])
-                    .map_err(tx_err)?;
+                tx.execute(
+                    "DELETE FROM workspace_chat_item_prefs WHERE kind = 'folder' AND ref_id = ?1",
+                    params![dropped],
+                )
+                .map_err(tx_err)?;
             }
             super::purge::purge_search_rows(tx, "folder", dropped)?;
         }
@@ -241,15 +281,37 @@ mod tests {
 
     fn cfg(folders: &[&str], servers: &[&str]) -> PersonalSourcesConfig {
         PersonalSourcesConfig {
-            notes_folders: folders.iter().map(|id| NotesFolder { id: (*id).into(), label: (*id).into(), path: "x".into(), enabled: true }).collect(),
-            mcp_servers: servers.iter().map(|id| McpServer { id: (*id).into(), key: (*id).into(), label: (*id).into(), enabled: true, ..Default::default() }).collect(),
+            notes_folders: folders
+                .iter()
+                .map(|id| NotesFolder {
+                    id: (*id).into(),
+                    label: (*id).into(),
+                    path: "x".into(),
+                    enabled: true,
+                })
+                .collect(),
+            mcp_servers: servers
+                .iter()
+                .map(|id| McpServer {
+                    id: (*id).into(),
+                    key: (*id).into(),
+                    label: (*id).into(),
+                    enabled: true,
+                    ..Default::default()
+                })
+                .collect(),
             ..Default::default()
         }
     }
 
     fn members(conn: &Connection) -> Vec<(String, String, String)> {
-        let mut stmt = conn.prepare("SELECT workspace_id, kind, ref_id FROM workspace_items ORDER BY kind, ref_id").unwrap();
-        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap().map(Result::unwrap).collect()
+        let mut stmt = conn
+            .prepare("SELECT workspace_id, kind, ref_id FROM workspace_items ORDER BY kind, ref_id")
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
     }
 
     #[test]
@@ -280,7 +342,10 @@ mod tests {
         let conn = memory_db();
         sync_with_config(&conn, &PersonalSourcesConfig::default(), true).unwrap();
         sync_with_config(&conn, &cfg(&["f1"], &[]), true).unwrap();
-        assert!(members(&conn).is_empty(), "an item added after the first loaded push is not seeded");
+        assert!(
+            members(&conn).is_empty(),
+            "an item added after the first loaded push is not seeded"
+        );
     }
 
     #[test]
@@ -303,14 +368,23 @@ mod tests {
         let conn = memory_db();
         sync_with_config(&conn, &cfg(&["f1", "f2"], &[]), true).unwrap();
         // Still configured: refused.
-        assert!(remove_item_everywhere(&conn, &cfg(&["f1", "f2"], &[]), ItemKind::Folder, "f1").is_err());
+        assert!(
+            remove_item_everywhere(&conn, &cfg(&["f1", "f2"], &[]), ItemKind::Folder, "f1")
+                .is_err()
+        );
         assert_eq!(members(&conn).len(), 2);
         remove_item_everywhere(&conn, &cfg(&["f2"], &[]), ItemKind::Folder, "f1").unwrap();
-        assert_eq!(members(&conn), vec![("general".into(), "folder".into(), "f2".into())]);
+        assert_eq!(
+            members(&conn),
+            vec![("general".into(), "folder".into(), "f2".into())]
+        );
     }
 
     fn item(kind: ItemKind, id: &str) -> FilingItem {
-        FilingItem { kind, ref_id: id.into() }
+        FilingItem {
+            kind,
+            ref_id: id.into(),
+        }
     }
 
     #[test]
@@ -332,9 +406,16 @@ mod tests {
             ],
         };
         assert_eq!(file_explicit(&conn, &config, &filing).unwrap(), 3);
-        let mine: Vec<_> = members(&conn).into_iter().filter(|m| m.0 == a).map(|m| m.2).collect();
+        let mine: Vec<_> = members(&conn)
+            .into_iter()
+            .filter(|m| m.0 == a)
+            .map(|m| m.2)
+            .collect();
         assert_eq!(mine, vec!["f1", "f2", "s1"]);
-        assert!(members(&conn).contains(&("general".into(), "folder".into(), "f1".into())), "General keeps it");
+        assert!(
+            members(&conn).contains(&("general".into(), "folder".into(), "f1".into())),
+            "General keeps it"
+        );
         // Filing again changes nothing.
         assert_eq!(file_explicit(&conn, &config, &filing).unwrap(), 0);
     }
@@ -344,7 +425,10 @@ mod tests {
         let conn = memory_db();
         let a = new_ws(&conn, "A", false, false);
         let config = cfg(&["f1", "f2"], &[]);
-        let filing = Filing { workspace_id: a.clone(), items: vec![item(ItemKind::Folder, "f1")] };
+        let filing = Filing {
+            workspace_id: a.clone(),
+            items: vec![item(ItemKind::Folder, "f1")],
+        };
         file_explicit(&conn, &config, &filing).unwrap();
         assert!(members(&conn).iter().all(|m| m.2 != "f2"));
     }
@@ -356,7 +440,10 @@ mod tests {
         crate::workspace::store::archive_workspace(&conn, &a, true).unwrap();
         let config = cfg(&["f1"], &[]);
         for ws in [a, "nope".to_string()] {
-            let filing = Filing { workspace_id: ws, items: vec![item(ItemKind::Folder, "f1")] };
+            let filing = Filing {
+                workspace_id: ws,
+                items: vec![item(ItemKind::Folder, "f1")],
+            };
             assert!(file_explicit(&conn, &config, &filing).is_err());
             assert!(check_filing(&conn, &filing).is_err());
         }
@@ -365,27 +452,49 @@ mod tests {
 
     #[test]
     fn the_filing_shape_matches_what_the_webview_sends() {
-        let filing: Filing = serde_json::from_str(r#"{"workspace_id":"w","items":[{"kind":"folder","ref_id":"f"}]}"#).unwrap();
+        let filing: Filing = serde_json::from_str(
+            r#"{"workspace_id":"w","items":[{"kind":"folder","ref_id":"f"}]}"#,
+        )
+        .unwrap();
         assert_eq!((filing.workspace_id.as_str(), filing.items.len()), ("w", 1));
     }
 
     #[test]
     fn a_dropped_duplicate_is_replaced_by_the_one_kept_in_every_workspace() {
         let conn = memory_db();
-        let (a, b) = (new_ws(&conn, "A", false, false), new_ws(&conn, "B", false, false));
+        let (a, b) = (
+            new_ws(&conn, "A", false, false),
+            new_ws(&conn, "B", false, false),
+        );
         file(&conn, &a, "server", "keep");
         file(&conn, &a, "server", "drop");
         file(&conn, &b, "server", "drop");
         file(&conn, &b, "folder", "drop");
         let map = vec![("drop".to_string(), "keep".to_string())];
-        assert_eq!(repoint_duplicates(&conn, ItemKind::Server, &map).unwrap(), 2);
+        assert_eq!(
+            repoint_duplicates(&conn, ItemKind::Server, &map).unwrap(),
+            2
+        );
         let all = members(&conn);
         assert!(all.iter().all(|m| !(m.1 == "server" && m.2 == "drop")));
-        assert!(all.contains(&(a.clone(), "server".into(), "keep".into())) && all.contains(&(b.clone(), "server".into(), "keep".into())));
-        assert_eq!(all.iter().filter(|m| m.0 == a && m.1 == "server").count(), 1, "two rows became one");
-        assert!(all.contains(&(b, "folder".into(), "drop".into())), "another kind is not touched");
+        assert!(
+            all.contains(&(a.clone(), "server".into(), "keep".into()))
+                && all.contains(&(b.clone(), "server".into(), "keep".into()))
+        );
+        assert_eq!(
+            all.iter().filter(|m| m.0 == a && m.1 == "server").count(),
+            1,
+            "two rows became one"
+        );
+        assert!(
+            all.contains(&(b, "folder".into(), "drop".into())),
+            "another kind is not touched"
+        );
         // Again: nothing moves.
-        assert_eq!(repoint_duplicates(&conn, ItemKind::Server, &map).unwrap(), 0);
+        assert_eq!(
+            repoint_duplicates(&conn, ItemKind::Server, &map).unwrap(),
+            0
+        );
     }
 
     #[test]

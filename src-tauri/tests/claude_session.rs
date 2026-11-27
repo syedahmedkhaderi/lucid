@@ -5,11 +5,11 @@
 //! environment and parallel tests cannot share process env vars.
 
 use lucid_lib::llm::cli_agent::command::{SessionConfig, SourcesLaunch};
-use lucid_lib::llm::cli_agent::CliAgentKind;
 use lucid_lib::llm::cli_agent::detect::find_claude_binary;
 use lucid_lib::llm::cli_agent::models::probe_models;
 use lucid_lib::llm::cli_agent::protocol::AgentErrorKind;
 use lucid_lib::llm::cli_agent::session::{AgentError, ClaudeSession, SessionTimeouts};
+use lucid_lib::llm::cli_agent::CliAgentKind;
 use lucid_lib::llm::provider::CancelToken;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -64,7 +64,12 @@ fn cargo_profile_dir() -> PathBuf {
     std::env::current_exe()
         .unwrap()
         .ancestors()
-        .find(|path| matches!(path.file_name().and_then(|name| name.to_str()), Some("debug" | "release")))
+        .find(|path| {
+            matches!(
+                path.file_name().and_then(|name| name.to_str()),
+                Some("debug" | "release")
+            )
+        })
         .expect("Cargo profile directory in test executable path")
         .to_path_buf()
 }
@@ -91,16 +96,29 @@ fn cfg(mode: &str, record: Option<&Path>) -> SessionConfig {
 #[tokio::test]
 async fn private_mcp_config_file_is_deleted_once_init_arrived() {
     let json = r#"{"mcpServers":{"a":{"command":"x","env":{"API_KEY":"va"}}}}"#;
-    let sources = SourcesLaunch { mcp_config_json: Some(json.into()), ..Default::default() };
-    let with = |mode| SessionConfig { sources: Some(sources.clone()), ..cfg(mode, None) };
+    let sources = SourcesLaunch {
+        mcp_config_json: Some(json.into()),
+        ..Default::default()
+    };
+    let with = |mode| SessionConfig {
+        sources: Some(sources.clone()),
+        ..cfg(mode, None)
+    };
 
-    let closed = ClaudeSession::spawn(fake_bin(), with("normal")).await.unwrap();
-    let path = closed.mcp_config_path().expect("mcp config path").to_path_buf();
+    let closed = ClaudeSession::spawn(fake_bin(), with("normal"))
+        .await
+        .unwrap();
+    let path = closed
+        .mcp_config_path()
+        .expect("mcp config path")
+        .to_path_buf();
     assert!(!path.exists(), "secrets file left on disk after init");
     closed.close().await;
     assert!(!path.exists(), "file left after close");
 
-    let dropped = ClaudeSession::spawn(fake_bin(), with("normal")).await.unwrap();
+    let dropped = ClaudeSession::spawn(fake_bin(), with("normal"))
+        .await
+        .unwrap();
     let path = dropped.mcp_config_path().unwrap().to_path_buf();
     drop(dropped);
     assert!(!path.exists(), "file left after drop");
@@ -125,18 +143,38 @@ async fn failed_mcp_servers_fail_the_start_only_when_nothing_is_usable() {
     };
     let with = |mcp: &str, dirs: Vec<PathBuf>| SessionConfig {
         sources: Some(sources(dirs)),
-        ..cfg(&format!("normal
-fake_mcp={mcp}"), None)
+        ..cfg(
+            &format!(
+                "normal
+fake_mcp={mcp}"
+            ),
+            None,
+        )
     };
 
     // One server failed, another connected: starts.
-    let s = ClaudeSession::spawn(fake_bin(), with("mira:failed,wiki:connected", vec![])).await.unwrap();
-    let states: Vec<_> = s.init_info().mcp_servers.iter().map(|m| (m.name.clone(), m.status.clone())).collect();
-    assert_eq!(states, [("mira".into(), "failed".into()), ("wiki".into(), "connected".into())]);
+    let s = ClaudeSession::spawn(fake_bin(), with("mira:failed,wiki:connected", vec![]))
+        .await
+        .unwrap();
+    let states: Vec<_> = s
+        .init_info()
+        .mcp_servers
+        .iter()
+        .map(|m| (m.name.clone(), m.status.clone()))
+        .collect();
+    assert_eq!(
+        states,
+        [
+            ("mira".into(), "failed".into()),
+            ("wiki".into(), "connected".into())
+        ]
+    );
     s.close().await;
 
     // The only server failed but a notes folder is left: starts.
-    let s = ClaudeSession::spawn(fake_bin(), with("mira:failed", vec![std::env::temp_dir()])).await.unwrap();
+    let s = ClaudeSession::spawn(fake_bin(), with("mira:failed", vec![std::env::temp_dir()]))
+        .await
+        .unwrap();
     s.close().await;
 
     // Only server, failed, no folder: nothing usable, with the statuses.
@@ -284,7 +322,10 @@ async fn cancel_then_ask_has_no_bleed() {
 fn recorder() -> (Arc<Mutex<Vec<String>>>, Box<dyn Fn(&str) + Send + Sync>) {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let sink = seen.clone();
-    (seen, Box::new(move |d: &str| sink.lock().unwrap().push(d.to_string())))
+    (
+        seen,
+        Box::new(move |d: &str| sink.lock().unwrap().push(d.to_string())),
+    )
 }
 
 #[tokio::test]
@@ -293,14 +334,22 @@ async fn thinking_off_sets_the_env_var_and_streams_only_text() {
     let (seen, on_delta) = recorder();
     let turn = session.ask("hello", on_delta, token()).await.unwrap();
     assert_eq!(*seen.lock().unwrap(), vec!["Hello", " world"]);
-    assert_eq!(turn.thinking_tokens, 0, "the fake saw CLAUDE_CODE_DISABLE_THINKING=1");
+    assert_eq!(
+        turn.thinking_tokens, 0,
+        "the fake saw CLAUDE_CODE_DISABLE_THINKING=1"
+    );
     session.close().await;
 }
 
 #[tokio::test]
 async fn thinking_on_is_signalled_once_before_text() {
-    let cfg = SessionConfig { thinking: true, ..cfg("normal", None) };
-    let session = ClaudeSession::spawn(fake_bin(), cfg).await.expect("spawn fake");
+    let cfg = SessionConfig {
+        thinking: true,
+        ..cfg("normal", None)
+    };
+    let session = ClaudeSession::spawn(fake_bin(), cfg)
+        .await
+        .expect("spawn fake");
     let (seen, on_delta) = recorder();
     let turn = session.ask("hello", on_delta, token()).await.unwrap();
     assert_eq!(*seen.lock().unwrap(), vec!["", "Hello", " world"]);
@@ -319,13 +368,27 @@ async fn usage_is_per_turn_although_the_cli_cost_is_cumulative() {
     }
     for (i, t) in turns.iter().enumerate() {
         let expected_total = 0.0001 * (i + 1) as f64;
-        assert!((t.total_cost_usd - expected_total).abs() < 1e-12, "total {}", t.total_cost_usd);
+        assert!(
+            (t.total_cost_usd - expected_total).abs() < 1e-12,
+            "total {}",
+            t.total_cost_usd
+        );
     }
     for t in &turns {
-        assert!((t.cost_usd - 0.0001).abs() < 1e-12, "per-turn cost {}", t.cost_usd);
+        assert!(
+            (t.cost_usd - 0.0001).abs() < 1e-12,
+            "per-turn cost {}",
+            t.cost_usd
+        );
     }
-    assert_eq!((turns[0].cache_write_tokens, turns[0].cache_read_tokens), (500, 0));
-    assert_eq!((turns[1].cache_write_tokens, turns[1].cache_read_tokens), (20, 500));
+    assert_eq!(
+        (turns[0].cache_write_tokens, turns[0].cache_read_tokens),
+        (500, 0)
+    );
+    assert_eq!(
+        (turns[1].cache_write_tokens, turns[1].cache_read_tokens),
+        (20, 500)
+    );
     assert_eq!(turns[1].prompt_tokens(), 530);
     session.close().await;
 
@@ -516,7 +579,8 @@ async fn real_claude_models() {
 fn solid_png_base64(width: u32, height: u32, rgba: [u8; 4]) -> String {
     let img = image::RgbaImage::from_pixel(width, height, image::Rgba(rgba));
     let mut png = std::io::Cursor::new(Vec::new());
-    img.write_to(&mut png, image::ImageFormat::Png).expect("encode png");
+    img.write_to(&mut png, image::ImageFormat::Png)
+        .expect("encode png");
     let bytes = png.into_inner();
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
@@ -526,8 +590,16 @@ fn solid_png_base64(width: u32, height: u32, rgba: [u8; 4]) -> String {
             | *chunk.get(2).unwrap_or(&0) as u32;
         out.push(TABLE[(n >> 18) as usize & 63] as char);
         out.push(TABLE[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 { TABLE[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if chunk.len() > 2 { TABLE[n as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            TABLE[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[n as usize & 63] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -549,20 +621,37 @@ async fn real_claude_image() {
         sources: None,
         approvals: None,
     };
-    let session = ClaudeSession::spawn(bin, cfg).await.expect("spawn real claude");
+    let session = ClaudeSession::spawn(bin, cfg)
+        .await
+        .expect("spawn real claude");
 
     // A small red square: answered from the picture.
-    let red = ImageAttachment { media_type: "image/png".into(), data: solid_png_base64(64, 64, [255, 0, 0, 255]) };
+    let red = ImageAttachment {
+        media_type: "image/png".into(),
+        data: solid_png_base64(64, 64, [255, 0, 0, 255]),
+    };
     let (_, on_delta) = collector();
     let turn = session
-        .ask_with_images("What color is this square? Answer with one word.", &[red], on_delta, token())
+        .ask_with_images(
+            "What color is this square? Answer with one word.",
+            &[red],
+            on_delta,
+            token(),
+        )
         .await
         .expect("image turn");
     println!("red square -> {:?}", turn.text);
-    assert!(turn.text.to_lowercase().contains("red"), "not read from the image: {}", turn.text);
+    assert!(
+        turn.text.to_lowercase().contains("red"),
+        "not read from the image: {}",
+        turn.text
+    );
 
     // 1000x9000: over the API's 8000 px limit. What does the CLI report?
-    let tall = ImageAttachment { media_type: "image/png".into(), data: solid_png_base64(1000, 9000, [0, 0, 255, 255]) };
+    let tall = ImageAttachment {
+        media_type: "image/png".into(),
+        data: solid_png_base64(1000, 9000, [0, 0, 255, 255]),
+    };
     let (_, on_delta) = collector();
     let result = session
         .ask_with_images("What color is this? One word.", &[tall], on_delta, token())
@@ -571,10 +660,18 @@ async fn real_claude_image() {
 
     // Bytes that are not an image (a base64 body Claude can't decode): the
     // error path `ask_meeting_session` turns into "Claude couldn't use the attached image".
-    let broken = ImageAttachment { media_type: "image/png".into(), data: "bm90IGEgcG5n".into() };
+    let broken = ImageAttachment {
+        media_type: "image/png".into(),
+        data: "bm90IGEgcG5n".into(),
+    };
     let (_, on_delta) = collector();
     let result = session
-        .ask_with_images("What color is this? One word.", &[broken], on_delta, token())
+        .ask_with_images(
+            "What color is this? One word.",
+            &[broken],
+            on_delta,
+            token(),
+        )
         .await;
     println!("not an image -> {result:?}");
     session.close().await;

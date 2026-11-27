@@ -96,7 +96,10 @@ impl std::fmt::Debug for AcpLaunch {
             .field("cwd", &self.cwd)
             .field("model", &self.model)
             .field("system_prompt_len", &self.system_prompt.len())
-            .field("mcp_servers", &format_args!("<redacted, {}>", self.mcp_servers.len()))
+            .field(
+                "mcp_servers",
+                &format_args!("<redacted, {}>", self.mcp_servers.len()),
+            )
             .field("env_remove", &self.env_remove)
             .finish()
     }
@@ -120,20 +123,29 @@ impl AcpLaunch {
 
     /// The `name` of each MCP server, to recognise `mcp_<server>_<tool>` calls.
     fn server_names(&self) -> Vec<String> {
-        self.mcp_servers.iter().filter_map(|s| s["name"].as_str().map(str::to_string)).collect()
+        self.mcp_servers
+            .iter()
+            .filter_map(|s| s["name"].as_str().map(str::to_string))
+            .collect()
     }
 }
 
 /// Default timeouts: like Claude's, but the first start may take longer
 /// (a cold start can be slow), so `init` is 30 s.
 pub fn default_timeouts() -> SessionTimeouts {
-    SessionTimeouts { init: Duration::from_secs(30), ..SessionTimeouts::default() }
+    SessionTimeouts {
+        init: Duration::from_secs(30),
+        ..SessionTimeouts::default()
+    }
 }
 
 enum Event {
     /// The `update` of a `session/update` notification.
     Update(Value),
-    Response { id: u64, result: Result<Value, RpcError> },
+    Response {
+        id: u64,
+        result: Result<Value, RpcError>,
+    },
     /// Any other line: proves the agent is alive for the inactivity watchdog.
     Tick,
 }
@@ -172,12 +184,21 @@ impl Shared {
         if self.closed.load(Ordering::SeqCst) {
             return "session closed".to_string();
         }
-        let status = self.exit_status.lock().unwrap().clone().unwrap_or_else(|| "pipe closed".to_string());
+        let status = self
+            .exit_status
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| "pipe closed".to_string());
         let tail: Vec<String> = self.stderr_tail.lock().unwrap().iter().cloned().collect();
         if tail.is_empty() {
             format!("{} exited unexpectedly ({status})", self.label)
         } else {
-            format!("{} exited unexpectedly ({status}): {}", self.label, tail.join(" | "))
+            format!(
+                "{} exited unexpectedly ({status}): {}",
+                self.label,
+                tail.join(" | ")
+            )
         }
     }
 
@@ -223,7 +244,13 @@ impl Shared {
         match decisions.get_mut(tool_call_id) {
             Some(old) => old.allowed = old.allowed && allowed && old.tool == tool,
             None => {
-                decisions.insert(tool_call_id.to_string(), Decision { tool: tool.to_string(), allowed });
+                decisions.insert(
+                    tool_call_id.to_string(),
+                    Decision {
+                        tool: tool.to_string(),
+                        allowed,
+                    },
+                );
             }
         }
     }
@@ -260,19 +287,35 @@ struct Decision {
 /// call `in_progress` and `failed`. So an announcement may be `in_progress`
 /// before any answer; after it, an `in_progress` update needs an answer, and
 /// `completed` or `failed` never come without one.
-fn tool_breach(decision: Option<&Decision>, info: &acp::ToolCallInfo, initial: bool) -> Option<String> {
+fn tool_breach(
+    decision: Option<&Decision>,
+    info: &acp::ToolCallInfo,
+    initial: bool,
+) -> Option<String> {
     let status = info.status.as_deref();
-    let shown = if !info.name.is_empty() { info.name.clone() } else { info.title.clone() };
-    let shown = if shown.is_empty() { "unknown".to_string() } else { shown };
+    let shown = if !info.name.is_empty() {
+        info.name.clone()
+    } else {
+        info.title.clone()
+    };
+    let shown = if shown.is_empty() {
+        "unknown".to_string()
+    } else {
+        shown
+    };
     match decision {
         Some(d) if d.allowed => {
             // Approved for one tool: an update that names another is not it.
             if !info.name.is_empty() && info.name != d.tool && status != Some("pending") {
-                return Some(format!("the agent ran {shown} under the approval of {}", d.tool));
+                return Some(format!(
+                    "the agent ran {shown} under the approval of {}",
+                    d.tool
+                ));
             }
             None
         }
-        Some(_) => (status == Some("completed")).then(|| format!("the agent ran {shown} after Lucid refused it")),
+        Some(_) => (status == Some("completed"))
+            .then(|| format!("the agent ran {shown} after Lucid refused it")),
         None => {
             let ran = match status {
                 Some("completed" | "failed") => true,
@@ -299,11 +342,20 @@ fn undecided_builtin(
     shared: &Shared,
     servers: &[String],
 ) -> Option<String> {
-    let mut ids: Vec<&String> = announced.iter().filter(|id| shared.decision(id).is_none()).collect();
+    let mut ids: Vec<&String> = announced
+        .iter()
+        .filter(|id| shared.decision(id).is_none())
+        .collect();
     ids.sort();
     ids.into_iter().find_map(|id| {
         let name = tool_names.get(id).cloned().unwrap_or_default();
-        acp::split_mcp_tool_name(&name, servers).is_none().then(|| if name.is_empty() { "unknown".to_string() } else { name })
+        acp::split_mcp_tool_name(&name, servers).is_none().then(|| {
+            if name.is_empty() {
+                "unknown".to_string()
+            } else {
+                name
+            }
+        })
     })
 }
 
@@ -350,13 +402,18 @@ impl AcpSession {
     ) -> Result<AcpSession, AgentError> {
         let servers = Arc::new(launch.server_names());
         let policy = Arc::new(launch.policy.clone().with_servers(&servers));
-        let (program, args, cwd, env_remove) =
-            (launch.program.clone(), launch.args.clone(), launch.cwd.clone(), launch.env_remove.clone());
+        let (program, args, cwd, env_remove) = (
+            launch.program.clone(),
+            launch.args.clone(),
+            launch.cwd.clone(),
+            launch.env_remove.clone(),
+        );
         let owned = launch.remove_cwd_on_close.then(|| launch.cwd.clone());
-        let (shared, mut events) =
-            tokio::task::spawn_blocking(move || start_process(&program, &args, &cwd, &env_remove, policy, owned))
-                .await
-                .map_err(|e| AgentError::Spawn(format!("spawn task failed: {e}")))??;
+        let (shared, mut events) = tokio::task::spawn_blocking(move || {
+            start_process(&program, &args, &cwd, &env_remove, policy, owned)
+        })
+        .await
+        .map_err(|e| AgentError::Spawn(format!("spawn task failed: {e}")))??;
         let next_id = AtomicU64::new(1);
 
         let hello = Handshake {
@@ -365,12 +422,15 @@ impl AcpSession {
             system_prompt: &launch.system_prompt,
             model: &launch.model,
         };
-        let opened = tokio::time::timeout(timeouts.init, handshake(&shared, &mut events, &next_id, &hello))
-            .await
-            .unwrap_or_else(|_| {
-                shared.terminate(&format!("no session within {} s", timeouts.init.as_secs()));
-                Err(AgentError::Timeout)
-            });
+        let opened = tokio::time::timeout(
+            timeouts.init,
+            handshake(&shared, &mut events, &next_id, &hello),
+        )
+        .await
+        .unwrap_or_else(|_| {
+            shared.terminate(&format!("no session within {} s", timeouts.init.as_secs()));
+            Err(AgentError::Timeout)
+        });
         let opened = match opened {
             Ok(o) => o,
             Err(e) => {
@@ -383,12 +443,20 @@ impl AcpSession {
         };
         log::info!(
             "{} ACP session {} ready (agent {} {}, model {})",
-            shared.label, opened.session.session_id, opened.agent.name, opened.agent.version,
-            if launch.model.is_empty() { opened.session.current_model.clone().unwrap_or_default() } else { launch.model.clone() }
+            shared.label,
+            opened.session.session_id,
+            opened.agent.name,
+            opened.agent.version,
+            if launch.model.is_empty() {
+                opened.session.current_model.clone().unwrap_or_default()
+            } else {
+                launch.model.clone()
+            }
         );
 
-        let instructions = (!opened.system_prompt_in_meta && !launch.system_prompt.trim().is_empty())
-            .then(|| launch.system_prompt.clone());
+        let instructions = (!opened.system_prompt_in_meta
+            && !launch.system_prompt.trim().is_empty())
+        .then(|| launch.system_prompt.clone());
         Ok(AcpSession {
             model: launch.model,
             shared,
@@ -542,7 +610,11 @@ impl AcpSession {
         // Tool call ids belong to one turn: last turn's answers do not carry over.
         self.shared.clear_decisions();
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
-        if !self.shared.send_line(acp::request(id, "session/prompt", acp::prompt_params(&self.session_id, &text))) {
+        if !self.shared.send_line(acp::request(
+            id,
+            "session/prompt",
+            acp::prompt_params(&self.session_id, &text),
+        )) {
             return Err(self.shared.crash_error());
         }
         let (tx, rx) = mpsc::unbounded_channel();
@@ -761,7 +833,9 @@ async fn rpc(
     }
     loop {
         match events.recv().await {
-            Some(Event::Response { id: rid, result }) if rid == id => return result.map_err(|e| rpc_error(&e)),
+            Some(Event::Response { id: rid, result }) if rid == id => {
+                return result.map_err(|e| rpc_error(&e))
+            }
             Some(_) => {}
             None => return Err(shared.crash_error()),
         }
@@ -775,48 +849,93 @@ async fn handshake(
     next_id: &AtomicU64,
     h: &Handshake<'_>,
 ) -> Result<Opened, AgentError> {
-    let init = rpc(shared, events, next_id, "initialize", acp::initialize_params()).await?;
+    let init = rpc(
+        shared,
+        events,
+        next_id,
+        "initialize",
+        acp::initialize_params(),
+    )
+    .await?;
     let agent = acp::parse_initialize(&init);
     let in_meta = agent.system_prompt_append && !h.system_prompt.trim().is_empty();
     let params = acp::session_new_params(h.cwd, h.mcp_servers, in_meta.then_some(h.system_prompt));
     let new = rpc(shared, events, next_id, "session/new", params).await?;
-    let session = acp::parse_session_new(&new).map_err(|e| AgentError::Cli(AgentErrorKind::Other, e))?;
+    let session =
+        acp::parse_session_new(&new).map_err(|e| AgentError::Cli(AgentErrorKind::Other, e))?;
     log::info!(
         "{} offers modes {:?} (current {:?})",
-        shared.label, session.modes, session.current_mode
+        shared.label,
+        session.modes,
+        session.current_mode
     );
     if let Some(mode) = session.safer_mode() {
         // A refusal is not fatal: the permission policy and the watch over tool
         // calls hold in any mode.
-        if let Err(e) = rpc(shared, events, next_id, "session/set_mode", acp::set_mode_params(&session.session_id, &mode)).await {
+        if let Err(e) = rpc(
+            shared,
+            events,
+            next_id,
+            "session/set_mode",
+            acp::set_mode_params(&session.session_id, &mode),
+        )
+        .await
+        {
             log::warn!("{} would not switch to mode {mode}: {e}", shared.label);
         }
     }
     if !h.model.is_empty() && session.current_model.as_deref() != Some(h.model) {
-        rpc(shared, events, next_id, "session/set_model", acp::set_model_params(&session.session_id, h.model))
-            .await
-            .map_err(|e| match e {
-                AgentError::Cli(kind, msg) => AgentError::Cli(kind, format!("model {} not available: {msg}", h.model)),
-                other => other,
-            })?;
+        rpc(
+            shared,
+            events,
+            next_id,
+            "session/set_model",
+            acp::set_model_params(&session.session_id, h.model),
+        )
+        .await
+        .map_err(|e| match e {
+            AgentError::Cli(kind, msg) => {
+                AgentError::Cli(kind, format!("model {} not available: {msg}", h.model))
+            }
+            other => other,
+        })?;
     }
-    Ok(Opened { agent, session, system_prompt_in_meta: in_meta })
+    Ok(Opened {
+        agent,
+        session,
+        system_prompt_in_meta: in_meta,
+    })
 }
 
 /// Start `program`, `initialize`, open a session and return the models it
 /// offers (`models.availableModels`), then end it. No prompt is sent, so no
 /// tokens are used. Also the login check for Antigravity: an agent that is not
 /// logged in fails `session/new` (`AgentError::kind() == NotLoggedIn`).
-pub async fn probe_models(program: PathBuf, args: Vec<String>) -> Result<Vec<(String, String)>, AgentError> {
+pub async fn probe_models(
+    program: PathBuf,
+    args: Vec<String>,
+) -> Result<Vec<(String, String)>, AgentError> {
     let cwd = sandbox_dir();
     let (p, a, c) = (program.clone(), args, cwd.clone());
     let (shared, mut events) = tokio::task::spawn_blocking(move || {
-        start_process(&p, &a, &c, &[], Arc::new(PermissionPolicy::deny_all()), None)
+        start_process(
+            &p,
+            &a,
+            &c,
+            &[],
+            Arc::new(PermissionPolicy::deny_all()),
+            None,
+        )
     })
     .await
     .map_err(|e| AgentError::Spawn(format!("spawn task failed: {e}")))??;
     let next_id = AtomicU64::new(1);
-    let hello = Handshake { cwd: &cwd, mcp_servers: &[], system_prompt: "", model: "" };
+    let hello = Handshake {
+        cwd: &cwd,
+        mcp_servers: &[],
+        system_prompt: "",
+        model: "",
+    };
     let opened = tokio::time::timeout(
         default_timeouts().init,
         handshake(&shared, &mut events, &next_id, &hello),
@@ -851,7 +970,9 @@ fn start_process(
     for key in env_remove {
         cmd.env_remove(key);
     }
-    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             AgentError::Spawn(format!("CLI not installed: {} ({e})", program.display()))
@@ -883,11 +1004,15 @@ fn start_process(
     // A pipe thread that fails to start must not leave the child running.
     let kill_shared = shared.clone();
     let spawn_thread = move |name: &str, f: Box<dyn FnOnce() + Send>| {
-        std::thread::Builder::new().name(name.to_string()).spawn(f).map(|_| ()).map_err(|e| {
-            kill_shared.alive.store(false, Ordering::SeqCst);
-            kill_shared.kill_process();
-            AgentError::Spawn(format!("cannot start {name} thread: {e}"))
-        })
+        std::thread::Builder::new()
+            .name(name.to_string())
+            .spawn(f)
+            .map(|_| ())
+            .map_err(|e| {
+                kill_shared.alive.store(false, Ordering::SeqCst);
+                kill_shared.kill_process();
+                AgentError::Spawn(format!("cannot start {name} thread: {e}"))
+            })
     };
 
     spawn_thread(
@@ -952,7 +1077,10 @@ fn start_process(
                         answer_request(&out_shared, &policy, &id, &method, &params);
                         let _ = event_tx.send(Event::Tick);
                     }
-                    Err(e) => log::warn!("{} stdout: skipping unparseable line ({e})", out_shared.label),
+                    Err(e) => log::warn!(
+                        "{} stdout: skipping unparseable line ({e})",
+                        out_shared.label
+                    ),
                 }
             });
             if let Err(e) = read {
@@ -971,7 +1099,13 @@ fn start_process(
 
 /// Reply to a request from the agent: permission requests from the policy,
 /// everything else "Method not found" (the agent must never wait for us).
-fn answer_request(shared: &Shared, policy: &PermissionPolicy, id: &Value, method: &str, params: &Value) {
+fn answer_request(
+    shared: &Shared,
+    policy: &PermissionPolicy,
+    id: &Value,
+    method: &str,
+    params: &Value,
+) {
     let line = if method == "session/request_permission" {
         let (req, mut outcome) = permission::decide_params(params, policy);
         // A request that names no call cannot be matched to what runs: refuse it.
@@ -1002,8 +1136,15 @@ fn label_of(program: &Path, args: &[String]) -> String {
     // Split on both separators so a Windows path names the same file on every OS.
     let stem = |p: &str| {
         let name = p.rsplit(['\\', '/']).next().unwrap_or("");
-        let stem = Path::new(name).file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        if stem.is_empty() { "agent".to_string() } else { stem.to_string() }
+        let stem = Path::new(name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if stem.is_empty() {
+            "agent".to_string()
+        } else {
+            stem.to_string()
+        }
     };
     let program_stem = stem(&program.to_string_lossy());
     if program_stem.eq_ignore_ascii_case("node") {
@@ -1062,9 +1203,15 @@ mod tests {
 
     #[test]
     fn label_names_the_script_for_node_shims() {
-        assert_eq!(label_of(Path::new("C:\\agy\\agy.exe"), &["acp".into()]), "agy");
         assert_eq!(
-            label_of(Path::new("C:\\Program Files\\nodejs\\node.exe"), &["C:\\npm\\agent.js".into(), "--acp".into()]),
+            label_of(Path::new("C:\\agy\\agy.exe"), &["acp".into()]),
+            "agy"
+        );
+        assert_eq!(
+            label_of(
+                Path::new("C:\\Program Files\\nodejs\\node.exe"),
+                &["C:\\npm\\agent.js".into(), "--acp".into()]
+            ),
             "agent"
         );
         assert_eq!(label_of(Path::new("node"), &[]), "node");
@@ -1073,16 +1220,27 @@ mod tests {
     #[test]
     fn launch_debug_hides_mcp_secrets() {
         let mut launch = AcpLaunch::new("agy".into(), vec![], "C:\\w".into());
-        launch.mcp_servers = vec![serde_json::json!({"name": "mira", "env": [{"name": "KEY", "value": "hunter2"}]})];
+        launch.mcp_servers =
+            vec![serde_json::json!({"name": "mira", "env": [{"name": "KEY", "value": "hunter2"}]})];
         launch.system_prompt = "secret prompt".into();
         let shown = format!("{launch:?}");
-        assert!(!shown.contains("hunter2") && !shown.contains("secret prompt"), "{shown}");
+        assert!(
+            !shown.contains("hunter2") && !shown.contains("secret prompt"),
+            "{shown}"
+        );
         assert_eq!(launch.server_names(), vec!["mira"]);
     }
 
     #[test]
     fn stripped_env_covers_paid_key_switches() {
-        for key in ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS", "OPENAI_API_KEY"] {
+        for key in [
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GOOGLE_GENAI_USE_VERTEXAI",
+            "GOOGLE_CLOUD_PROJECT",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "OPENAI_API_KEY",
+        ] {
             assert!(ACP_STRIPPED_ENV.contains(&key), "{key}");
         }
     }
@@ -1096,12 +1254,17 @@ mod tests {
     }
 
     fn decided(tool: &str, allowed: bool) -> Option<Decision> {
-        Some(Decision { tool: tool.into(), allowed })
+        Some(Decision {
+            tool: tool.into(),
+            allowed,
+        })
     }
 
     #[test]
     fn tool_breach_is_tri_state_per_call() {
-        let breach = |d: Option<Decision>, name: &str, status: &str, initial: bool| tool_breach(d.as_ref(), &info("c", name, status), initial).is_some();
+        let breach = |d: Option<Decision>, name: &str, status: &str, initial: bool| {
+            tool_breach(d.as_ref(), &info("c", name, status), initial).is_some()
+        };
         // Never asked about: only the announcement (and `pending`) is normal.
         assert!(!breach(None, "run_command", "in_progress", true));
         assert!(!breach(None, "run_command", "pending", false));
@@ -1112,17 +1275,48 @@ mod tests {
         // An update with no id is never an approved call.
         assert!(breach(None, "", "completed", false));
         // Refused: in_progress then failed is what agy does; completed is a breach.
-        assert!(!breach(decided("run_command", false), "run_command", "in_progress", false));
-        assert!(!breach(decided("run_command", false), "run_command", "failed", false));
-        assert!(breach(decided("run_command", false), "run_command", "completed", false));
+        assert!(!breach(
+            decided("run_command", false),
+            "run_command",
+            "in_progress",
+            false
+        ));
+        assert!(!breach(
+            decided("run_command", false),
+            "run_command",
+            "failed",
+            false
+        ));
+        assert!(breach(
+            decided("run_command", false),
+            "run_command",
+            "completed",
+            false
+        ));
         // Approved: every status, for the approved tool (or an update with no name) ...
         for status in ["pending", "in_progress", "completed", "failed"] {
-            assert!(!breach(decided("mcp_a_x", true), "mcp_a_x", status, false), "{status}");
-            assert!(!breach(decided("mcp_a_x", true), "", status, false), "{status}");
+            assert!(
+                !breach(decided("mcp_a_x", true), "mcp_a_x", status, false),
+                "{status}"
+            );
+            assert!(
+                !breach(decided("mcp_a_x", true), "", status, false),
+                "{status}"
+            );
         }
         // ... but not under another name.
-        assert!(breach(decided("mcp_a_x", true), "run_command", "completed", false));
-        assert!(breach(decided("mcp_a_x", true), "run_command", "in_progress", false));
+        assert!(breach(
+            decided("mcp_a_x", true),
+            "run_command",
+            "completed",
+            false
+        ));
+        assert!(breach(
+            decided("mcp_a_x", true),
+            "run_command",
+            "in_progress",
+            false
+        ));
     }
 
     fn shared_for_tests() -> Shared {
@@ -1162,25 +1356,52 @@ mod tests {
         let shared = shared_for_tests();
         let servers = vec!["srv".to_string()];
         let announced: HashSet<String> = ["a".to_string(), "b".to_string()].into();
-        let names: HashMap<String, String> =
-            [("a".to_string(), "mcp_srv_search".to_string()), ("b".to_string(), "write_file".to_string())].into();
-        assert_eq!(undecided_builtin(&announced, &names, &shared, &servers).as_deref(), Some("write_file"));
+        let names: HashMap<String, String> = [
+            ("a".to_string(), "mcp_srv_search".to_string()),
+            ("b".to_string(), "write_file".to_string()),
+        ]
+        .into();
+        assert_eq!(
+            undecided_builtin(&announced, &names, &shared, &servers).as_deref(),
+            Some("write_file")
+        );
         shared.record_decision("b", "write_file", false);
-        assert_eq!(undecided_builtin(&announced, &names, &shared, &servers), None);
+        assert_eq!(
+            undecided_builtin(&announced, &names, &shared, &servers),
+            None
+        );
     }
 
     #[test]
     fn finish_turn_maps_stop_reasons_and_errors() {
         let ok = |v: Value| finish_turn(Ok(v), "text".into(), Instant::now(), false);
         let r = ok(serde_json::json!({"stopReason": "end_turn", "usage": {"inputTokens": 5, "outputTokens": 2}})).unwrap();
-        assert_eq!((r.text.as_str(), r.input_tokens, r.output_tokens), ("text", 5, 2));
+        assert_eq!(
+            (r.text.as_str(), r.input_tokens, r.output_tokens),
+            ("text", 5, 2)
+        );
         assert!(ok(serde_json::json!({"stopReason": "max_tokens"})).is_ok());
-        assert!(matches!(ok(serde_json::json!({"stopReason": "cancelled"})), Err(AgentError::Cancelled)));
-        assert_eq!(ok(serde_json::json!({"stopReason": "refusal"})).unwrap_err().kind(), AgentErrorKind::Other);
-        let rpc = RpcError { code: 402, message: "Your prepayment credits are depleted".into(), data: None };
+        assert!(matches!(
+            ok(serde_json::json!({"stopReason": "cancelled"})),
+            Err(AgentError::Cancelled)
+        ));
+        assert_eq!(
+            ok(serde_json::json!({"stopReason": "refusal"}))
+                .unwrap_err()
+                .kind(),
+            AgentErrorKind::Other
+        );
+        let rpc = RpcError {
+            code: 402,
+            message: "Your prepayment credits are depleted".into(),
+            data: None,
+        };
         let e = finish_turn(Err(rpc.clone()), String::new(), Instant::now(), false).unwrap_err();
         assert_eq!(e.kind(), AgentErrorKind::RateLimited);
         // An error after our own cancel is a cancel.
-        assert!(matches!(finish_turn(Err(rpc), String::new(), Instant::now(), true), Err(AgentError::Cancelled)));
+        assert!(matches!(
+            finish_turn(Err(rpc), String::new(), Instant::now(), true),
+            Err(AgentError::Cancelled)
+        ));
     }
 }

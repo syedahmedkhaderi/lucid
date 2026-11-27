@@ -122,13 +122,15 @@ pub struct ToolFacts {
 }
 
 const WRITE_STEMS: [&str; 33] = [
-    "writ", "creat", "updat", "delet", "remov", "send", "post", "patch", "edit", "renam", "exec", "insert",
-    "upload", "publish", "push", "merg", "commit", "kill", "append", "sav", "modif", "replac", "clear",
-    "reset", "archiv", "trash", "invit", "shar", "import", "install", "deploy", "cancel", "submit",
+    "writ", "creat", "updat", "delet", "remov", "send", "post", "patch", "edit", "renam", "exec",
+    "insert", "upload", "publish", "push", "merg", "commit", "kill", "append", "sav", "modif",
+    "replac", "clear", "reset", "archiv", "trash", "invit", "shar", "import", "install", "deploy",
+    "cancel", "submit",
 ];
 const WRITE_WORDS: [&str; 22] = [
-    "put", "set", "add", "run", "drop", "move", "mv", "rm", "del", "approve", "reject", "assign", "schedule",
-    "reply", "forward", "mark", "write", "apply", "revoke", "grant", "enable", "disable",
+    "put", "set", "add", "run", "drop", "move", "mv", "rm", "del", "approve", "reject", "assign",
+    "schedule", "reply", "forward", "mark", "write", "apply", "revoke", "grant", "enable",
+    "disable",
 ];
 
 /// The words of a tool name: split at anything that is not a letter or digit
@@ -162,7 +164,12 @@ pub fn is_write_like(tool: &str) -> bool {
     name_words(tool).iter().any(|w| {
         let w = w.as_str();
         WRITE_STEMS.iter().any(|s| w.starts_with(s))
-            || WRITE_WORDS.iter().any(|v| w == *v || w.strip_suffix('s') == Some(*v) || w.strip_suffix("ed") == Some(*v) || w.strip_suffix("ing") == Some(*v))
+            || WRITE_WORDS.iter().any(|v| {
+                w == *v
+                    || w.strip_suffix('s') == Some(*v)
+                    || w.strip_suffix("ed") == Some(*v)
+                    || w.strip_suffix("ing") == Some(*v)
+            })
     })
 }
 
@@ -214,7 +221,9 @@ fn canonical(path: &Path) -> Option<PathBuf> {
 /// component by component: `D:\scope2` is not inside `D:\scope`, a junction
 /// that leads out is not inside, and anything that cannot be resolved is not.
 fn inside(dir: &Path, target: &str) -> bool {
-    let (Some(d), Some(t)) = (canonical(dir), canonical(Path::new(target))) else { return false };
+    let (Some(d), Some(t)) = (canonical(dir), canonical(Path::new(target))) else {
+        return false;
+    };
     d.components().count() > 1 && t.starts_with(&d)
 }
 
@@ -222,7 +231,10 @@ fn inside(dir: &Path, target: &str) -> bool {
 /// being relative to the folder.
 fn is_rooted(pattern: &str) -> bool {
     let p = Path::new(pattern);
-    p.is_absolute() || p.has_root() || pattern.chars().nth(1) == Some(':') || pattern.starts_with(['/', '\\'])
+    p.is_absolute()
+        || p.has_root()
+        || pattern.chars().nth(1) == Some(':')
+        || pattern.starts_with(['/', '\\'])
 }
 
 /// The decision for a built-in tool: reads of the scope folders only.
@@ -232,7 +244,11 @@ pub fn builtin_verdict(tool: &str, input: &Value, scope_dirs: &[PathBuf]) -> Too
         "Grep" | "Glob" => "path",
         _ => return ToolVerdict::Deny("this tool is never allowed in chat"),
     };
-    let Some(path) = input.get(key).and_then(Value::as_str).filter(|p| !p.is_empty()) else {
+    let Some(path) = input
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|p| !p.is_empty())
+    else {
         return ToolVerdict::Deny("the call names no path");
     };
     // A Glob pattern is relative to the path: it must not climb out of it.
@@ -266,7 +282,11 @@ impl ApprovalPolicy {
             for t in &s.tools {
                 tools.insert(
                     (s.key.clone(), t.name.clone()),
-                    ToolFacts { allowed: t.allowed, read_only: t.read_only_hint, destructive: t.destructive_hint },
+                    ToolFacts {
+                        allowed: t.allowed,
+                        read_only: t.read_only_hint,
+                        destructive: t.destructive_hint,
+                    },
                 );
             }
         }
@@ -341,7 +361,9 @@ impl ApprovalPolicy {
                 .cloned()
                 .collect();
             off.extend(self.ask_tools());
-            launch.allowed_tools.retain(|t| !t.starts_with("mcp__") || auto.contains(t));
+            launch
+                .allowed_tools
+                .retain(|t| !t.starts_with("mcp__") || auto.contains(t));
             for t in off {
                 if !launch.disallowed_tools.contains(&t) {
                     launch.disallowed_tools.push(t);
@@ -363,7 +385,10 @@ pub fn launch_sources(
     let mut launch = sources.cloned()?;
     // Only Claude asks; every other CLI runs a chat's read-only tools and nothing that would need a question.
     if let Some(a) = approvals.filter(|a| !a.can_ask || kind != CliAgentKind::Claude) {
-        a.policy.adjust_launch(&mut launch, &ApprovalSupport::Unsupported("this CLI cannot ask".into()));
+        a.policy.adjust_launch(
+            &mut launch,
+            &ApprovalSupport::Unsupported("this CLI cannot ask".into()),
+        );
     }
     Some(launch)
 }
@@ -385,7 +410,9 @@ pub enum ApprovalSupport {
 pub const CLAUDE_ASK_MIN_VERSION: super::detect::ClaudeVersion = (2, 1, 328);
 
 /// Claude's support for `version` (the detected one, if any).
-pub fn claude_support_for_version(version: Option<super::detect::ClaudeVersion>) -> ApprovalSupport {
+pub fn claude_support_for_version(
+    version: Option<super::detect::ClaudeVersion>,
+) -> ApprovalSupport {
     match version {
         Some(v) if v >= CLAUDE_ASK_MIN_VERSION => ApprovalSupport::Supported,
         Some(v) => ApprovalSupport::Unsupported(format!(
@@ -393,7 +420,9 @@ pub fn claude_support_for_version(version: Option<super::detect::ClaudeVersion>)
             super::detect::format_version(v),
             super::detect::format_version(CLAUDE_ASK_MIN_VERSION)
         )),
-        None => ApprovalSupport::Unsupported("Lucid couldn't read Claude's version, so it can't ask before a tool runs.".into()),
+        None => ApprovalSupport::Unsupported(
+            "Lucid couldn't read Claude's version, so it can't ask before a tool runs.".into(),
+        ),
     }
 }
 
@@ -409,10 +438,12 @@ pub fn approval_support(kind: CliAgentKind) -> ApprovalSupport {
                 .and_then(|bin| super::detect::claude_version_cached(&bin));
             claude_support_for_version(version)
         }
-        CliAgentKind::Codex => ApprovalSupport::Unsupported("Tools that change things are off with Codex for now.".into()),
-        CliAgentKind::Antigravity => {
-            ApprovalSupport::Unsupported("Tools that change things are off with Antigravity for now.".into())
-        }
+        CliAgentKind::Codex => ApprovalSupport::Unsupported(
+            "Tools that change things are off with Codex for now.".into(),
+        ),
+        CliAgentKind::Antigravity => ApprovalSupport::Unsupported(
+            "Tools that change things are off with Antigravity for now.".into(),
+        ),
     }
 }
 
@@ -427,13 +458,38 @@ pub fn approval_support(kind: CliAgentKind) -> ApprovalSupport {
 pub fn is_secret_key(key: &str) -> bool {
     let words = name_words(key);
     let has = |w: &str| words.iter().any(|x| x == w);
-    const NOT_SECRET_TOKEN: [&str; 10] = ["max", "min", "total", "num", "count", "input", "output", "prompt", "completion", "limit"];
+    const NOT_SECRET_TOKEN: [&str; 10] = [
+        "max",
+        "min",
+        "total",
+        "num",
+        "count",
+        "input",
+        "output",
+        "prompt",
+        "completion",
+        "limit",
+    ];
     let secret_token = has("token") && !NOT_SECRET_TOKEN.iter().any(|n| has(n));
     let secret_key = has("apikey")
-        || words.windows(2).any(|w| w[1] == "key" && ["api", "secret", "private", "access", "auth", "subscription"].contains(&w[0].as_str()));
-    ["password", "passwd", "secret", "credential", "credentials", "authorization", "auth", "bearer", "cookie"]
-        .iter()
-        .any(|w| has(w))
+        || words.windows(2).any(|w| {
+            w[1] == "key"
+                && ["api", "secret", "private", "access", "auth", "subscription"]
+                    .contains(&w[0].as_str())
+        });
+    [
+        "password",
+        "passwd",
+        "secret",
+        "credential",
+        "credentials",
+        "authorization",
+        "auth",
+        "bearer",
+        "cookie",
+    ]
+    .iter()
+    .any(|w| has(w))
         || secret_token
         || secret_key
 }
@@ -488,7 +544,13 @@ fn is_disguising(c: char) -> bool {
 /// `text` with every disguising character written out as `\u{XXXX}`.
 pub fn escape_invisible(text: &str) -> String {
     text.chars()
-        .map(|c| if is_disguising(c) { format!("\\u{{{:04X}}}", c as u32) } else { c.to_string() })
+        .map(|c| {
+            if is_disguising(c) {
+                format!("\\u{{{:04X}}}", c as u32)
+            } else {
+                c.to_string()
+            }
+        })
         .collect()
 }
 
@@ -522,7 +584,10 @@ impl std::ops::Deref for Shown {
 pub fn display_args(args: &Value) -> Option<Shown> {
     let mut redacted = false;
     let text = serde_json::to_string_pretty(&redact(args, &mut redacted)).unwrap_or_default();
-    (text.len() <= MAX_ARGS_BYTES).then(|| Shown { text: escape_invisible(&text), redacted })
+    (text.len() <= MAX_ARGS_BYTES).then(|| Shown {
+        text: escape_invisible(&text),
+        redacted,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -572,9 +637,19 @@ pub struct AnswerApprovalArgs {
 pub enum ApprovalNotice {
     Request(ApprovalEvent),
     /// The question is over: `answered`, `timed_out`, `cancelled` (the words the store reads).
-    Closed { chat_id: String, approval_id: String, reason: &'static str },
+    Closed {
+        chat_id: String,
+        approval_id: String,
+        reason: &'static str,
+    },
     /// A call refused without asking, with the reason to show.
-    Refused { chat_id: String, request_id: String, server: String, tool: String, reason: String },
+    Refused {
+        chat_id: String,
+        request_id: String,
+        server: String,
+        tool: String,
+        reason: String,
+    },
 }
 
 pub type ApprovalEmitter = Arc<dyn Fn(ApprovalNotice) + Send + Sync>;
@@ -588,12 +663,24 @@ pub type AskResolver = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 /// the approval events is made (the app emits it; the contract tests check it).
 pub fn notice_payload(notice: &ApprovalNotice) -> (&'static str, serde_json::Value) {
     match notice {
-        ApprovalNotice::Request(ev) => (APPROVAL_EVENT, serde_json::to_value(ev).unwrap_or_default()),
-        ApprovalNotice::Refused { chat_id, request_id, server, tool, reason } => (
+        ApprovalNotice::Request(ev) => {
+            (APPROVAL_EVENT, serde_json::to_value(ev).unwrap_or_default())
+        }
+        ApprovalNotice::Refused {
+            chat_id,
+            request_id,
+            server,
+            tool,
+            reason,
+        } => (
             APPROVAL_REFUSED_EVENT,
             serde_json::json!({ "chat_id": chat_id, "request_id": request_id, "server": server, "tool": tool, "reason": reason }),
         ),
-        ApprovalNotice::Closed { chat_id, approval_id, reason } => (
+        ApprovalNotice::Closed {
+            chat_id,
+            approval_id,
+            reason,
+        } => (
             APPROVAL_CLOSED_EVENT,
             serde_json::json!({ "chat_id": chat_id, "approval_id": approval_id, "reason": reason }),
         ),
@@ -640,7 +727,12 @@ pub struct WorkspaceApprovals {
 
 impl WorkspaceApprovals {
     pub fn new() -> Self {
-        Self { state: Mutex::default(), emitter: Mutex::new(None), resolver: Mutex::new(None), timeout: APPROVAL_TIMEOUT }
+        Self {
+            state: Mutex::default(),
+            emitter: Mutex::new(None),
+            resolver: Mutex::new(None),
+            timeout: APPROVAL_TIMEOUT,
+        }
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -651,7 +743,9 @@ impl WorkspaceApprovals {
     /// The app-wide broker (the Tauri command and every chat session share it).
     pub fn global() -> Arc<WorkspaceApprovals> {
         static BROKER: OnceLock<Arc<WorkspaceApprovals>> = OnceLock::new();
-        BROKER.get_or_init(|| Arc::new(WorkspaceApprovals::new())).clone()
+        BROKER
+            .get_or_init(|| Arc::new(WorkspaceApprovals::new()))
+            .clone()
     }
 
     /// Where questions go; with none set, every question is refused.
@@ -698,7 +792,14 @@ impl WorkspaceApprovals {
     /// App exit: refuse everything and refuse anything asked later.
     pub fn shut_down(&self) {
         self.state.lock().unwrap().shut_down = true;
-        let chats: Vec<String> = self.state.lock().unwrap().pending.values().map(|p| p.chat_id.clone()).collect();
+        let chats: Vec<String> = self
+            .state
+            .lock()
+            .unwrap()
+            .pending
+            .values()
+            .map(|p| p.chat_id.clone())
+            .collect();
         for chat in chats {
             self.deny_chat(&chat);
         }
@@ -718,7 +819,11 @@ impl WorkspaceApprovals {
     fn refuse(&self, taken: Vec<(String, Pending)>) {
         for (approval_id, p) in taken {
             let _ = p.tx.send(false);
-            self.notify(ApprovalNotice::Closed { chat_id: p.chat_id, approval_id, reason: "cancelled" });
+            self.notify(ApprovalNotice::Closed {
+                chat_id: p.chat_id,
+                approval_id,
+                reason: "cancelled",
+            });
         }
     }
 }
@@ -737,7 +842,9 @@ impl ApprovalBroker for WorkspaceApprovals {
         }
         self.notify(ApprovalNotice::Refused {
             chat_id: req.chat_id.clone(),
-            request_id: self.ask_id(&req.chat_id, &req.request_id).unwrap_or_default(),
+            request_id: self
+                .ask_id(&req.chat_id, &req.request_id)
+                .unwrap_or_default(),
             server: req.server.clone(),
             tool: req.tool.clone(),
             reason: reason.to_string(),
@@ -803,7 +910,11 @@ impl ApprovalBroker for WorkspaceApprovals {
             let (tx, rx) = oneshot::channel();
             st.pending.insert(
                 approval_id.clone(),
-                Pending { chat_id: req.chat_id.clone(), request_id: req.request_id.clone(), tx },
+                Pending {
+                    chat_id: req.chat_id.clone(),
+                    request_id: req.request_id.clone(),
+                    tx,
+                },
             );
             (approval_id, rx)
         };
@@ -833,7 +944,11 @@ impl ApprovalBroker for WorkspaceApprovals {
         };
         // Answered and cancelled questions already told the UI; a timeout did not.
         if still_open || reason == "answered" {
-            self.notify(ApprovalNotice::Closed { chat_id: req.chat_id, approval_id, reason });
+            self.notify(ApprovalNotice::Closed {
+                chat_id: req.chat_id,
+                approval_id,
+                reason,
+            });
         }
         allowed
     }
@@ -842,9 +957,15 @@ impl ApprovalBroker for WorkspaceApprovals {
         let taken: Vec<(String, Pending)> = {
             let mut st = self.state.lock().unwrap();
             *st.epochs.entry(chat_id.to_string()).or_insert(0) += 1;
-            let ids: Vec<String> =
-                st.pending.iter().filter(|(_, p)| p.chat_id == chat_id).map(|(id, _)| id.clone()).collect();
-            ids.into_iter().filter_map(|id| st.pending.remove(&id).map(|p| (id, p))).collect()
+            let ids: Vec<String> = st
+                .pending
+                .iter()
+                .filter(|(_, p)| p.chat_id == chat_id)
+                .map(|(id, _)| id.clone())
+                .collect();
+            ids.into_iter()
+                .filter_map(|id| st.pending.remove(&id).map(|p| (id, p)))
+                .collect()
         };
         self.refuse(taken);
     }
@@ -858,13 +979,21 @@ impl ApprovalBroker for WorkspaceApprovals {
                 .filter(|(_, p)| p.chat_id == chat_id && p.request_id == request_id)
                 .map(|(id, _)| id.clone())
                 .collect();
-            ids.into_iter().filter_map(|id| st.pending.remove(&id).map(|p| (id, p))).collect()
+            ids.into_iter()
+                .filter_map(|id| st.pending.remove(&id).map(|p| (id, p)))
+                .collect()
         };
         self.refuse(taken);
     }
 
     fn pending(&self, chat_id: &str) -> usize {
-        self.state.lock().unwrap().open.get(chat_id).copied().unwrap_or(0)
+        self.state
+            .lock()
+            .unwrap()
+            .open
+            .get(chat_id)
+            .copied()
+            .unwrap_or(0)
     }
 }
 
@@ -882,7 +1011,9 @@ pub struct ChatApprovals {
 
 impl std::fmt::Debug for ChatApprovals {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ChatApprovals").field("chat_id", &self.chat_id).finish_non_exhaustive()
+        f.debug_struct("ChatApprovals")
+            .field("chat_id", &self.chat_id)
+            .finish_non_exhaustive()
     }
 }
 
@@ -904,12 +1035,18 @@ impl ChatApprovals {
 
     /// [`decide`](Self::decide), and for a call the policy refuses the reason in
     /// words (also sent to the user as a refused event, and to the model).
-    pub async fn decide_with_reason(&self, request_id: &str, name: &str, input: &Value) -> (bool, Option<String>) {
+    pub async fn decide_with_reason(
+        &self,
+        request_id: &str,
+        name: &str,
+        input: &Value,
+    ) -> (bool, Option<String>) {
         let allow = match self.policy.verdict_for_name(name, input) {
             ToolVerdict::Allow => true,
             ToolVerdict::Deny(why) => {
                 let keys = self.policy.server_keys();
-                let (server, tool) = split_tool(name, &keys).unwrap_or_else(|| (String::new(), name.to_string()));
+                let (server, tool) =
+                    split_tool(name, &keys).unwrap_or_else(|| (String::new(), name.to_string()));
                 let reason = refusal_text(why, &tool);
                 self.broker.refused(
                     &ApprovalRequest {
@@ -945,7 +1082,9 @@ impl ChatApprovals {
 /// short reason, with what to do when the user can fix it.
 pub fn refusal_text(why: &str, tool: &str) -> String {
     match why {
-        "the tool is not allowed" => format!("{tool} is turned off for this server. Turn it on in Settings > Personal Sources."),
+        "the tool is not allowed" => format!(
+            "{tool} is turned off for this server. Turn it on in Settings > Personal Sources."
+        ),
         "an unknown tool" => {
             format!("{tool} is not a tool Lucid has checked for this server. Check the server again in Settings > Personal Sources.")
         }

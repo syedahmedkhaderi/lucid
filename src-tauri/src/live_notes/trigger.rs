@@ -69,7 +69,16 @@ pub struct NotesTrigger {
 impl NotesTrigger {
     pub fn new(cfg: NotesTriggerConfig) -> Self {
         let guard = RunGuard::new(cfg.cap_tokens, cfg.max_failures);
-        Self { cfg, guard, pending_x2: 0, last_speech_ms: None, last_run_ms: None, manual: false, final_requested: false, catch_up: false }
+        Self {
+            cfg,
+            guard,
+            pending_x2: 0,
+            last_speech_ms: None,
+            last_run_ms: None,
+            manual: false,
+            final_requested: false,
+            catch_up: false,
+        }
     }
 
     /// A finished transcript line arrived at `now`.
@@ -143,7 +152,10 @@ impl NotesTrigger {
             }
         }
         let words = self.pending_x2 / 2;
-        let quiet_for = self.last_speech_ms.map(|t| now.saturating_sub(t)).unwrap_or(0);
+        let quiet_for = self
+            .last_speech_ms
+            .map(|t| now.saturating_sub(t))
+            .unwrap_or(0);
         if words >= self.cfg.min_words && quiet_for >= self.cfg.pause_ms {
             return Decision::Run(RunReason::Words);
         }
@@ -162,12 +174,19 @@ impl NotesTrigger {
             return None;
         }
         let words = self.pending_x2 / 2;
-        let gap_left = self.last_run_ms.map(|t| self.cfg.min_gap_ms.saturating_sub(now.saturating_sub(t))).unwrap_or(0);
+        let gap_left = self
+            .last_run_ms
+            .map(|t| self.cfg.min_gap_ms.saturating_sub(now.saturating_sub(t)))
+            .unwrap_or(0);
         if words >= self.cfg.min_words {
-            let quiet = self.last_speech_ms.map(|t| now.saturating_sub(t)).unwrap_or(0);
+            let quiet = self
+                .last_speech_ms
+                .map(|t| now.saturating_sub(t))
+                .unwrap_or(0);
             Some(gap_left.max(self.cfg.pause_ms.saturating_sub(quiet)))
         } else if words >= self.cfg.forced_min_words {
-            self.last_run_ms.map(|t| (t + self.cfg.max_gap_ms).saturating_sub(now))
+            self.last_run_ms
+                .map(|t| (t + self.cfg.max_gap_ms).saturating_sub(now))
         } else {
             None
         }
@@ -178,7 +197,9 @@ impl NotesTrigger {
         self.manual = false;
         self.final_requested = false;
         self.catch_up = false;
-        let taken = Taken { units_x2: self.pending_x2 };
+        let taken = Taken {
+            units_x2: self.pending_x2,
+        };
         self.pending_x2 = 0;
         self.last_run_ms = Some(now);
         taken
@@ -303,7 +324,11 @@ mod tests {
         assert_eq!(t.poll(1_000_000), Decision::Wait);
         t.request_manual();
         assert_eq!(t.poll(1_000_001), Decision::Wait);
-        assert_eq!(t.poll(1_000_002), Decision::Wait, "manual request was dropped");
+        assert_eq!(
+            t.poll(1_000_002),
+            Decision::Wait,
+            "manual request was dropped"
+        );
         t.request_final();
         assert_eq!(t.poll(1_000_003), Decision::Wait);
         t.on_line(0, "   ... ");
@@ -425,7 +450,10 @@ mod tests {
 
     #[test]
     fn cap_reached_then_keep_going_adds_the_same_amount() {
-        let mut t = NotesTrigger::new(NotesTriggerConfig { cap_tokens: 1_000, ..Default::default() });
+        let mut t = NotesTrigger::new(NotesTriggerConfig {
+            cap_tokens: 1_000,
+            ..Default::default()
+        });
         t.on_line(0, &words(150));
         t.begin_run(5_000);
         assert!(!t.end_ok(600));
@@ -436,7 +464,11 @@ mod tests {
         t.on_line(40_000, &words(150));
         assert_eq!(t.poll(60_000), Decision::Wait);
         t.request_manual();
-        assert_eq!(t.poll(60_000), Decision::Wait, "cap blocks even manual runs");
+        assert_eq!(
+            t.poll(60_000),
+            Decision::Wait,
+            "cap blocks even manual runs"
+        );
         t.keep_going();
         assert_eq!(t.guard.cap, 2_200);
         assert_eq!(t.poll(60_000), Decision::Run(RunReason::Words));

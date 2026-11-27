@@ -51,11 +51,9 @@ fn library_candidates(exe_dir: &Path) -> Vec<PathBuf> {
 pub fn ensure_loaded() -> Result<(), String> {
     static INIT: OnceLock<Result<(), String>> = OnceLock::new();
     INIT.get_or_init(|| {
-        let exe = std::env::current_exe()
-            .map_err(|e| format!("Cannot locate executable: {}", e))?;
-        let exe_dir = exe
-            .parent()
-            .ok_or("Executable has no parent directory")?;
+        let exe =
+            std::env::current_exe().map_err(|e| format!("Cannot locate executable: {}", e))?;
+        let exe_dir = exe.parent().ok_or("Executable has no parent directory")?;
 
         let candidates = library_candidates(exe_dir);
         let library = candidates
@@ -75,7 +73,13 @@ pub fn ensure_loaded() -> Result<(), String> {
             })?;
 
         ort::init_from(&library)
-            .map_err(|e| format!("Failed to load ONNX Runtime from {}: {}", library.display(), e))?
+            .map_err(|e| {
+                format!(
+                    "Failed to load ONNX Runtime from {}: {}",
+                    library.display(),
+                    e
+                )
+            })?
             .commit();
         log::info!("ONNX Runtime loaded from {}", library.display());
         Ok(())

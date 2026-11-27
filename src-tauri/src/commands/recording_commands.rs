@@ -37,8 +37,8 @@ pub async fn get_recording_info(
 
     let conn = db.connection();
 
-    let result: rusqlite::Result<(Option<String>, Option<i64>, Option<String>, Option<i64>)> =
-        conn.query_row(
+    let result: rusqlite::Result<(Option<String>, Option<i64>, Option<String>, Option<i64>)> = conn
+        .query_row(
             "SELECT recording_path, recording_size, waveform_path, recording_offset_ms \
              FROM meetings WHERE id = ?1",
             rusqlite::params![meeting_id],
@@ -140,7 +140,11 @@ pub async fn delete_recording(
 
     // Delete files from disk, but only ones inside Lucid's recordings folder
     // (a path the database names elsewhere is never touched).
-    let files: Vec<std::path::PathBuf> = [&paths.0, &paths.1].into_iter().flatten().map(std::path::PathBuf::from).collect();
+    let files: Vec<std::path::PathBuf> = [&paths.0, &paths.1]
+        .into_iter()
+        .flatten()
+        .map(std::path::PathBuf::from)
+        .collect();
     if let Some(dir) = crate::workspace::purge::recordings_dir() {
         crate::workspace::purge::delete_files_inside(&dir, &files);
     }

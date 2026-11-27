@@ -31,7 +31,10 @@ pub const MAX_CHECK_SECS: u32 = 60;
 impl MeetingDetectionConfig {
     /// Time between checks, kept within 1–60 s.
     pub fn check_interval(&self) -> Duration {
-        Duration::from_secs(u64::from(self.check_interval_secs.clamp(MIN_CHECK_SECS, MAX_CHECK_SECS)))
+        Duration::from_secs(u64::from(
+            self.check_interval_secs
+                .clamp(MIN_CHECK_SECS, MAX_CHECK_SECS),
+        ))
     }
 }
 
@@ -119,12 +122,22 @@ pub struct DetectedMeeting {
 
 impl DetectedMeeting {
     fn new(app: CallApp, title: Option<String>) -> Self {
-        Self { app: app.id().to_string(), app_name: app.name().to_string(), title }
+        Self {
+            app: app.id().to_string(),
+            app_name: app.name().to_string(),
+            title,
+        }
     }
 }
 
 const BROWSERS: &[&str] = &[
-    "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe",
+    "chrome.exe",
+    "msedge.exe",
+    "firefox.exe",
+    "brave.exe",
+    "opera.exe",
+    "vivaldi.exe",
+    "arc.exe",
 ];
 
 fn native_app(exe: &str) -> Option<CallApp> {
@@ -141,17 +154,26 @@ fn native_app(exe: &str) -> Option<CallApp> {
 /// Whether any capturing process could be a call (window titles are only
 /// read then, keeping the usual idle pass to the mic-session check).
 pub fn may_be_call(capturing: &[String]) -> bool {
-    capturing.iter().any(|e| native_app(e).is_some() || BROWSERS.contains(&e.as_str()))
+    capturing
+        .iter()
+        .any(|e| native_app(e).is_some() || BROWSERS.contains(&e.as_str()))
 }
 
 /// The meeting in progress, if a call app is using the microphone.
 /// `capturing` holds the lowercase executable names of processes with an
 /// active microphone session (Lucid itself excluded).
-pub fn detect(capturing: &[String], windows: &[WindowInfo], cfg: &MeetingDetectionConfig) -> Option<DetectedMeeting> {
+pub fn detect(
+    capturing: &[String],
+    windows: &[WindowInfo],
+    cfg: &MeetingDetectionConfig,
+) -> Option<DetectedMeeting> {
     if !cfg.enabled {
         return None;
     }
-    fn windows_of<'a>(windows: &'a [WindowInfo], exe: &'a str) -> impl Iterator<Item = &'a WindowInfo> + 'a {
+    fn windows_of<'a>(
+        windows: &'a [WindowInfo],
+        exe: &'a str,
+    ) -> impl Iterator<Item = &'a WindowInfo> + 'a {
         windows.iter().filter(move |w| w.exe == exe)
     }
 
@@ -197,11 +219,17 @@ pub fn detect(capturing: &[String], windows: &[WindowInfo], cfg: &MeetingDetecti
 }
 
 fn clean(title: &str) -> String {
-    title.replace(['\u{200b}', '\u{200e}', '\u{200f}'], "").trim().to_string()
+    title
+        .replace(['\u{200b}', '\u{200e}', '\u{200f}'], "")
+        .trim()
+        .to_string()
 }
 
 fn non_empty(s: &str) -> Option<String> {
-    let s = s.trim().trim_matches(|c: char| c == '-' || c == '–' || c == '|' || c == ':').trim();
+    let s = s
+        .trim()
+        .trim_matches(|c: char| c == '-' || c == '–' || c == '|' || c == ':')
+        .trim();
     (!s.is_empty()).then(|| s.to_string())
 }
 
@@ -209,7 +237,15 @@ fn non_empty(s: &str) -> Option<String> {
 /// "X — Mozilla Firefox" → the page title.
 fn strip_browser_suffix(title: &str) -> String {
     let mut t = clean(title);
-    const NAMES: &[&str] = &["Google Chrome", "Microsoft Edge", "Mozilla Firefox", "Brave", "Opera", "Vivaldi", "Arc"];
+    const NAMES: &[&str] = &[
+        "Google Chrome",
+        "Microsoft Edge",
+        "Mozilla Firefox",
+        "Brave",
+        "Opera",
+        "Vivaldi",
+        "Arc",
+    ];
     for name in NAMES {
         for sep in [" - ", " — ", " – "] {
             if let Some(stripped) = t.strip_suffix(&format!("{sep}{name}")) {
@@ -238,13 +274,18 @@ fn google_meet_title(page: &str) -> Option<Option<String>> {
         .or_else(|| page.strip_prefix("Meet — "));
     let rest = match rest {
         Some(r) => r,
-        None if page.contains("Google Meet") => return Some(non_empty(&page.replace("Google Meet", ""))),
+        None if page.contains("Google Meet") => {
+            return Some(non_empty(&page.replace("Google Meet", "")))
+        }
         None => return None,
     };
     let is_code = {
         let parts: Vec<&str> = rest.split('-').collect();
         parts.len() == 3
-            && [3, 4, 3].iter().zip(&parts).all(|(n, p)| p.len() == *n && p.chars().all(|c| c.is_ascii_lowercase()))
+            && [3, 4, 3]
+                .iter()
+                .zip(&parts)
+                .all(|(n, p)| p.len() == *n && p.chars().all(|c| c.is_ascii_lowercase()))
     };
     Some(if is_code { None } else { non_empty(rest) })
 }
@@ -260,15 +301,32 @@ fn zoom_title(title: &str) -> Option<String> {
     if let Some(i) = t.find("Meeting ID") {
         t.truncate(i);
     }
-    non_empty(&t.replace("Zoom Meeting", "").replace("Zoom Webinar", "").replace("Zoom", ""))
+    non_empty(
+        &t.replace("Zoom Meeting", "")
+            .replace("Zoom Webinar", "")
+            .replace("Zoom", ""),
+    )
 }
 
 /// "Weekly sync | Microsoft Teams" → "Weekly sync"; the main window's pages
 /// ("Chat | Ann | Microsoft Teams", "Calendar | Microsoft Teams") are not meetings.
 fn teams_title(title: &str) -> Option<String> {
     const PAGES: &[&str] = &[
-        "Chat", "Activity", "Calendar", "Teams", "Calls", "Files", "Apps", "Communities", "OneDrive", "Copilot",
-        "Search", "Microsoft Teams", "Teams and channels", "Assignments", "Settings",
+        "Chat",
+        "Activity",
+        "Calendar",
+        "Teams",
+        "Calls",
+        "Files",
+        "Apps",
+        "Communities",
+        "OneDrive",
+        "Copilot",
+        "Search",
+        "Microsoft Teams",
+        "Teams and channels",
+        "Assignments",
+        "Settings",
     ];
     let t = clean(title);
     let first = t.split(" | ").next().unwrap_or("").trim();
@@ -280,7 +338,10 @@ fn teams_title(title: &str) -> Option<String> {
 
 fn webex_title(title: &str) -> Option<String> {
     let t = clean(title);
-    let rest = t.replace("Cisco Webex Meetings", "").replace("Webex Meetings", "").replace("Webex", "");
+    let rest = t
+        .replace("Cisco Webex Meetings", "")
+        .replace("Webex Meetings", "")
+        .replace("Webex", "");
     non_empty(&rest)
 }
 
@@ -320,7 +381,12 @@ impl Tracker {
         self.prompt_open = false;
     }
 
-    pub fn tick(&mut self, now: Instant, seen: Option<DetectedMeeting>, meeting_active: bool) -> Vec<TrackerEvent> {
+    pub fn tick(
+        &mut self,
+        now: Instant,
+        seen: Option<DetectedMeeting>,
+        meeting_active: bool,
+    ) -> Vec<TrackerEvent> {
         let mut events = Vec::new();
         if meeting_active && self.prompt_open {
             self.prompt_open = false;
@@ -373,11 +439,18 @@ mod tests {
     use super::*;
 
     fn cfg() -> MeetingDetectionConfig {
-        MeetingDetectionConfig { enabled: true, ..Default::default() }
+        MeetingDetectionConfig {
+            enabled: true,
+            ..Default::default()
+        }
     }
 
     fn win(exe: &str, title: &str) -> WindowInfo {
-        WindowInfo { exe: exe.into(), title: title.into(), class: String::new() }
+        WindowInfo {
+            exe: exe.into(),
+            title: title.into(),
+            class: String::new(),
+        }
     }
 
     fn caps(exes: &[&str]) -> Vec<String> {
@@ -386,34 +459,88 @@ mod tests {
 
     #[test]
     fn zoom_on_the_mic_is_a_meeting_with_its_title_when_shown() {
-        let d = detect(&caps(&["zoom.exe"]), &[win("zoom.exe", "Zoom Workplace"), win("zoom.exe", "Zoom Meeting")], &cfg()).unwrap();
-        assert_eq!((d.app.as_str(), d.app_name.as_str(), d.title.as_deref()), ("zoom", "Zoom", None));
-        let d = detect(&caps(&["zoom.exe"]), &[win("zoom.exe", "Zoom Meeting - Design review")], &cfg()).unwrap();
+        let d = detect(
+            &caps(&["zoom.exe"]),
+            &[
+                win("zoom.exe", "Zoom Workplace"),
+                win("zoom.exe", "Zoom Meeting"),
+            ],
+            &cfg(),
+        )
+        .unwrap();
+        assert_eq!(
+            (d.app.as_str(), d.app_name.as_str(), d.title.as_deref()),
+            ("zoom", "Zoom", None)
+        );
+        let d = detect(
+            &caps(&["zoom.exe"]),
+            &[win("zoom.exe", "Zoom Meeting - Design review")],
+            &cfg(),
+        )
+        .unwrap();
         assert_eq!(d.title.as_deref(), Some("Design review"));
         assert_eq!(zoom_title("Zoom Meeting ID: 812 345 6789"), None);
     }
 
     #[test]
     fn teams_meeting_window_gives_the_title_and_pages_do_not() {
-        let windows = [win("ms-teams.exe", "Chat | Ann Lee | Microsoft Teams"), win("ms-teams.exe", "Weekly sync | Microsoft Teams")];
+        let windows = [
+            win("ms-teams.exe", "Chat | Ann Lee | Microsoft Teams"),
+            win("ms-teams.exe", "Weekly sync | Microsoft Teams"),
+        ];
         let d = detect(&caps(&["ms-teams.exe"]), &windows, &cfg()).unwrap();
-        assert_eq!((d.app.as_str(), d.title.as_deref()), ("teams", Some("Weekly sync")));
+        assert_eq!(
+            (d.app.as_str(), d.title.as_deref()),
+            ("teams", Some("Weekly sync"))
+        );
         assert_eq!(teams_title("Calendar | Microsoft Teams"), None);
     }
 
     #[test]
     fn browsers_count_only_with_a_meeting_tab() {
-        let meet = detect(&caps(&["chrome.exe"]), &[win("chrome.exe", "Meet – Q4 planning - Google Chrome")], &cfg()).unwrap();
-        assert_eq!((meet.app.as_str(), meet.title.as_deref()), ("google_meet", Some("Q4 planning")));
-        let code = detect(&caps(&["msedge.exe"]), &[win("msedge.exe", "Meet - abc-defg-hij and 2 more pages - Personal - Microsoft\u{200b} Edge")], &cfg()).unwrap();
+        let meet = detect(
+            &caps(&["chrome.exe"]),
+            &[win("chrome.exe", "Meet – Q4 planning - Google Chrome")],
+            &cfg(),
+        )
+        .unwrap();
+        assert_eq!(
+            (meet.app.as_str(), meet.title.as_deref()),
+            ("google_meet", Some("Q4 planning"))
+        );
+        let code = detect(
+            &caps(&["msedge.exe"]),
+            &[win(
+                "msedge.exe",
+                "Meet - abc-defg-hij and 2 more pages - Personal - Microsoft\u{200b} Edge",
+            )],
+            &cfg(),
+        )
+        .unwrap();
         assert_eq!((code.app.as_str(), code.title), ("google_meet", None));
-        assert_eq!(detect(&caps(&["chrome.exe"]), &[win("chrome.exe", "Quora - Google Chrome")], &cfg()), None);
+        assert_eq!(
+            detect(
+                &caps(&["chrome.exe"]),
+                &[win("chrome.exe", "Quora - Google Chrome")],
+                &cfg()
+            ),
+            None
+        );
     }
 
     #[test]
     fn check_interval_defaults_to_3s_and_stays_in_range() {
-        assert_eq!(MeetingDetectionConfig::default().check_interval(), Duration::from_secs(3));
-        let at = |s| MeetingDetectionConfig { check_interval_secs: s, ..Default::default() }.check_interval();
+        assert_eq!(
+            MeetingDetectionConfig::default().check_interval(),
+            Duration::from_secs(3)
+        );
+        let at = |s| {
+            MeetingDetectionConfig {
+                check_interval_secs: s,
+                ..Default::default()
+            }
+            .check_interval()
+        };
         assert_eq!(at(0), Duration::from_secs(1));
         assert_eq!(at(1), Duration::from_secs(1));
         assert_eq!(at(600), Duration::from_secs(60));
@@ -424,9 +551,19 @@ mod tests {
 
     #[test]
     fn disabled_apps_and_detection_are_ignored() {
-        let off = MeetingDetectionConfig { zoom: false, ..cfg() };
+        let off = MeetingDetectionConfig {
+            zoom: false,
+            ..cfg()
+        };
         assert_eq!(detect(&caps(&["zoom.exe"]), &[], &off), None);
-        assert_eq!(detect(&caps(&["zoom.exe"]), &[], &MeetingDetectionConfig::default()), None);
+        assert_eq!(
+            detect(
+                &caps(&["zoom.exe"]),
+                &[],
+                &MeetingDetectionConfig::default()
+            ),
+            None
+        );
         assert_eq!(detect(&caps(&["discord.exe"]), &[], &cfg()), None); // off by default
         assert_eq!(detect(&caps(&["obs64.exe"]), &[], &cfg()), None);
     }
@@ -442,7 +579,10 @@ mod tests {
         let mut tr = Tracker::default();
         assert!(tr.tick(s(0), zoom(), false).is_empty());
         assert!(tr.tick(s(2), zoom(), false).is_empty());
-        assert_eq!(tr.tick(s(3), zoom(), false), vec![TrackerEvent::Prompt(zoom().unwrap())]);
+        assert_eq!(
+            tr.tick(s(3), zoom(), false),
+            vec![TrackerEvent::Prompt(zoom().unwrap())]
+        );
         assert!(tr.tick(s(5), zoom(), false).is_empty()); // once per call
         assert!(tr.tick(s(6), None, false).is_empty()); // brief drop
         assert!(tr.tick(s(8), zoom(), false).is_empty());
@@ -461,7 +601,10 @@ mod tests {
 
         let mut tr = Tracker::default();
         tr.tick(s(0), zoom(), false);
-        assert!(matches!(tr.tick(s(4), zoom(), false)[..], [TrackerEvent::Prompt(_)]));
+        assert!(matches!(
+            tr.tick(s(4), zoom(), false)[..],
+            [TrackerEvent::Prompt(_)]
+        ));
         assert_eq!(tr.tick(s(5), zoom(), true), vec![TrackerEvent::Hide]);
     }
 

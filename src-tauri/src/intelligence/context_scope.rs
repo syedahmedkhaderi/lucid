@@ -65,7 +65,10 @@ pub enum TranscriptWindow {
 
 /// The stateless transcript window for `scope`, given the action's own
 /// window (`action_window_seconds`, 0 = all).
-pub fn stateless_window(scope: Option<&ResolvedScope>, action_window_seconds: u64) -> TranscriptWindow {
+pub fn stateless_window(
+    scope: Option<&ResolvedScope>,
+    action_window_seconds: u64,
+) -> TranscriptWindow {
     let Some(scope) = scope else {
         return TranscriptWindow::Seconds(action_window_seconds);
     };
@@ -134,7 +137,11 @@ pub fn session_scope_note(scope: Option<&ResolvedScope>, start_ms: i64) -> Optio
         ScopeKind::All => Some("Base your answer on the whole meeting so far.".to_string()),
         ScopeKind::Minutes => {
             let minutes = scope.minutes.unwrap_or(0);
-            let span = if minutes == 1 { "the last minute".to_string() } else { format!("the last {minutes} minutes") };
+            let span = if minutes == 1 {
+                "the last minute".to_string()
+            } else {
+                format!("the last {minutes} minutes")
+            };
             Some(match scope.since_ms {
                 Some(since) => format!(
                     "Base your answer only on the transcript from {} onward ({span}); {BACKGROUND}",
@@ -169,22 +176,43 @@ mod tests {
     const START: i64 = 1_700_000_000_000;
 
     fn scope(kind: ScopeKind, since_ms: Option<i64>, minutes: Option<u32>) -> ResolvedScope {
-        ResolvedScope { kind, since_ms, minutes, label: "L".into() }
+        ResolvedScope {
+            kind,
+            since_ms,
+            minutes,
+            label: "L".into(),
+        }
     }
 
     #[test]
     fn scope_deserializes_from_the_frontend_shape() {
+        let s: ResolvedScope = serde_json::from_str(
+            r#"{"kind":"minutes","since_ms":1700000300000,"minutes":5,"label":"Last 5 min"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            s,
+            ResolvedScope {
+                kind: ScopeKind::Minutes,
+                since_ms: Some(1_700_000_300_000),
+                minutes: Some(5),
+                label: "Last 5 min".into()
+            }
+        );
         let s: ResolvedScope =
-            serde_json::from_str(r#"{"kind":"minutes","since_ms":1700000300000,"minutes":5,"label":"Last 5 min"}"#).unwrap();
-        assert_eq!(s, ResolvedScope { kind: ScopeKind::Minutes, since_ms: Some(1_700_000_300_000), minutes: Some(5), label: "Last 5 min".into() });
-        let s: ResolvedScope = serde_json::from_str(r#"{"kind":"since_last_same","since_ms":null,"label":"x"}"#).unwrap();
-        assert_eq!((s.kind, s.since_ms, s.minutes), (ScopeKind::SinceLastSame, None, None));
+            serde_json::from_str(r#"{"kind":"since_last_same","since_ms":null,"label":"x"}"#)
+                .unwrap();
+        assert_eq!(
+            (s.kind, s.since_ms, s.minutes),
+            (ScopeKind::SinceLastSame, None, None)
+        );
         for (json, kind) in [
             ("default", ScopeKind::Default),
             ("since_last_any", ScopeKind::SinceLastAny),
             ("all", ScopeKind::All),
         ] {
-            let s: ResolvedScope = serde_json::from_str(&format!(r#"{{"kind":"{json}","since_ms":null}}"#)).unwrap();
+            let s: ResolvedScope =
+                serde_json::from_str(&format!(r#"{{"kind":"{json}","since_ms":null}}"#)).unwrap();
             assert_eq!(s.kind, kind);
         }
         assert!(serde_json::from_str::<ResolvedScope>(r#"{"kind":"bogus"}"#).is_err());
@@ -195,21 +223,36 @@ mod tests {
         let d = scope(ScopeKind::Default, None, None);
         assert!(ResolvedScope::is_default(None) && ResolvedScope::is_default(Some(&d)));
         assert_eq!(ResolvedScope::label_of(Some(&d)), None);
-        assert_eq!(ResolvedScope::label_of(Some(&scope(ScopeKind::All, None, None))), Some("L".into()));
+        assert_eq!(
+            ResolvedScope::label_of(Some(&scope(ScopeKind::All, None, None))),
+            Some("L".into())
+        );
         assert_eq!(stateless_window(None, 300), TranscriptWindow::Seconds(300));
-        assert_eq!(stateless_window(Some(&d), 30), TranscriptWindow::Seconds(30));
+        assert_eq!(
+            stateless_window(Some(&d), 30),
+            TranscriptWindow::Seconds(30)
+        );
     }
 
     #[test]
     fn stateless_window_per_kind() {
-        assert_eq!(stateless_window(Some(&scope(ScopeKind::All, None, None)), 300), TranscriptWindow::Seconds(0));
-        assert_eq!(stateless_window(Some(&scope(ScopeKind::Minutes, None, Some(10))), 300), TranscriptWindow::Seconds(600));
+        assert_eq!(
+            stateless_window(Some(&scope(ScopeKind::All, None, None)), 300),
+            TranscriptWindow::Seconds(0)
+        );
+        assert_eq!(
+            stateless_window(Some(&scope(ScopeKind::Minutes, None, Some(10))), 300),
+            TranscriptWindow::Seconds(600)
+        );
         assert_eq!(
             stateless_window(Some(&scope(ScopeKind::Minutes, Some(START), Some(10))), 300),
             TranscriptWindow::Since(START)
         );
         assert_eq!(
-            stateless_window(Some(&scope(ScopeKind::SinceLastAny, Some(START), None)), 300),
+            stateless_window(
+                Some(&scope(ScopeKind::SinceLastAny, Some(START), None)),
+                300
+            ),
             TranscriptWindow::Since(START)
         );
         assert_eq!(
@@ -224,26 +267,53 @@ mod tests {
         // Segments start at 0 s, 100 s (a long merged one) and 290 s.
         let starts = [0, 100_000, 290_000];
         // A 60 s window ends at 290 s: cutoff 230 s. The 100 s segment ran until 290 s.
-        assert_eq!(overlapping(&starts, TranscriptWindow::Seconds(60)), vec![1, 2]);
-        assert_eq!(overlapping(&starts, TranscriptWindow::Seconds(0)), vec![0, 1, 2]);
-        assert_eq!(overlapping(&starts, TranscriptWindow::Since(100_000)), vec![1, 2]);
-        assert_eq!(overlapping(&starts, TranscriptWindow::Since(50_000)), vec![0, 1, 2]);
+        assert_eq!(
+            overlapping(&starts, TranscriptWindow::Seconds(60)),
+            vec![1, 2]
+        );
+        assert_eq!(
+            overlapping(&starts, TranscriptWindow::Seconds(0)),
+            vec![0, 1, 2]
+        );
+        assert_eq!(
+            overlapping(&starts, TranscriptWindow::Since(100_000)),
+            vec![1, 2]
+        );
+        assert_eq!(
+            overlapping(&starts, TranscriptWindow::Since(50_000)),
+            vec![0, 1, 2]
+        );
         // Nothing new since: the newest (still open) segment is the overlap.
-        assert_eq!(overlapping(&starts, TranscriptWindow::Since(400_000)), vec![2]);
+        assert_eq!(
+            overlapping(&starts, TranscriptWindow::Since(400_000)),
+            vec![2]
+        );
         assert!(overlapping(&[], TranscriptWindow::Seconds(60)).is_empty());
     }
 
     #[test]
     fn effective_window_reports_seconds() {
-        assert_eq!(effective_window_seconds(TranscriptWindow::Seconds(600), &[0]), 600);
-        assert_eq!(effective_window_seconds(TranscriptWindow::Since(10_000), &[0, 70_500]), 61);
-        assert_eq!(effective_window_seconds(TranscriptWindow::Since(90_000), &[0, 70_500]), 1);
+        assert_eq!(
+            effective_window_seconds(TranscriptWindow::Seconds(600), &[0]),
+            600
+        );
+        assert_eq!(
+            effective_window_seconds(TranscriptWindow::Since(10_000), &[0, 70_500]),
+            61
+        );
+        assert_eq!(
+            effective_window_seconds(TranscriptWindow::Since(90_000), &[0, 70_500]),
+            1
+        );
     }
 
     #[test]
     fn session_note_per_kind() {
         assert_eq!(session_scope_note(None, START), None);
-        assert_eq!(session_scope_note(Some(&scope(ScopeKind::Default, None, None)), START), None);
+        assert_eq!(
+            session_scope_note(Some(&scope(ScopeKind::Default, None, None)), START),
+            None
+        );
         assert_eq!(
             session_scope_note(Some(&scope(ScopeKind::All, None, None)), START).unwrap(),
             "Base your answer on the whole meeting so far."
@@ -256,16 +326,34 @@ mod tests {
             session_scope_note(Some(&scope(ScopeKind::SinceLastAny, Some(START + 842_000), None)), START).unwrap(),
             "Base your answer only on the transcript since your previous answer, from [14:02] onward; earlier lines are background only. A line whose text starts with \"…\" adds newly spoken words to an earlier line, so its new words count as in scope."
         );
-        assert!(session_scope_note(Some(&scope(ScopeKind::SinceLastSame, Some(START + 3_725_000), None)), START)
-            .unwrap()
-            .contains("previous answer to this same action, from [62:05] onward"));
+        assert!(session_scope_note(
+            Some(&scope(
+                ScopeKind::SinceLastSame,
+                Some(START + 3_725_000),
+                None
+            )),
+            START
+        )
+        .unwrap()
+        .contains("previous answer to this same action, from [62:05] onward"));
     }
 
     #[test]
     fn compose_delta_carries_the_scope_section_before_the_task() {
-        let seg = Seg { id: "s1".into(), text: "We ship Friday".into(), speaker: "Them".into(), timestamp_ms: 61_000 };
+        let seg = Seg {
+            id: "s1".into(),
+            text: "We ship Friday".into(),
+            speaker: "Them".into(),
+            timestamp_ms: 61_000,
+        };
         let note = session_scope_note(Some(&scope(ScopeKind::All, None, None)), START).unwrap();
-        let p = compose_delta(&[seg], &[("## Relevant document excerpts", ""), (SCOPE_HEADER, &note)], "Recap.", None, None);
+        let p = compose_delta(
+            &[seg],
+            &[("## Relevant document excerpts", ""), (SCOPE_HEADER, &note)],
+            "Recap.",
+            None,
+            None,
+        );
         assert_eq!(
             p,
             "## New transcript since last request\n[01:01] [s1] Them: We ship Friday\n\n\

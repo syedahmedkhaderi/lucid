@@ -32,7 +32,8 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    args.into_iter().any(|a| a.as_ref() == OsStr::new(POST_UPDATE_QUIT_ARG))
+    args.into_iter()
+        .any(|a| a.as_ref() == OsStr::new(POST_UPDATE_QUIT_ARG))
 }
 
 /// Set once quit has been deferred for a recording, so the second exit
@@ -75,7 +76,9 @@ pub struct PendingUpdate {
 /// app is already up-to-date.
 #[command]
 pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
-    let updater = app.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
+    let updater = app
+        .updater()
+        .map_err(|e| format!("Failed to get updater: {}", e))?;
 
     let update = updater
         .check()
@@ -111,7 +114,9 @@ pub async fn download_update(
 }
 
 async fn download_into_pending(app: &AppHandle, state: &AppState) -> Result<UpdateInfo, String> {
-    let updater = app.updater().map_err(|e| format!("Failed to get updater: {}", e))?;
+    let updater = app
+        .updater()
+        .map_err(|e| format!("Failed to get updater: {}", e))?;
     let update = updater
         .check()
         .await
@@ -145,7 +150,11 @@ async fn download_into_pending(app: &AppHandle, state: &AppState) -> Result<Upda
         .await
         .map_err(|e| format!("Failed to download update: {}", e))?;
 
-    log::info!("Update v{} downloaded ({} bytes)", info.version, bytes.len());
+    log::info!(
+        "Update v{} downloaded ({} bytes)",
+        info.version,
+        bytes.len()
+    );
     let quit_update = quit_variant(app, &info.version).await;
 
     *state
@@ -359,7 +368,9 @@ pub fn on_exit_requested(app: &AppHandle, api: &ExitRequestApi) {
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
                 if !wait_for_recordings(&state, QUIT_RECORDING_WAIT_LIMIT).await {
-                    log::warn!("Recording still saving after the quit wait; exiting without installing");
+                    log::warn!(
+                        "Recording still saving after the quit wait; exiting without installing"
+                    );
                 }
                 app.exit(0);
             });
@@ -368,7 +379,9 @@ pub fn on_exit_requested(app: &AppHandle, api: &ExitRequestApi) {
 }
 
 fn setting(app: &AppHandle, key: &str) -> Option<serde_json::Value> {
-    app.store(SETTINGS_STORE).ok().and_then(|store| store.get(key))
+    app.store(SETTINGS_STORE)
+        .ok()
+        .and_then(|store| store.get(key))
 }
 
 /// "Automatic updates" preference; defaults to on when unset or unreadable.
@@ -388,7 +401,10 @@ mod tests {
 
     #[test]
     fn relaunch_after_install_on_quit_is_recognised() {
-        assert!(is_post_update_quit([r"C:\Lucid\nexq.exe", POST_UPDATE_QUIT_ARG]));
+        assert!(is_post_update_quit([
+            r"C:\Lucid\nexq.exe",
+            POST_UPDATE_QUIT_ARG
+        ]));
         assert!(is_post_update_quit(vec![
             std::ffi::OsString::from("nexq.exe"),
             std::ffi::OsString::from("--flag"),
@@ -400,32 +416,50 @@ mod tests {
     fn normal_launch_and_restart_relaunch_are_not_post_update_quit() {
         assert!(!is_post_update_quit(["nexq.exe"]));
         assert!(!is_post_update_quit(Vec::<String>::new()));
-        assert!(!is_post_update_quit(["nexq.exe", "--nexq-post-update-quit-later"]));
+        assert!(!is_post_update_quit([
+            "nexq.exe",
+            "--nexq-post-update-quit-later"
+        ]));
     }
 
     #[test]
     fn installs_when_everything_allows_it() {
-        assert_eq!(quit_action(true, false, true, false, 0, false), QuitAction::Install);
+        assert_eq!(
+            quit_action(true, false, true, false, 0, false),
+            QuitAction::Install
+        );
     }
 
     #[test]
     fn exits_without_pending_update() {
-        assert_eq!(quit_action(false, false, true, false, 0, false), QuitAction::Exit);
+        assert_eq!(
+            quit_action(false, false, true, false, 0, false),
+            QuitAction::Exit
+        );
     }
 
     #[test]
     fn never_installs_during_a_meeting() {
-        assert_eq!(quit_action(true, true, true, false, 0, false), QuitAction::Exit);
+        assert_eq!(
+            quit_action(true, true, true, false, 0, false),
+            QuitAction::Exit
+        );
     }
 
     #[test]
     fn respects_automatic_updates_off() {
-        assert_eq!(quit_action(true, false, false, false, 0, false), QuitAction::Exit);
+        assert_eq!(
+            quit_action(true, false, false, false, 0, false),
+            QuitAction::Exit
+        );
     }
 
     #[test]
     fn skipped_version_is_not_installed() {
-        assert_eq!(quit_action(true, false, true, true, 0, false), QuitAction::Exit);
+        assert_eq!(
+            quit_action(true, false, true, true, 0, false),
+            QuitAction::Exit
+        );
     }
 
     #[test]
@@ -438,11 +472,17 @@ mod tests {
 
     #[test]
     fn exits_without_installing_if_recording_outlasts_the_wait() {
-        assert_eq!(quit_action(true, false, true, false, 1, true), QuitAction::Exit);
+        assert_eq!(
+            quit_action(true, false, true, false, 1, true),
+            QuitAction::Exit
+        );
     }
 
     #[test]
     fn installs_after_the_wait_once_recording_is_saved() {
-        assert_eq!(quit_action(true, false, true, false, 0, true), QuitAction::Install);
+        assert_eq!(
+            quit_action(true, false, true, false, 0, true),
+            QuitAction::Install
+        );
     }
 }

@@ -9,7 +9,9 @@
 //! session has started. What the CLI does with these flags: see the table in
 //! `sources/mod.rs`.
 
-use super::config::{is_valid_tool_full_name, McpServer, McpTransport, NotesFolder, PersonalSourcesConfig};
+use super::config::{
+    is_valid_tool_full_name, McpServer, McpTransport, NotesFolder, PersonalSourcesConfig,
+};
 use super::mcp_json::{credential_id, header_credential_id};
 use super::private_files::private_dir;
 use crate::llm::cli_agent::command::{SourcesLaunch, SOURCES_BUILTIN_TOOLS};
@@ -52,7 +54,11 @@ impl Protected {
         if let Some(appdata) = appdata {
             credentials.push(appdata.join("Claude"));
         }
-        Self { private, home, credentials }
+        Self {
+            private,
+            home,
+            credentials,
+        }
     }
 }
 
@@ -66,24 +72,35 @@ pub fn folder_problem(path: &Path) -> Option<String> {
 pub fn folder_problem_with(path: &Path, protected: &Protected) -> Option<String> {
     let folder = resolve(path, true);
     if folder.parent().is_none() {
-        return Some("A whole drive can't be a notes folder. Choose the folder that holds your notes.".into());
+        return Some(
+            "A whole drive can't be a notes folder. Choose the folder that holds your notes."
+                .into(),
+        );
     }
     let private = resolve(&protected.private, true);
     if private.starts_with(&folder) || folder.starts_with(&private) {
-        return Some("This folder holds Lucid's private files, so it can't be a notes folder.".into());
+        return Some(
+            "This folder holds Lucid's private files, so it can't be a notes folder.".into(),
+        );
     }
     if let Some(home) = protected.home.as_deref().map(|h| resolve(h, true)) {
         if folder == home {
             return Some("Your whole user folder can't be a notes folder. Choose the folder that holds your notes.".into());
         }
         if home.starts_with(&folder) {
-            return Some("This folder contains your whole user folder, so it can't be a notes folder.".into());
+            return Some(
+                "This folder contains your whole user folder, so it can't be a notes folder."
+                    .into(),
+            );
         }
     }
     for cred in &protected.credentials {
         let cred = resolve(cred, true);
         if cred.starts_with(&folder) || folder.starts_with(&cred) {
-            return Some("This folder holds your account's sign-in files, so it can't be a notes folder.".into());
+            return Some(
+                "This folder holds your account's sign-in files, so it can't be a notes folder."
+                    .into(),
+            );
         }
     }
     None
@@ -114,7 +131,11 @@ fn resolve(path: &Path, lower: bool) -> PathBuf {
     }
     let text = full.to_string_lossy().into_owned();
     let text = text.strip_prefix(r"\\?\").unwrap_or(&text).to_string();
-    PathBuf::from(if lower && cfg!(windows) { text.to_lowercase() } else { text })
+    PathBuf::from(if lower && cfg!(windows) {
+        text.to_lowercase()
+    } else {
+        text
+    })
 }
 
 /// Deny rules for the private folder on the file tools. The CLI takes the
@@ -123,7 +144,10 @@ fn resolve(path: &Path, lower: bool) -> PathBuf {
 /// [`folder_problem`].
 fn private_deny_rules(private: &Path) -> Vec<String> {
     let text = resolve(private, false).to_string_lossy().replace('\\', "/");
-    ["Read", "Grep", "Glob"].iter().map(|t| format!("{t}({text}/**)")).collect()
+    ["Read", "Grep", "Glob"]
+        .iter()
+        .map(|t| format!("{t}({text}/**)"))
+        .collect()
 }
 
 /// The launch inputs for the enabled, reachable sources. `secret` looks a
@@ -169,7 +193,11 @@ pub fn build_sources_launch(
     }
 
     if folders.is_empty() && servers.is_empty() {
-        return if left_out.is_empty() { Ok(None) } else { Err(left_out.join("; ")) };
+        return if left_out.is_empty() {
+            Ok(None)
+        } else {
+            Err(left_out.join("; "))
+        };
     }
 
     let mut allowed_tools: Vec<String> = Vec::new();
@@ -182,7 +210,11 @@ pub fn build_sources_launch(
     }
     for server in &servers {
         // A tool name that is not `mcp__<key>__<name>` never reaches the command line.
-        for tool in server.tools.iter().filter(|t| is_valid_tool_full_name(&server.key, &t.full_name)) {
+        for tool in server
+            .tools
+            .iter()
+            .filter(|t| is_valid_tool_full_name(&server.key, &t.full_name))
+        {
             if tool.allowed {
                 allowed_tools.push(tool.full_name.clone());
             } else {
@@ -191,14 +223,17 @@ pub fn build_sources_launch(
         }
     }
 
-    let mcp_config_json = (!entries.is_empty())
-        .then(|| json!({ "mcpServers": Value::Object(entries) }).to_string());
+    let mcp_config_json =
+        (!entries.is_empty()).then(|| json!({ "mcpServers": Value::Object(entries) }).to_string());
     Ok(Some(SourcesLaunch {
         add_dirs: folders.iter().map(|f| PathBuf::from(&f.path)).collect(),
         mcp_config_json,
         allowed_tools,
         disallowed_tools,
-        server_labels: servers.iter().map(|s| (s.key.clone(), s.label.clone())).collect(),
+        server_labels: servers
+            .iter()
+            .map(|s| (s.key.clone(), s.label.clone()))
+            .collect(),
         system_prompt_addition: sources_system_prompt(&folders, &servers),
         left_out,
         mcp_startup_timeout_ms: None,
@@ -233,7 +268,8 @@ fn server_entry(
             let mut env = Map::new();
             for var in &server.env {
                 let value = if var.secret {
-                    secret(&credential_id(&server.key, &var.name)).ok_or_else(|| missing(&var.name))?
+                    secret(&credential_id(&server.key, &var.name))
+                        .ok_or_else(|| missing(&var.name))?
                 } else {
                     var.value.clone().unwrap_or_default()
                 };
@@ -299,7 +335,12 @@ mod tests {
     use crate::sources::config::{EnvVar, McpTool};
 
     fn tool(key: &str, name: &str, allowed: bool) -> McpTool {
-        McpTool { name: name.into(), full_name: format!("mcp__{key}__{name}"), allowed, ..Default::default() }
+        McpTool {
+            name: name.into(),
+            full_name: format!("mcp__{key}__{name}"),
+            allowed,
+            ..Default::default()
+        }
     }
 
     fn stdio(key: &str, label: &str, env: Vec<EnvVar>, tools: Vec<McpTool>) -> McpServer {
@@ -307,7 +348,10 @@ mod tests {
             id: key.into(),
             key: key.into(),
             label: label.into(),
-            transport: McpTransport::Stdio { command: "node".into(), args: vec!["s.js".into()] },
+            transport: McpTransport::Stdio {
+                command: "node".into(),
+                args: vec!["s.js".into()],
+            },
             enabled: true,
             env,
             tools,
@@ -316,7 +360,11 @@ mod tests {
     }
 
     fn secret_env(name: &str) -> EnvVar {
-        EnvVar { name: name.into(), value: None, secret: true }
+        EnvVar {
+            name: name.into(),
+            value: None,
+            secret: true,
+        }
     }
 
     fn real_dir(name: &str) -> PathBuf {
@@ -326,20 +374,33 @@ mod tests {
     }
 
     fn folder(label: &str, path: &std::path::Path) -> NotesFolder {
-        NotesFolder { id: label.into(), label: label.into(), path: path.to_string_lossy().into(), enabled: true }
+        NotesFolder {
+            id: label.into(),
+            label: label.into(),
+            path: path.to_string_lossy().into(),
+            enabled: true,
+        }
     }
 
     #[test]
     fn every_clis_sign_in_folder_is_protected() {
         let home = real_dir("protected-home");
-        let protected = Protected::for_home(Some(home.clone()), None, real_dir("protected-private"));
-        for (dir, name) in [(".claude", "Claude"), (".codex", "Codex"), (".gemini", "Antigravity")] {
+        let protected =
+            Protected::for_home(Some(home.clone()), None, real_dir("protected-private"));
+        for (dir, name) in [
+            (".claude", "Claude"),
+            (".codex", "Codex"),
+            (".gemini", "Antigravity"),
+        ] {
             let cred = home.join(dir);
             std::fs::create_dir_all(cred.join("sub")).unwrap();
             // The folder itself, a folder inside it, and a folder that contains it.
             for path in [cred.clone(), cred.join("sub")] {
                 let problem = folder_problem_with(&path, &protected);
-                assert!(problem.as_deref().is_some_and(|p| p.contains("sign-in")), "{name}: {problem:?}");
+                assert!(
+                    problem.as_deref().is_some_and(|p| p.contains("sign-in")),
+                    "{name}: {problem:?}"
+                );
             }
         }
         // An ordinary folder in the same home is fine.
@@ -369,8 +430,18 @@ mod tests {
     fn two_servers_same_secret_name_get_their_own_values() {
         let cfg = PersonalSourcesConfig {
             mcp_servers: vec![
-                stdio("a", "A", vec![secret_env("API_KEY")], vec![tool("a", "kb_search", true)]),
-                stdio("b", "B", vec![secret_env("API_KEY")], vec![tool("b", "kb_search", true)]),
+                stdio(
+                    "a",
+                    "A",
+                    vec![secret_env("API_KEY")],
+                    vec![tool("a", "kb_search", true)],
+                ),
+                stdio(
+                    "b",
+                    "B",
+                    vec![secret_env("API_KEY")],
+                    vec![tool("b", "kb_search", true)],
+                ),
             ],
             ..Default::default()
         };
@@ -387,7 +458,11 @@ mod tests {
 
     #[test]
     fn non_secret_env_goes_in_the_file() {
-        let env = vec![EnvVar { name: "MODE".into(), value: Some("ro".into()), secret: false }];
+        let env = vec![EnvVar {
+            name: "MODE".into(),
+            value: Some("ro".into()),
+            secret: false,
+        }];
         let cfg = PersonalSourcesConfig {
             mcp_servers: vec![stdio("a", "A", env, vec![tool("a", "kb_search", true)])],
             ..Default::default()
@@ -403,7 +478,12 @@ mod tests {
     fn missing_secret_leaves_the_server_out_with_a_reason() {
         let cfg = PersonalSourcesConfig {
             mcp_servers: vec![
-                stdio("mira", "Mira", vec![secret_env("API_KEY")], vec![tool("mira", "kb_search", true)]),
+                stdio(
+                    "mira",
+                    "Mira",
+                    vec![secret_env("API_KEY")],
+                    vec![tool("mira", "kb_search", true)],
+                ),
                 stdio("ok", "Fine", vec![], vec![tool("ok", "kb_read", true)]),
             ],
             ..Default::default()
@@ -412,16 +492,27 @@ mod tests {
         let json = config_of(&launch);
         assert!(json["mcpServers"].get("mira").is_none());
         assert!(json["mcpServers"].get("ok").is_some());
-        assert_eq!(launch.server_labels, vec![("ok".to_string(), "Fine".to_string())]);
+        assert_eq!(
+            launch.server_labels,
+            vec![("ok".to_string(), "Fine".to_string())]
+        );
         assert!(!launch.allowed_tools.iter().any(|t| t.contains("mira")));
         let reason = launch.left_out.join(" ");
-        assert!(reason.contains("Mira") && reason.contains("API_KEY"), "{reason}");
+        assert!(
+            reason.contains("Mira") && reason.contains("API_KEY"),
+            "{reason}"
+        );
     }
 
     #[test]
     fn every_server_left_out_for_a_missing_secret_is_an_error() {
         let cfg = PersonalSourcesConfig {
-            mcp_servers: vec![stdio("mira", "Mira", vec![secret_env("API_KEY")], vec![tool("mira", "kb_search", true)])],
+            mcp_servers: vec![stdio(
+                "mira",
+                "Mira",
+                vec![secret_env("API_KEY")],
+                vec![tool("mira", "kb_search", true)],
+            )],
             ..Default::default()
         };
         let err = build_sources_launch(&cfg, &no_secrets).unwrap_err();
@@ -439,21 +530,33 @@ mod tests {
         assert_eq!(launch.add_dirs, vec![here.clone()]);
         assert!(launch.mcp_config_json.is_none());
         assert_eq!(launch.allowed_tools, ["Read", "Grep", "Glob"]);
-        assert!(launch.system_prompt_addition.contains("Here") && !launch.system_prompt_addition.contains("Gone"));
+        assert!(
+            launch.system_prompt_addition.contains("Here")
+                && !launch.system_prompt_addition.contains("Gone")
+        );
         let _ = std::fs::remove_dir_all(&here);
     }
 
     #[test]
     fn nothing_usable_builds_no_launch() {
         let cfg = PersonalSourcesConfig {
-            notes_folders: vec![folder("Gone", &std::env::temp_dir().join("nexq-no-such-folder-xyz"))],
+            notes_folders: vec![folder(
+                "Gone",
+                &std::env::temp_dir().join("nexq-no-such-folder-xyz"),
+            )],
             mcp_servers: vec![stdio("m", "M", vec![], vec![tool("m", "add_task", false)])],
             ..Default::default()
         };
         // The enabled folder is gone: the reason comes back, not "nothing enabled".
         let err = build_sources_launch(&cfg, &no_secrets).unwrap_err();
-        assert!(err.contains("Gone") && err.contains("folder not found"), "{err}");
-        assert_eq!(build_sources_launch(&PersonalSourcesConfig::default(), &no_secrets), Ok(None));
+        assert!(
+            err.contains("Gone") && err.contains("folder not found"),
+            "{err}"
+        );
+        assert_eq!(
+            build_sources_launch(&PersonalSourcesConfig::default(), &no_secrets),
+            Ok(None)
+        );
     }
 
     #[test]
@@ -465,16 +568,35 @@ mod tests {
                 vec![],
                 vec![
                     tool("m", "kb_read", true),
-                    McpTool { name: "x".into(), full_name: "--add-dir".into(), allowed: true, ..Default::default() },
-                    McpTool { name: "y".into(), full_name: "--add-dir=C:\\".into(), allowed: false, ..Default::default() },
-                    McpTool { name: "z".into(), full_name: "mcp__other__z".into(), allowed: true, ..Default::default() },
+                    McpTool {
+                        name: "x".into(),
+                        full_name: "--add-dir".into(),
+                        allowed: true,
+                        ..Default::default()
+                    },
+                    McpTool {
+                        name: "y".into(),
+                        full_name: "--add-dir=C:\\".into(),
+                        allowed: false,
+                        ..Default::default()
+                    },
+                    McpTool {
+                        name: "z".into(),
+                        full_name: "mcp__other__z".into(),
+                        allowed: true,
+                        ..Default::default()
+                    },
                 ],
             )],
             ..Default::default()
         };
         let launch = build_sources_launch(&cfg, &no_secrets).unwrap().unwrap();
         assert_eq!(launch.allowed_tools, ["mcp__m__kb_read"]);
-        assert!(launch.disallowed_tools.is_empty(), "{:?}", launch.disallowed_tools);
+        assert!(
+            launch.disallowed_tools.is_empty(),
+            "{:?}",
+            launch.disallowed_tools
+        );
     }
 
     #[test]
@@ -482,9 +604,18 @@ mod tests {
         // No ancestor exists: the path must not be appended to itself.
         let path = Path::new(r"Q:\nexq-no\such\dir");
         let got = resolve(path, false).to_string_lossy().into_owned();
-        assert!(got.ends_with(r"nexq-no\such\dir") && got.matches("nexq-no").count() == 1, "{got}");
+        assert!(
+            got.ends_with(r"nexq-no\such\dir") && got.matches("nexq-no").count() == 1,
+            "{got}"
+        );
         let rel = resolve(Path::new("nexq-no-such-a/nexq-no-such-b"), false);
-        assert_eq!(rel.components().filter(|c| c.as_os_str() == "nexq-no-such-b").count(), 1, "{rel:?}");
+        assert_eq!(
+            rel.components()
+                .filter(|c| c.as_os_str() == "nexq-no-such-b")
+                .count(),
+            1,
+            "{rel:?}"
+        );
     }
 
     #[test]
@@ -496,13 +627,30 @@ mod tests {
                 "mira",
                 "Mira",
                 vec![],
-                vec![tool("mira", "kb_search", true), tool("mira", "add_task", false), tool("mira", "kb_read", true)],
+                vec![
+                    tool("mira", "kb_search", true),
+                    tool("mira", "add_task", false),
+                    tool("mira", "kb_read", true),
+                ],
             )],
             ..Default::default()
         };
         let launch = build_sources_launch(&cfg, &no_secrets).unwrap().unwrap();
-        assert_eq!(launch.allowed_tools, ["Read", "Grep", "Glob", "mcp__mira__kb_search", "mcp__mira__kb_read"]);
-        let mcp: Vec<&String> = launch.disallowed_tools.iter().filter(|t| t.starts_with("mcp__")).collect();
+        assert_eq!(
+            launch.allowed_tools,
+            [
+                "Read",
+                "Grep",
+                "Glob",
+                "mcp__mira__kb_search",
+                "mcp__mira__kb_read"
+            ]
+        );
+        let mcp: Vec<&String> = launch
+            .disallowed_tools
+            .iter()
+            .filter(|t| t.starts_with("mcp__"))
+            .collect();
         assert_eq!(mcp, ["mcp__mira__add_task"]);
         let _ = std::fs::remove_dir_all(&here);
     }
@@ -510,12 +658,18 @@ mod tests {
     #[test]
     fn private_folder_is_denied_to_the_file_tools_when_notes_are_on() {
         let here = real_dir("deny");
-        let cfg = PersonalSourcesConfig { notes_folders: vec![folder("N", &here)], ..Default::default() };
+        let cfg = PersonalSourcesConfig {
+            notes_folders: vec![folder("N", &here)],
+            ..Default::default()
+        };
         let launch = build_sources_launch(&cfg, &no_secrets).unwrap().unwrap();
         let rules = &launch.disallowed_tools;
         assert_eq!(rules.len(), 3, "{rules:?}");
         for (rule, tool) in rules.iter().zip(["Read", "Grep", "Glob"]) {
-            assert!(rule.starts_with(&format!("{tool}(")) && rule.ends_with("/agent-private/**)"), "{rule}");
+            assert!(
+                rule.starts_with(&format!("{tool}(")) && rule.ends_with("/agent-private/**)"),
+                "{rule}"
+            );
             assert!(!rule.contains('\\'), "{rule}");
         }
         // Tools only: the file tools are off, so no path rules.
@@ -523,7 +677,11 @@ mod tests {
             mcp_servers: vec![stdio("m", "M", vec![], vec![tool("m", "kb_read", true)])],
             ..Default::default()
         };
-        assert!(build_sources_launch(&tools_only, &no_secrets).unwrap().unwrap().disallowed_tools.is_empty());
+        assert!(build_sources_launch(&tools_only, &no_secrets)
+            .unwrap()
+            .unwrap()
+            .disallowed_tools
+            .is_empty());
         let _ = std::fs::remove_dir_all(&here);
     }
 
@@ -531,7 +689,11 @@ mod tests {
         let home = base.join("home");
         Protected {
             private: base.join("local").join("Lucid").join("agent-private"),
-            credentials: vec![home.join(".claude"), home.join(".claude.json"), base.join("roaming").join("Claude")],
+            credentials: vec![
+                home.join(".claude"),
+                home.join(".claude.json"),
+                base.join("roaming").join("Claude"),
+            ],
             home: Some(home),
         }
     }
@@ -553,9 +715,13 @@ mod tests {
 
         assert_eq!(folder_problem_with(&vault, &prot), None);
         // A folder that does not exist yet has no problem of its own.
-        assert_eq!(folder_problem_with(&base.join("home/Documents/new"), &prot), None);
+        assert_eq!(
+            folder_problem_with(&base.join("home/Documents/new"), &prot),
+            None
+        );
 
-        let refused = |p: &Path| folder_problem_with(p, &prot).unwrap_or_else(|| panic!("accepted {p:?}"));
+        let refused =
+            |p: &Path| folder_problem_with(p, &prot).unwrap_or_else(|| panic!("accepted {p:?}"));
         // Contains the private folder (an ancestor), or is inside it.
         assert!(refused(&base.join("local")).contains("private files"));
         assert!(refused(&base.join("local/Lucid")).contains("private files"));
@@ -564,7 +730,7 @@ mod tests {
         // The home folder itself, and anything above it.
         assert!(refused(&base.join("home")).contains("user folder"));
         let _ = refused(&base); // holds both the private folder and home
-        // Credential folders, or a folder holding them.
+                                // Credential folders, or a folder holding them.
         assert!(refused(&base.join("home/.claude")).contains("sign-in"));
         assert!(refused(&base.join("roaming")).contains("sign-in"));
         // A `..` path cannot sneak past.
@@ -574,9 +740,20 @@ mod tests {
 
     #[test]
     fn folder_problem_refuses_a_drive_root() {
-        let root = std::env::current_dir().unwrap().ancestors().last().unwrap().to_path_buf();
-        let prot = Protected { private: PathBuf::from("Z:/none/private"), home: None, credentials: vec![] };
-        assert!(folder_problem_with(&root, &prot).unwrap().contains("whole drive"));
+        let root = std::env::current_dir()
+            .unwrap()
+            .ancestors()
+            .last()
+            .unwrap()
+            .to_path_buf();
+        let prot = Protected {
+            private: PathBuf::from("Z:/none/private"),
+            home: None,
+            credentials: vec![],
+        };
+        assert!(folder_problem_with(&root, &prot)
+            .unwrap()
+            .contains("whole drive"));
         assert!(folder_problem(&root).is_some());
     }
 
@@ -584,13 +761,23 @@ mod tests {
     fn a_folder_that_holds_the_private_folder_is_left_out_of_the_launch() {
         // The folder two levels above the private folder holds it, on any platform.
         let private = super::super::private_files::private_dir();
-        let home = private.parent().and_then(|p| p.parent()).expect("a parent folder").to_path_buf();
+        let home = private
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("a parent folder")
+            .to_path_buf();
         let cfg = PersonalSourcesConfig {
-            notes_folders: vec![folder("Home", &home), folder("Local", &super::super::private_files::private_dir())],
+            notes_folders: vec![
+                folder("Home", &home),
+                folder("Local", &super::super::private_files::private_dir()),
+            ],
             ..Default::default()
         };
         let err = build_sources_launch(&cfg, &no_secrets).unwrap_err();
-        assert!(err.contains("Home") && err.contains("Local") && err.contains("private files"), "{err}");
+        assert!(
+            err.contains("Home") && err.contains("Local") && err.contains("private files"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -610,7 +797,10 @@ mod tests {
         off.enabled = false;
         let mut auth = stdio("auth", "Auth", vec![], vec![tool("auth", "kb_read", true)]);
         auth.needs_sign_in = true;
-        let cfg = PersonalSourcesConfig { mcp_servers: vec![off, auth], ..Default::default() };
+        let cfg = PersonalSourcesConfig {
+            mcp_servers: vec![off, auth],
+            ..Default::default()
+        };
         assert_eq!(build_sources_launch(&cfg, &no_secrets), Ok(None));
     }
 
@@ -620,17 +810,27 @@ mod tests {
             key: "h".into(),
             label: "H".into(),
             enabled: true,
-            transport: McpTransport::Http { url: "https://h/mcp".into(), header_names: vec!["Authorization".into()] },
+            transport: McpTransport::Http {
+                url: "https://h/mcp".into(),
+                header_names: vec!["Authorization".into()],
+            },
             tools: vec![tool("h", "get_note", true)],
             ..Default::default()
         };
-        let cfg = PersonalSourcesConfig { mcp_servers: vec![server], ..Default::default() };
-        let lookup = |id: &str| (id == "mcp:h:header:Authorization").then(|| "Bearer tok".to_string());
+        let cfg = PersonalSourcesConfig {
+            mcp_servers: vec![server],
+            ..Default::default()
+        };
+        let lookup =
+            |id: &str| (id == "mcp:h:header:Authorization").then(|| "Bearer tok".to_string());
         let launch = build_sources_launch(&cfg, &lookup).unwrap().unwrap();
         let json = config_of(&launch);
         assert_eq!(json["mcpServers"]["h"]["type"], "http");
         assert_eq!(json["mcpServers"]["h"]["url"], "https://h/mcp");
-        assert_eq!(json["mcpServers"]["h"]["headers"]["Authorization"], "Bearer tok");
+        assert_eq!(
+            json["mcpServers"]["h"]["headers"]["Authorization"],
+            "Bearer tok"
+        );
         // Never in the debug output.
         assert!(!format!("{launch:?}").contains("Bearer tok"));
     }

@@ -12,8 +12,17 @@ pub struct StoredNotes {
     pub updated_at: i64,
 }
 
-pub fn save_notes(conn: &Connection, meeting_id: &str, doc: &NoteDoc, status: &str, tokens_used: u64, cap: u64, now_ms: i64) -> rusqlite::Result<()> {
-    let json = serde_json::to_string(doc).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+pub fn save_notes(
+    conn: &Connection,
+    meeting_id: &str,
+    doc: &NoteDoc,
+    status: &str,
+    tokens_used: u64,
+    cap: u64,
+    now_ms: i64,
+) -> rusqlite::Result<()> {
+    let json = serde_json::to_string(doc)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     conn.execute(
         "INSERT INTO meeting_notes (meeting_id, doc_json, status, tokens_used, cap, updated_at)
          SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM meetings WHERE id = ?1)
@@ -35,18 +44,23 @@ pub fn load_notes(conn: &Connection, meeting_id: &str) -> rusqlite::Result<Optio
         )
         .optional()?;
     Ok(row.and_then(|(json, status, used, cap, updated_at)| {
-        serde_json::from_str::<NoteDoc>(&json).ok().map(|doc| StoredNotes {
-            doc,
-            status,
-            tokens_used: used.max(0) as u64,
-            cap: cap.max(0) as u64,
-            updated_at,
-        })
+        serde_json::from_str::<NoteDoc>(&json)
+            .ok()
+            .map(|doc| StoredNotes {
+                doc,
+                status,
+                tokens_used: used.max(0) as u64,
+                cap: cap.max(0) as u64,
+                updated_at,
+            })
     }))
 }
 
 pub fn delete_notes(conn: &Connection, meeting_id: &str) -> rusqlite::Result<usize> {
-    conn.execute("DELETE FROM meeting_notes WHERE meeting_id = ?1", params![meeting_id])
+    conn.execute(
+        "DELETE FROM meeting_notes WHERE meeting_id = ?1",
+        params![meeting_id],
+    )
 }
 
 #[cfg(test)]
@@ -69,12 +83,23 @@ mod tests {
         let c = conn();
         assert!(load_notes(&c, "m1").unwrap().is_none());
         let mut d = NoteDoc::new();
-        let t = d.user_add(BlockKind::Topic, None, "Plan {{o:Acme}}", 10).unwrap();
-        d.user_add(BlockKind::Bullet, Some(&t), "Né 来月", 20).unwrap();
+        let t = d
+            .user_add(BlockKind::Topic, None, "Plan {{o:Acme}}", 10)
+            .unwrap();
+        d.user_add(BlockKind::Bullet, Some(&t), "Né 来月", 20)
+            .unwrap();
         save_notes(&c, "m1", &d, "running", 1234, 120_000, 99).unwrap();
         let got = load_notes(&c, "m1").unwrap().unwrap();
         assert_eq!(got.doc, d);
-        assert_eq!((got.status.as_str(), got.tokens_used, got.cap, got.updated_at), ("running", 1234, 120_000, 99));
+        assert_eq!(
+            (
+                got.status.as_str(),
+                got.tokens_used,
+                got.cap,
+                got.updated_at
+            ),
+            ("running", 1234, 120_000, 99)
+        );
         save_notes(&c, "m1", &d, "done", 2000, 120_000, 100).unwrap();
         assert_eq!(load_notes(&c, "m1").unwrap().unwrap().status, "done");
         assert_eq!(delete_notes(&c, "m1").unwrap(), 1);
@@ -84,7 +109,11 @@ mod tests {
     #[test]
     fn corrupt_row_reads_as_missing() {
         let c = conn();
-        c.execute("INSERT INTO meeting_notes (meeting_id, doc_json) VALUES ('m2', '{not json')", []).unwrap();
+        c.execute(
+            "INSERT INTO meeting_notes (meeting_id, doc_json) VALUES ('m2', '{not json')",
+            [],
+        )
+        .unwrap();
         assert!(load_notes(&c, "m2").unwrap().is_none());
     }
 }

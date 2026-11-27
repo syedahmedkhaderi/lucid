@@ -35,13 +35,23 @@ pub struct SourceActivity {
 impl SourceActivity {
     /// The chip a successful call leaves behind, as an activity of its own.
     pub fn chip_only(chip: SourceChip) -> Self {
-        SourceActivity { kind: chip.kind, label: chip.label.clone(), chip: Some(chip), chip_only: true }
+        SourceActivity {
+            kind: chip.kind,
+            label: chip.label.clone(),
+            chip: Some(chip),
+            chip_only: true,
+        }
     }
 }
 
 /// A line about the sources themselves (no chip).
 pub fn notice(label: impl Into<String>) -> SourceActivity {
-    SourceActivity { kind: SourceKind::Notice, label: label.into(), chip: None, chip_only: false }
+    SourceActivity {
+        kind: SourceKind::Notice,
+        label: label.into(),
+        chip: None,
+        chip_only: false,
+    }
 }
 
 /// What a with-sources session came up without: servers that did not start
@@ -68,7 +78,11 @@ pub fn sources_degraded_notice(
             Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
             _ => names.join(""),
         };
-        let (verb, pronoun) = if names.len() == 1 { ("didn't", "its tools aren't") } else { ("didn't", "their tools aren't") };
+        let (verb, pronoun) = if names.len() == 1 {
+            ("didn't", "its tools aren't")
+        } else {
+            ("didn't", "their tools aren't")
+        };
         parts.push(format!("{list} {verb} start, so {pronoun} available"));
     }
     if !left_out.is_empty() {
@@ -112,7 +126,11 @@ pub fn describe_tool_use(t: &ToolUse, server_labels: &[(String, String)]) -> Sou
                 SourceActivity {
                     kind: SourceKind::Tool,
                     label: line.clone(),
-                    chip: Some(SourceChip { kind: SourceKind::Tool, label: line, path: None }),
+                    chip: Some(SourceChip {
+                        kind: SourceKind::Tool,
+                        label: line,
+                        path: None,
+                    }),
                     chip_only: false,
                 }
             }
@@ -127,12 +145,19 @@ pub fn describe_tool_use(t: &ToolUse, server_labels: &[(String, String)]) -> Sou
 }
 
 fn notes_line(label: String) -> SourceActivity {
-    SourceActivity { kind: SourceKind::Notes, label, chip: None, chip_only: false }
+    SourceActivity {
+        kind: SourceKind::Notes,
+        label,
+        chip: None,
+        chip_only: false,
+    }
 }
 
 /// Last path component, for `\` and `/` separators alike.
 fn file_name(path: &str) -> &str {
-    path.rsplit(['\\', '/']).find(|p| !p.is_empty()).unwrap_or(path)
+    path.rsplit(['\\', '/'])
+        .find(|p| !p.is_empty())
+        .unwrap_or(path)
 }
 
 #[cfg(test)]
@@ -141,20 +166,30 @@ mod tests {
     use serde_json::json;
 
     fn use_of(name: &str, input: serde_json::Value) -> ToolUse {
-        ToolUse { id: String::new(), name: name.into(), input }
+        ToolUse {
+            id: String::new(),
+            name: name.into(),
+            input,
+        }
     }
 
     #[test]
     fn describe_tool_use_labels() {
         let labels = vec![("mira".to_string(), "Mira".to_string())];
-        let d = describe_tool_use(&use_of("Grep", json!({"pattern": "budget review"})), &labels);
+        let d = describe_tool_use(
+            &use_of("Grep", json!({"pattern": "budget review"})),
+            &labels,
+        );
         assert_eq!(d.label, "Searching notes for 'budget review'");
         assert_eq!((d.kind, d.chip), (SourceKind::Notes, None));
 
         let g = describe_tool_use(&use_of("Glob", json!({"pattern": "**/Dana*.md"})), &labels);
         assert_eq!(g.label, "Looking for notes named '**/Dana*.md'");
 
-        let r = describe_tool_use(&use_of("Read", json!({"file_path": "D:\\V\\People\\Dana.md"})), &labels);
+        let r = describe_tool_use(
+            &use_of("Read", json!({"file_path": "D:\\V\\People\\Dana.md"})),
+            &labels,
+        );
         assert_eq!(r.label, "Reading Dana.md");
         let chip = r.chip.unwrap();
         assert_eq!(chip.kind, SourceKind::Notes);
@@ -163,7 +198,14 @@ mod tests {
 
         let m = describe_tool_use(&use_of("mcp__mira__person_brief", json!({})), &labels);
         assert_eq!(m.label, "Mira: person_brief");
-        assert_eq!(m.chip.unwrap(), SourceChip { kind: SourceKind::Tool, label: "Mira: person_brief".into(), path: None });
+        assert_eq!(
+            m.chip.unwrap(),
+            SourceChip {
+                kind: SourceKind::Tool,
+                label: "Mira: person_brief".into(),
+                path: None
+            }
+        );
 
         let other = describe_tool_use(&use_of("WebFetch", json!({})), &labels);
         assert_eq!((other.label.as_str(), other.chip), ("Using WebFetch", None));
@@ -181,7 +223,10 @@ mod tests {
 
     #[test]
     fn degraded_notice_names_failed_servers_and_left_out_sources() {
-        let labels = vec![("mira".to_string(), "Mira".to_string()), ("wiki".to_string(), "Wiki".to_string())];
+        let labels = vec![
+            ("mira".to_string(), "Mira".to_string()),
+            ("wiki".to_string(), "Wiki".to_string()),
+        ];
         assert_eq!(sources_degraded_notice(&labels, &[], &[]), None);
         assert_eq!(
             sources_degraded_notice(&labels, &["mira".into()], &[]).as_deref(),
@@ -203,14 +248,21 @@ mod tests {
 
     #[test]
     fn a_chip_only_activity_carries_the_chip_and_is_marked() {
-        let chip = SourceChip { kind: SourceKind::Notes, label: "a.md".into(), path: Some("D:/a.md".into()) };
+        let chip = SourceChip {
+            kind: SourceKind::Notes,
+            label: "a.md".into(),
+            path: Some("D:/a.md".into()),
+        };
         let a = SourceActivity::chip_only(chip.clone());
         assert!(a.chip_only && a.chip == Some(chip));
         let v = serde_json::to_value(&a).unwrap();
         assert_eq!(v["chip_only"], true);
         // A normal line doesn't carry the flag.
         let line = describe_tool_use(&use_of("Grep", json!({"pattern": "x"})), &[]);
-        assert!(serde_json::to_value(&line).unwrap().get("chip_only").is_none());
+        assert!(serde_json::to_value(&line)
+            .unwrap()
+            .get("chip_only")
+            .is_none());
     }
 
     #[test]

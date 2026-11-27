@@ -24,7 +24,10 @@ fn normalize_and_filter(mut chunks: Vec<ScoredChunk>, threshold: f64) -> Vec<Sco
     if chunks.is_empty() {
         return chunks;
     }
-    let max_score = chunks.iter().map(|c| c.score).fold(f64::NEG_INFINITY, f64::max);
+    let max_score = chunks
+        .iter()
+        .map(|c| c.score)
+        .fold(f64::NEG_INFINITY, f64::max);
     if max_score <= 0.0 {
         return Vec::new();
     }
@@ -56,7 +59,8 @@ pub fn hybrid_search(
     let top_candidates = config.top_k * 400; // 2K for top_k=5
 
     // Semantic search
-    let semantic_results = vector_store::search_similar(query_embedding, embeddings, top_candidates);
+    let semantic_results =
+        vector_store::search_similar(query_embedding, embeddings, top_candidates);
 
     // Keyword search
     let keyword_results = fts_store::search_keywords(conn, query_text, top_candidates, files)?;
@@ -91,7 +95,10 @@ pub fn hybrid_search(
         }
     }
 
-    Ok(normalize_and_filter(results, config.similarity_threshold as f64))
+    Ok(normalize_and_filter(
+        results,
+        config.similarity_threshold as f64,
+    ))
 }
 
 /// Perform semantic-only search using vector similarity.
@@ -123,7 +130,10 @@ pub fn semantic_only_search(
         }
     }
 
-    Ok(normalize_and_filter(scored_chunks, config.similarity_threshold as f64))
+    Ok(normalize_and_filter(
+        scored_chunks,
+        config.similarity_threshold as f64,
+    ))
 }
 
 /// Perform keyword-only search using FTS5.
@@ -155,7 +165,10 @@ pub fn keyword_only_search(
         }
     }
 
-    Ok(normalize_and_filter(scored_chunks, config.similarity_threshold as f64))
+    Ok(normalize_and_filter(
+        scored_chunks,
+        config.similarity_threshold as f64,
+    ))
 }
 
 /// Reciprocal Rank Fusion (RRF) merge of two ranked result lists.

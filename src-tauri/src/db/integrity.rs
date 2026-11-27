@@ -106,9 +106,13 @@ pub fn quick_check(path: &Path, stop: &AtomicBool) -> Result<Vec<String>, Option
     if stop.load(Ordering::SeqCst) {
         return Err(None);
     }
-    let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| Some(e.to_string()))?;
+    conn.busy_timeout(Duration::from_secs(2))
         .map_err(|e| Some(e.to_string()))?;
-    conn.busy_timeout(Duration::from_secs(2)).map_err(|e| Some(e.to_string()))?;
     let handle = conn.get_interrupt_handle();
     let done = AtomicBool::new(false);
     let result = std::thread::scope(|scope| {
@@ -134,7 +138,12 @@ pub fn quick_check(path: &Path, stop: &AtomicBool) -> Result<Vec<String>, Option
         Ok(lines) => Ok(lines),
         Err(_) if stop.load(Ordering::SeqCst) => Err(None),
         // Real damage often stops the check with an error instead of listing rows: that is the finding.
-        Err(e) if matches!(e.sqlite_error_code(), Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)) => {
+        Err(e)
+            if matches!(
+                e.sqlite_error_code(),
+                Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
+            ) =>
+        {
             Ok(vec![e.to_string()])
         }
         Err(e) => Err(Some(e.to_string())),
@@ -168,7 +177,9 @@ pub enum Pass {
 
 /// One pass: skip when not due or `busy`, else check and remember.
 pub fn run_once(dir: &Path, now_ms: i64, busy: &AtomicBool) -> Pass {
-    if !(CHECK_SOON.load(Ordering::SeqCst) || due(load_memo(dir).as_ref(), now_ms)) || busy.load(Ordering::SeqCst) {
+    if !(CHECK_SOON.load(Ordering::SeqCst) || due(load_memo(dir).as_ref(), now_ms))
+        || busy.load(Ordering::SeqCst)
+    {
         return Pass::Skipped;
     }
     match quick_check(&dir.join(health::DB_NAME), busy) {
@@ -178,7 +189,13 @@ pub fn run_once(dir: &Path, now_ms: i64, busy: &AtomicBool) -> Pass {
                 Some(f) => log::error!("The database check found damage: {:?}", f.details),
                 None => log::info!("The database check passed"),
             }
-            save_memo(dir, &Memo { checked_at: now_ms, finding: finding.clone() });
+            save_memo(
+                dir,
+                &Memo {
+                    checked_at: now_ms,
+                    finding: finding.clone(),
+                },
+            );
             CHECK_SOON.store(false, Ordering::SeqCst);
             Pass::Checked(finding)
         }
@@ -239,7 +256,10 @@ pub fn spawn(
 }
 
 fn now_ms() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -262,13 +282,19 @@ mod tests {
     /// An index whose root page does not exist: `quick_check` reports it.
     fn damage(dir: &Path) {
         let conn = Connection::open(dir.join(health::DB_NAME)).unwrap();
-        conn.execute_batch("PRAGMA writable_schema=ON; UPDATE sqlite_master SET rootpage = 99 WHERE name = 'i';").unwrap();
+        conn.execute_batch(
+            "PRAGMA writable_schema=ON; UPDATE sqlite_master SET rootpage = 99 WHERE name = 'i';",
+        )
+        .unwrap();
     }
 
     #[test]
     fn due_once_a_day_and_when_the_clock_went_back() {
         assert!(due(None, 1_000));
-        let m = Memo { checked_at: 1_000, finding: None };
+        let m = Memo {
+            checked_at: 1_000,
+            finding: None,
+        };
         assert!(!due(Some(&m), 1_000 + EVERY_MS - 1));
         assert!(due(Some(&m), 1_000 + EVERY_MS));
         assert!(due(Some(&m), 500));
@@ -280,9 +306,22 @@ mod tests {
         whole_db(&d);
         let busy = AtomicBool::new(false);
         assert_eq!(run_once(&d, 10_000, &busy), Pass::Checked(None));
-        assert_eq!(load_memo(&d), Some(Memo { checked_at: 10_000, finding: None }));
-        assert_eq!(run_once(&d, 10_000 + 60_000, &busy), Pass::Skipped, "once a day");
-        assert!(matches!(run_once(&d, 10_000 + EVERY_MS, &busy), Pass::Checked(None)));
+        assert_eq!(
+            load_memo(&d),
+            Some(Memo {
+                checked_at: 10_000,
+                finding: None
+            })
+        );
+        assert_eq!(
+            run_once(&d, 10_000 + 60_000, &busy),
+            Pass::Skipped,
+            "once a day"
+        );
+        assert!(matches!(
+            run_once(&d, 10_000 + EVERY_MS, &busy),
+            Pass::Checked(None)
+        ));
         let _ = std::fs::remove_dir_all(d);
     }
 
@@ -293,11 +332,20 @@ mod tests {
         damage(&d);
         let before = std::fs::read(d.join(health::DB_NAME)).unwrap();
         let busy = AtomicBool::new(false);
-        let Pass::Checked(Some(found)) = run_once(&d, 20_000, &busy) else { panic!("damage must be found") };
+        let Pass::Checked(Some(found)) = run_once(&d, 20_000, &busy) else {
+            panic!("damage must be found")
+        };
         assert!(found.message.contains("damage") && !found.details.is_empty());
-        assert_eq!((found.checked_at, found.folder.as_str()), (20_000, d.to_string_lossy().as_ref()));
+        assert_eq!(
+            (found.checked_at, found.folder.as_str()),
+            (20_000, d.to_string_lossy().as_ref())
+        );
         assert_eq!(load_memo(&d).unwrap().finding, Some(found));
-        assert_eq!(std::fs::read(d.join(health::DB_NAME)).unwrap(), before, "read-only: not a byte changed");
+        assert_eq!(
+            std::fs::read(d.join(health::DB_NAME)).unwrap(),
+            before,
+            "read-only: not a byte changed"
+        );
         // A restart inside the day does not check again; the remembered finding is there to show.
         assert_eq!(run_once(&d, 20_000 + 1_000, &busy), Pass::Skipped);
         assert!(load_memo(&d).and_then(|m| m.finding).is_some());
@@ -324,7 +372,12 @@ mod tests {
             details: vec!["row 3 missing from index i".into()],
             checked_at: 1_700_000_000_000,
             folder: "C:/data".into(),
-            copies: vec![BackupInfo { name: "nexq-before-workspaces.db".into(), created_at: 1_700_000_000_000, bytes: 1024, meetings: Some(3) }],
+            copies: vec![BackupInfo {
+                name: "nexq-before-workspaces.db".into(),
+                created_at: 1_700_000_000_000,
+                bytes: 1024,
+                meetings: Some(3),
+            }],
         };
         crate::assert_contract!("db_integrity_problem", f);
         crate::assert_contract!("get_db_integrity_result", Some(f));

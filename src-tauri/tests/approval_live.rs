@@ -97,7 +97,8 @@ struct Rig {
 
 impl Rig {
     fn new(name: &str) -> Rig {
-        let dir = std::env::temp_dir().join(format!("nexq-approval-live-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("nexq-approval-live-{name}-{}", std::process::id()));
         let probe = dir.join("probe");
         std::fs::create_dir_all(&probe).unwrap();
         let server = dir.join("server.py");
@@ -112,7 +113,13 @@ impl Rig {
             "env": {"PROBE_DIR": probe.to_string_lossy()},
         }}})
         .to_string();
-        Rig { dir, probe, tee_log, tee_py, mcp_config }
+        Rig {
+            dir,
+            probe,
+            tee_log,
+            tee_py,
+            mcp_config,
+        }
     }
 
     fn flag(&self) -> Option<String> {
@@ -120,7 +127,11 @@ impl Rig {
     }
 
     fn calls(&self) -> Vec<String> {
-        std::fs::read_to_string(self.probe.join("calls.log")).unwrap_or_default().lines().map(str::to_string).collect()
+        std::fs::read_to_string(self.probe.join("calls.log"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
     }
 
     fn reset(&self) {
@@ -157,7 +168,11 @@ fn policy() -> ApprovalPolicy {
     ApprovalPolicy::from_servers(
         &[McpServer {
             key: "probe".into(),
-            tools: vec![tool("read_note", Some(true), None), tool("set_flag", None, None), tool("delete_flag", Some(false), Some(true))],
+            tools: vec![
+                tool("read_note", Some(true), None),
+                tool("set_flag", None, None),
+                tool("delete_flag", Some(false), Some(true)),
+            ],
             ..Default::default()
         }],
         vec![],
@@ -210,7 +225,10 @@ fn drain(rx: &Notices) -> Vec<ApprovalNotice> {
 fn collector() -> (Arc<Mutex<String>>, Box<dyn Fn(&str) + Send + Sync>) {
     let buf = Arc::new(Mutex::new(String::new()));
     let sink = buf.clone();
-    (buf, Box::new(move |d: &str| sink.lock().unwrap().push_str(d)))
+    (
+        buf,
+        Box::new(move |d: &str| sink.lock().unwrap().push_str(d)),
+    )
 }
 
 const SYSTEM: &str = "You are a test harness. Do exactly what is asked with the tools given, then reply in under 15 words.";
@@ -218,14 +236,23 @@ const SYSTEM: &str = "You are a test harness. Do exactly what is asked with the 
 fn sources(rig: &Rig) -> SourcesLaunch {
     SourcesLaunch {
         mcp_config_json: Some(rig.mcp_config.clone()),
-        allowed_tools: vec!["mcp__probe__read_note".into(), "mcp__probe__set_flag".into(), "mcp__probe__delete_flag".into()],
+        allowed_tools: vec![
+            "mcp__probe__read_note".into(),
+            "mcp__probe__set_flag".into(),
+            "mcp__probe__delete_flag".into(),
+        ],
         server_labels: vec![("probe".into(), "Probe".into())],
         ..Default::default()
     }
 }
 
 fn chat(b: &Arc<WorkspaceApprovals>) -> ChatApprovals {
-    ChatApprovals { can_ask: true, chat_id: "live".into(), broker: b.clone(), policy: Arc::new(policy()) }
+    ChatApprovals {
+        can_ask: true,
+        chat_id: "live".into(),
+        broker: b.clone(),
+        policy: Arc::new(policy()),
+    }
 }
 
 fn leftovers(rig: &Rig) {
@@ -249,10 +276,20 @@ fn leftovers(rig: &Rig) {
 #[tokio::test]
 #[ignore = "talks to the real Claude CLI and the user's account"]
 async fn live_claude_asks_before_a_tool_that_writes() {
-    let Some(real) = find_claude_binary() else { return };
+    let Some(real) = find_claude_binary() else {
+        return;
+    };
     let rig = Rig::new("claude");
     let cmd = rig.dir.join("claude_tee.cmd");
-    std::fs::write(&cmd, format!("@echo off\r\npython \"{}\" \"{}\" %*\r\n", rig.tee_py.display(), real.display())).unwrap();
+    std::fs::write(
+        &cmd,
+        format!(
+            "@echo off\r\npython \"{}\" \"{}\" %*\r\n",
+            rig.tee_py.display(),
+            real.display()
+        ),
+    )
+    .unwrap();
     let (b, rx) = broker(Duration::from_secs(60));
     let cfg = SessionConfig {
         kind: CliAgentKind::Claude,
@@ -263,8 +300,15 @@ async fn live_claude_asks_before_a_tool_that_writes() {
         sources: Some(sources(&rig)),
         approvals: Some(chat(&b)),
     };
-    let timeouts = SessionTimeouts { init: Duration::from_secs(90), ..SessionTimeouts::default() };
-    let s = Arc::new(ClaudeSession::spawn_with_timeouts(cmd.clone(), cfg, timeouts).await.expect("spawn"));
+    let timeouts = SessionTimeouts {
+        init: Duration::from_secs(90),
+        ..SessionTimeouts::default()
+    };
+    let s = Arc::new(
+        ClaudeSession::spawn_with_timeouts(cmd.clone(), cfg, timeouts)
+            .await
+            .expect("spawn"),
+    );
     eprintln!("LIVE init tools: {:?}", s.init_info().tools);
     let mut at = rig.show_wire("start", 0, &["\"subtype\":\"init\""]);
     let ask = |prompt: &str| {
@@ -273,41 +317,93 @@ async fn live_claude_asks_before_a_tool_that_writes() {
     };
 
     // 1. A read-only tool runs with no question.
-    let (buf, sink, p) = ask("Call the read_note tool with name \"a\" and tell me what it returned.");
+    let (buf, sink, p) =
+        ask("Call the read_note tool with name \"a\" and tell me what it returned.");
     let r = s.ask(&p, sink, Arc::new(CancelToken::new())).await;
-    eprintln!("LIVE[1] result ok={} text={:?} calls={:?} notices={:?}", r.is_ok(), r.as_ref().map(|t| t.text.clone()).unwrap_or_default(), rig.calls(), drain(&rx));
+    eprintln!(
+        "LIVE[1] result ok={} text={:?} calls={:?} notices={:?}",
+        r.is_ok(),
+        r.as_ref().map(|t| t.text.clone()).unwrap_or_default(),
+        rig.calls(),
+        drain(&rx)
+    );
     let _ = buf;
-    at = rig.show_wire("1 read_note", at, &["control_request", "control_response", "tool_use", "tool_result"]);
+    at = rig.show_wire(
+        "1 read_note",
+        at,
+        &[
+            "control_request",
+            "control_response",
+            "tool_use",
+            "tool_result",
+        ],
+    );
     assert_eq!(rig.calls().len(), 1, "read_note ran");
 
     // 2. set_flag asks. Deny: it did not run, the model is told.
     rig.reset();
-    let (_, sink, p) = ask("Call the set_flag tool with value \"on\", then tell me whether it worked.");
+    let (_, sink, p) =
+        ask("Call the set_flag tool with value \"on\", then tell me whether it worked.");
     let turn = s.ask(&p, sink, Arc::new(CancelToken::new()));
     tokio::pin!(turn);
     let q = tokio::select! { q = next_question(&rx, Duration::from_secs(90)) => q, _ = &mut turn => None };
     let q = q.expect("a question for set_flag");
-    eprintln!("LIVE[2] question: tool={} server={} args={} redacted={}", q.tool, q.server, q.args.replace('\n', " "), q.redacted);
+    eprintln!(
+        "LIVE[2] question: tool={} server={} args={} redacted={}",
+        q.tool,
+        q.server,
+        q.args.replace('\n', " "),
+        q.redacted
+    );
     assert_eq!((q.server.as_str(), q.tool.as_str()), ("probe", "set_flag"));
     assert!(b.answer(&q.approval_id, false));
     let r = turn.await;
-    eprintln!("LIVE[2] deny -> ok={} text={:?} flag={:?} calls={:?}", r.is_ok(), r.as_ref().map(|t| t.text.clone()).unwrap_or_default(), rig.flag(), rig.calls());
-    at = rig.show_wire("2 deny", at, &["control_request", "control_response", "tool_result"]);
-    assert!(rig.flag().is_none() && rig.calls().is_empty(), "denied: the tool did not run");
+    eprintln!(
+        "LIVE[2] deny -> ok={} text={:?} flag={:?} calls={:?}",
+        r.is_ok(),
+        r.as_ref().map(|t| t.text.clone()).unwrap_or_default(),
+        rig.flag(),
+        rig.calls()
+    );
+    at = rig.show_wire(
+        "2 deny",
+        at,
+        &["control_request", "control_response", "tool_result"],
+    );
+    assert!(
+        rig.flag().is_none() && rig.calls().is_empty(),
+        "denied: the tool did not run"
+    );
 
     // 2b. Allow: it ran once with exactly the shown input.
     rig.reset();
-    let (_, sink, p) = ask("Call the set_flag tool with value \"on\", then tell me whether it worked.");
+    let (_, sink, p) =
+        ask("Call the set_flag tool with value \"on\", then tell me whether it worked.");
     let turn = s.ask(&p, sink, Arc::new(CancelToken::new()));
     tokio::pin!(turn);
     let q = tokio::select! { q = next_question(&rx, Duration::from_secs(90)) => q, _ = &mut turn => None };
     let q = q.expect("a question for set_flag");
     assert!(b.answer(&q.approval_id, true));
     let r = turn.await;
-    eprintln!("LIVE[2b] allow -> ok={} text={:?} flag={:?} calls={:?} shown_args={}", r.is_ok(), r.as_ref().map(|t| t.text.clone()).unwrap_or_default(), rig.flag(), rig.calls(), q.args.replace('\n', " "));
-    at = rig.show_wire("2b allow", at, &["control_request", "control_response", "tool_result"]);
+    eprintln!(
+        "LIVE[2b] allow -> ok={} text={:?} flag={:?} calls={:?} shown_args={}",
+        r.is_ok(),
+        r.as_ref().map(|t| t.text.clone()).unwrap_or_default(),
+        rig.flag(),
+        rig.calls(),
+        q.args.replace('\n', " ")
+    );
+    at = rig.show_wire(
+        "2b allow",
+        at,
+        &["control_request", "control_response", "tool_result"],
+    );
     assert_eq!(rig.calls().len(), 1, "ran exactly once");
-    assert!(rig.calls()[0].contains("\"value\": \"on\""), "{:?}", rig.calls());
+    assert!(
+        rig.calls()[0].contains("\"value\": \"on\""),
+        "{:?}",
+        rig.calls()
+    );
 
     // 3. Nobody answers: timeout denies. (Short timeout broker would need a new
     // session; the 60 s default is used, the turn is cancelled by the test after
@@ -324,24 +420,65 @@ async fn live_claude_asks_before_a_tool_that_writes() {
     cancel.cancel();
     let r = turn.await;
     let after = drain(&rx);
-    eprintln!("LIVE[4] cancel -> {:?} flag={:?} calls={:?} notices={after:?}", r.as_ref().map(|t| t.text.clone()).map_err(|e| e.to_string()), rig.flag(), rig.calls());
+    eprintln!(
+        "LIVE[4] cancel -> {:?} flag={:?} calls={:?} notices={after:?}",
+        r.as_ref()
+            .map(|t| t.text.clone())
+            .map_err(|e| e.to_string()),
+        rig.flag(),
+        rig.calls()
+    );
     assert!(!b.answer(&q.approval_id, true), "the question is gone");
     tokio::time::sleep(Duration::from_secs(3)).await;
-    at = rig.show_wire("4 cancel", at, &["control_request", "control_response", "control_cancel_request", "tool_result"]);
-    assert!(rig.flag().is_none() && rig.calls().is_empty(), "cancelled: nothing ran");
+    at = rig.show_wire(
+        "4 cancel",
+        at,
+        &[
+            "control_request",
+            "control_response",
+            "control_cancel_request",
+            "tool_result",
+        ],
+    );
+    assert!(
+        rig.flag().is_none() && rig.calls().is_empty(),
+        "cancelled: nothing ran"
+    );
 
     // 6. Close during a question.
     rig.reset();
     let (_, sink, p) = ask("Call the set_flag tool with value \"closing\".");
     let s2 = s.clone();
-    let turn = tokio::spawn(async move { s2.ask(&p, sink, Arc::new(CancelToken::new())).await.map(|t| t.text).map_err(|e| e.to_string()) });
-    let q = next_question(&rx, Duration::from_secs(90)).await.expect("a question for set_flag");
+    let turn = tokio::spawn(async move {
+        s2.ask(&p, sink, Arc::new(CancelToken::new()))
+            .await
+            .map(|t| t.text)
+            .map_err(|e| e.to_string())
+    });
+    let q = next_question(&rx, Duration::from_secs(90))
+        .await
+        .expect("a question for set_flag");
     s.close().await;
     let r = tokio::time::timeout(Duration::from_secs(20), turn).await;
-    eprintln!("LIVE[6] close -> {r:?} flag={:?} calls={:?}", rig.flag(), rig.calls());
+    eprintln!(
+        "LIVE[6] close -> {r:?} flag={:?} calls={:?}",
+        rig.flag(),
+        rig.calls()
+    );
     assert!(!b.answer(&q.approval_id, true));
-    rig.show_wire("6 close", at, &["control_request", "control_response", "control_cancel_request"]);
-    assert!(rig.flag().is_none() && rig.calls().is_empty(), "closed: nothing ran");
+    rig.show_wire(
+        "6 close",
+        at,
+        &[
+            "control_request",
+            "control_response",
+            "control_cancel_request",
+        ],
+    );
+    assert!(
+        rig.flag().is_none() && rig.calls().is_empty(),
+        "closed: nothing ran"
+    );
 
     leftovers(&rig);
 }
@@ -350,10 +487,20 @@ async fn live_claude_asks_before_a_tool_that_writes() {
 #[tokio::test]
 #[ignore = "talks to the real Claude CLI and the user's account"]
 async fn live_claude_timeout_denies() {
-    let Some(real) = find_claude_binary() else { return };
+    let Some(real) = find_claude_binary() else {
+        return;
+    };
     let rig = Rig::new("claude-timeout");
     let cmd = rig.dir.join("claude_tee.cmd");
-    std::fs::write(&cmd, format!("@echo off\r\npython \"{}\" \"{}\" %*\r\n", rig.tee_py.display(), real.display())).unwrap();
+    std::fs::write(
+        &cmd,
+        format!(
+            "@echo off\r\npython \"{}\" \"{}\" %*\r\n",
+            rig.tee_py.display(),
+            real.display()
+        ),
+    )
+    .unwrap();
     let (b, rx) = broker(Duration::from_secs(4));
     let cfg = SessionConfig {
         kind: CliAgentKind::Claude,
@@ -364,16 +511,37 @@ async fn live_claude_timeout_denies() {
         sources: Some(sources(&rig)),
         approvals: Some(chat(&b)),
     };
-    let timeouts = SessionTimeouts { init: Duration::from_secs(90), ..SessionTimeouts::default() };
-    let s = ClaudeSession::spawn_with_timeouts(cmd, cfg, timeouts).await.expect("spawn");
+    let timeouts = SessionTimeouts {
+        init: Duration::from_secs(90),
+        ..SessionTimeouts::default()
+    };
+    let s = ClaudeSession::spawn_with_timeouts(cmd, cfg, timeouts)
+        .await
+        .expect("spawn");
     let (_, sink) = collector();
     let started = Instant::now();
-    let r = s.ask("Call the set_flag tool with value \"late\", then tell me whether it worked.", sink, Arc::new(CancelToken::new())).await;
+    let r = s
+        .ask(
+            "Call the set_flag tool with value \"late\", then tell me whether it worked.",
+            sink,
+            Arc::new(CancelToken::new()),
+        )
+        .await;
     let notices = drain(&rx);
-    eprintln!("LIVE[3] timeout -> ok={} text={:?} after {:?}; notices {notices:?}; flag={:?} calls={:?}", r.is_ok(), r.as_ref().map(|t| t.text.clone()).unwrap_or_default(), started.elapsed(), rig.flag(), rig.calls());
-    rig.show_wire("3 timeout", 0, &["control_request", "control_response", "tool_result"]);
+    eprintln!(
+        "LIVE[3] timeout -> ok={} text={:?} after {:?}; notices {notices:?}; flag={:?} calls={:?}",
+        r.is_ok(),
+        r.as_ref().map(|t| t.text.clone()).unwrap_or_default(),
+        started.elapsed(),
+        rig.flag(),
+        rig.calls()
+    );
+    rig.show_wire(
+        "3 timeout",
+        0,
+        &["control_request", "control_response", "tool_result"],
+    );
     assert!(rig.flag().is_none() && rig.calls().is_empty());
     s.close().await;
     leftovers(&rig);
 }
-

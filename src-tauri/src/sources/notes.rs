@@ -23,22 +23,36 @@ pub struct NotesFolderInfo {
 /// (`.obsidian`, `.git`, ...). Symlinked folders are not followed.
 pub fn inspect_folder(path: &Path) -> NotesFolderInfo {
     if !path.is_dir() {
-        return NotesFolderInfo { exists: false, md_count: 0, truncated: false, problem: None };
+        return NotesFolderInfo {
+            exists: false,
+            md_count: 0,
+            truncated: false,
+            problem: None,
+        };
     }
     let mut md_count = 0;
     let mut visited = 0;
     let mut stack = vec![path.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             visited += 1;
             if visited > MAX_ENTRIES {
-                return NotesFolderInfo { exists: true, md_count, truncated: true, problem: None };
+                return NotesFolderInfo {
+                    exists: true,
+                    md_count,
+                    truncated: true,
+                    problem: None,
+                };
             }
             if entry.file_name().to_string_lossy().starts_with('.') {
                 continue;
             }
-            let Ok(kind) = entry.file_type() else { continue };
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
             if kind.is_dir() {
                 stack.push(entry.path());
             } else if kind.is_file()
@@ -51,7 +65,12 @@ pub fn inspect_folder(path: &Path) -> NotesFolderInfo {
             }
         }
     }
-    NotesFolderInfo { exists: true, md_count, truncated: false, problem: None }
+    NotesFolderInfo {
+        exists: true,
+        md_count,
+        truncated: false,
+        problem: None,
+    }
 }
 
 #[cfg(test)]
@@ -75,11 +94,27 @@ mod tests {
         std::fs::write(dir.join(".obsidian").join("x.md"), "x").unwrap();
         std::fs::write(dir.join(".hidden.md"), "x").unwrap();
         let info = inspect_folder(&dir);
-        assert_eq!(info, NotesFolderInfo { exists: true, md_count: 2, truncated: false, problem: None });
+        assert_eq!(
+            info,
+            NotesFolderInfo {
+                exists: true,
+                md_count: 2,
+                truncated: false,
+                problem: None
+            }
+        );
         let _ = std::fs::remove_dir_all(&dir);
 
         let gone = inspect_folder(&dir);
-        assert_eq!(gone, NotesFolderInfo { exists: false, md_count: 0, truncated: false, problem: None });
+        assert_eq!(
+            gone,
+            NotesFolderInfo {
+                exists: false,
+                md_count: 0,
+                truncated: false,
+                problem: None
+            }
+        );
     }
 
     #[test]

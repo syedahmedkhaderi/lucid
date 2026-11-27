@@ -59,7 +59,12 @@ pub struct BriefSettings {
 
 impl Default for BriefSettings {
     fn default() -> Self {
-        Self { provider: None, model: None, effort: None, cap: DEFAULT_CAP }
+        Self {
+            provider: None,
+            model: None,
+            effort: None,
+            cap: DEFAULT_CAP,
+        }
     }
 }
 
@@ -127,7 +132,8 @@ where
         }
         b.insert(k.clone(), v.clone());
     }
-    let mut merged: T = serde_json::from_value(base).map_err(|e| format!("Invalid setting: {e}"))?;
+    let mut merged: T =
+        serde_json::from_value(base).map_err(|e| format!("Invalid setting: {e}"))?;
     merged.validate()?;
     Ok(merged)
 }
@@ -140,23 +146,49 @@ mod tests {
     #[test]
     fn patch_merges_and_validates() {
         let s = NotetakerSettings::default();
-        let m = merge(&s, &json!({"enabled": true, "detail": "brief", "provider": "openai", "cap": 10})).unwrap();
+        let m = merge(
+            &s,
+            &json!({"enabled": true, "detail": "brief", "provider": "openai", "cap": 10}),
+        )
+        .unwrap();
         assert!(m.enabled && m.detail == "brief" && m.provider.as_deref() == Some("openai"));
         assert_eq!(m.cap, 2_000, "clamped");
         assert_eq!(m.update_mode, "automatic");
         assert!(merge(&s, &json!({"detail": "huge"})).is_err());
         assert!(merge(&s, &json!({"nope": 1})).is_err());
-        assert_eq!(merge(&s, &json!({"language": "es"})).unwrap().language, "en");
+        assert_eq!(
+            merge(&s, &json!({"language": "es"})).unwrap().language,
+            "en"
+        );
         let cleared = merge(&m, &json!({"provider": null})).unwrap();
         assert_eq!(cleared.provider, None);
-        assert_eq!(merge(&BriefSettings::default(), &json!({"cap": 50_000})).unwrap().cap, 50_000);
+        assert_eq!(
+            merge(&BriefSettings::default(), &json!({"cap": 50_000}))
+                .unwrap()
+                .cap,
+            50_000
+        );
     }
 
     #[test]
     fn memory_settings_patch() {
-        let m = merge(&MemorySettings::default(), &json!({"provider": "openai", "model": "gpt"})).unwrap();
-        assert_eq!((m.provider.as_deref(), m.model.as_deref(), m.effort.as_deref()), (Some("openai"), Some("gpt"), None));
-        assert_eq!(merge(&m, &json!({"provider": null})).unwrap().provider, None);
+        let m = merge(
+            &MemorySettings::default(),
+            &json!({"provider": "openai", "model": "gpt"}),
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                m.provider.as_deref(),
+                m.model.as_deref(),
+                m.effort.as_deref()
+            ),
+            (Some("openai"), Some("gpt"), None)
+        );
+        assert_eq!(
+            merge(&m, &json!({"provider": null})).unwrap().provider,
+            None
+        );
         assert!(merge(&m, &json!({"cap": 1})).is_err());
     }
 
@@ -167,7 +199,8 @@ mod tests {
         let b: BriefSettings = serde_json::from_str("{}").unwrap();
         assert_eq!(b.cap, DEFAULT_CAP);
         // a file saved by an earlier build still has `enabled`: it loads, the key is dropped
-        let old: BriefSettings = serde_json::from_str(r#"{"enabled":true,"cap":9000,"provider":"openai"}"#).unwrap();
+        let old: BriefSettings =
+            serde_json::from_str(r#"{"enabled":true,"cap":9000,"provider":"openai"}"#).unwrap();
         assert_eq!((old.cap, old.provider.as_deref()), (9000, Some("openai")));
     }
 }

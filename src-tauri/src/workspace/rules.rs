@@ -6,10 +6,17 @@ use super::types::{Workspace, GENERAL_ID};
 /// `include_general` and `keep_separate` of a workspace as they may be
 /// stored: a keep-separate workspace never includes General, and General
 /// itself is never kept separate.
-pub fn normalize_flags(id: &str, include_general: bool, keep_separate: bool) -> Result<(bool, bool), String> {
+pub fn normalize_flags(
+    id: &str,
+    include_general: bool,
+    keep_separate: bool,
+) -> Result<(bool, bool), String> {
     if id == GENERAL_ID {
         if keep_separate {
-            return Err("General is shared with the other workspaces, so it can't be kept separate".to_string());
+            return Err(
+                "General is shared with the other workspaces, so it can't be kept separate"
+                    .to_string(),
+            );
         }
         return Ok((true, false));
     }
@@ -28,10 +35,16 @@ pub fn may_borrow(home: &Workspace, other: &Workspace) -> Result<(), String> {
         return Err("A meeting already uses its own workspace".to_string());
     }
     if home.keep_separate {
-        return Err(format!("\"{}\" is kept separate, so it can't use other workspaces", home.name));
+        return Err(format!(
+            "\"{}\" is kept separate, so it can't use other workspaces",
+            home.name
+        ));
     }
     if other.keep_separate {
-        return Err(format!("\"{}\" is kept separate, so other workspaces can't use it", other.name));
+        return Err(format!(
+            "\"{}\" is kept separate, so other workspaces can't use it",
+            other.name
+        ));
     }
     if other.archived {
         return Err(format!("\"{}\" is archived", other.name));
@@ -45,7 +58,10 @@ pub fn usable_borrowed<'a>(home: &Workspace, borrowed: &'a [Workspace]) -> Vec<&
     if home.keep_separate {
         return Vec::new();
     }
-    borrowed.iter().filter(|b| b.id != home.id && !b.keep_separate).collect()
+    borrowed
+        .iter()
+        .filter(|b| b.id != home.id && !b.keep_separate)
+        .collect()
 }
 
 #[cfg(test)]
@@ -95,11 +111,17 @@ mod tests {
     fn borrowing_is_refused_when_either_side_is_separate() {
         let home = ws("a", false, false);
         assert!(may_borrow(&home, &ws("b", false, false)).is_ok());
-        assert!(may_borrow(&home, &ws("b", false, true)).unwrap_err().contains("kept separate"));
-        assert!(may_borrow(&ws("a", false, true), &ws("b", false, false)).unwrap_err().contains("kept separate"));
+        assert!(may_borrow(&home, &ws("b", false, true))
+            .unwrap_err()
+            .contains("kept separate"));
+        assert!(may_borrow(&ws("a", false, true), &ws("b", false, false))
+            .unwrap_err()
+            .contains("kept separate"));
         assert!(may_borrow(&home, &ws("a", false, false)).is_err());
         let mut archived = ws("c", false, false);
         archived.archived = true;
-        assert!(may_borrow(&home, &archived).unwrap_err().contains("archived"));
+        assert!(may_borrow(&home, &archived)
+            .unwrap_err()
+            .contains("archived"));
     }
 }

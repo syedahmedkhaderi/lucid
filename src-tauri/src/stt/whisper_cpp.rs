@@ -13,8 +13,8 @@
 //   - Queue limit: drop stale fast passes if inference falls behind
 
 use async_trait::async_trait;
-use std::collections::BinaryHeap;
 use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::{Arc, RwLock};
@@ -54,9 +54,15 @@ fn clean_whisper_text(text: &str) -> String {
     for ch in trimmed.chars() {
         match ch {
             '[' => in_bracket += 1,
-            ']' if in_bracket > 0 => { in_bracket -= 1; continue; }
+            ']' if in_bracket > 0 => {
+                in_bracket -= 1;
+                continue;
+            }
             '(' => in_paren += 1,
-            ')' if in_paren > 0 => { in_paren -= 1; continue; }
+            ')' if in_paren > 0 => {
+                in_paren -= 1;
+                continue;
+            }
             _ if in_bracket > 0 || in_paren > 0 => continue,
             _ => result.push(ch),
         }
@@ -301,11 +307,9 @@ impl STTProvider for WhisperCppSTT {
         }
 
         if !self.model_path.exists() {
-            return Err(format!(
-                "Whisper model not found at: {}",
-                self.model_path.display()
-            )
-            .into());
+            return Err(
+                format!("Whisper model not found at: {}", self.model_path.display()).into(),
+            );
         }
 
         let config = self.config.read().unwrap().clone();
@@ -481,11 +485,10 @@ impl STTProvider for WhisperCppSTT {
                         segment_id,
                         timestamp_ms,
                     } => {
-                        let (text, detected_language) = run_whisper(&mut state, &samples, &language);
+                        let (text, detected_language) =
+                            run_whisper(&mut state, &samples, &language);
                         if !text.is_empty() {
-                            let _ = fb_tx.send(FastPassFeedback {
-                                text: text.clone(),
-                            });
+                            let _ = fb_tx.send(FastPassFeedback { text: text.clone() });
 
                             if text != last_emitted_text {
                                 last_emitted_text = text.clone();
@@ -519,8 +522,7 @@ impl STTProvider for WhisperCppSTT {
 
                         let correction_words: Vec<&str> =
                             correction_text.split_whitespace().collect();
-                        let old_words: Vec<&str> =
-                            fast_words.iter().map(|s| s.as_str()).collect();
+                        let old_words: Vec<&str> = fast_words.iter().map(|s| s.as_str()).collect();
 
                         let merged = word_diff::merge_correction(&old_words, &correction_words);
 

@@ -144,8 +144,16 @@ mod tests {
     #[test]
     fn no_prompt_carries_a_hardcoded_no_think() {
         for mode in [
-            "Assist", "WhatToSay", "Shorten", "FollowUp", "Recap", "AskQuestion", "MeetingSummary",
-            "ActionItemsExtraction", "BookmarkSuggestions", "MeetingAsk",
+            "Assist",
+            "WhatToSay",
+            "Shorten",
+            "FollowUp",
+            "Recap",
+            "AskQuestion",
+            "MeetingSummary",
+            "ActionItemsExtraction",
+            "BookmarkSuggestions",
+            "MeetingAsk",
         ] {
             assert!(!get_system_prompt(mode).contains("no_think"), "{mode}");
         }

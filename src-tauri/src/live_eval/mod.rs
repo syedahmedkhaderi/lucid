@@ -2,10 +2,9 @@
 //! scripted conversations, fixtures of model outputs, a scorer and a one-hour
 //! simulation. Test-time tooling; nothing here runs in the app.
 
-
-pub mod score;
 #[cfg(test)]
 mod redteam;
+pub mod score;
 pub mod scripted;
 pub mod sim;
 

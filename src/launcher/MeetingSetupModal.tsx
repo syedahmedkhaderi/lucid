@@ -9,6 +9,7 @@ import { borrowBlocker } from "../workspace/meetingScope";
 import { pickScenario } from "../workspace/scenarioOrder";
 import { VoiceprintMark } from "../voiceprint";
 import { Combobox, useFocusTrap } from "../ui";
+import { FileUpload } from "../context/FileUpload";
 
 /** Past this many workspaces the picker is a searchable field, not a row of chips. */
 export const MANY_WORKSPACES = 6;
@@ -31,6 +32,7 @@ export interface MeetingSetupChoice {
   workspaceId: string;
   borrowed: string[];
   documentIds: string[];
+  meetingContext: string;
 }
 
 interface SetupDocument {
@@ -58,7 +60,9 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
   const [borrowed, setBorrowed] = useState<string[]>([]);
   const [documents, setDocuments] = useState<SetupDocument[]>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [meetingContext, setMeetingContext] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(false);
+  const workspaceRevision = useWorkspaceStore((s) => s.revision);
   const documentSelectionTouched = useRef(false);
   // A scenario picked here beats the workspace's own; until then the workspace decides.
   const [scenarioPicked, setScenarioPicked] = useState(false);
@@ -110,6 +114,7 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
     setBorrowed([]);
     setDocuments([]);
     setSelectedDocumentIds([]);
+    setMeetingContext("");
     documentSelectionTouched.current = false;
     setDocumentsLoading(true);
     setScenarioPicked(false);
@@ -152,7 +157,7 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
       if (!cancelled) setDocumentsLoading(false);
     });
     return () => { cancelled = true; };
-  }, [open, homeId, borrowedKey, home?.include_general]);
+  }, [open, homeId, borrowedKey, home?.include_general, workspaceRevision]);
 
   // Close on Escape
   useEffect(() => {
@@ -179,8 +184,8 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
       // If unchecked, clear any existing remembered setup
       setRememberedMeetingSetup(null);
     }
-    onStart(audioMode, scenario, { workspaceId: homeId, borrowed, documentIds: selectedDocumentIds });
-  }, [audioMode, scenario, remember, setRememberedMeetingSetup, onStart, homeId, borrowed, selectedDocumentIds, documentsLoading]);
+    onStart(audioMode, scenario, { workspaceId: homeId, borrowed, documentIds: selectedDocumentIds, meetingContext: meetingContext.trim() });
+  }, [audioMode, scenario, remember, setRememberedMeetingSetup, onStart, homeId, borrowed, selectedDocumentIds, documentsLoading, meetingContext]);
 
   const toggleDocument = useCallback((id: string) => {
     documentSelectionTouched.current = true;
@@ -426,8 +431,9 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
                 <span className="font-normal text-muted-foreground">{selectedDocumentIds.length}/{MAX_MEETING_DOCUMENTS} selected</span>
               </legend>
               <p className="mb-2 text-[10px] leading-relaxed text-muted-foreground/70">
-                Choose which workspace documents Lucid can use in this meeting.
+                Add a file or choose what Lucid should use in this meeting.
               </p>
+              <FileUpload workspaceId={homeId} compact className="mb-2" />
               {documentsLoading ? (
                 <p className="rounded-lg border border-border/30 px-3 py-2 text-xs text-muted-foreground" role="status">Loading workspace documents…</p>
               ) : documents.length === 0 ? (
@@ -458,6 +464,20 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
                 </div>
               )}
             </fieldset>
+
+            <details className="rounded-lg border border-border/30 px-3 py-2">
+              <summary className="cursor-pointer text-xs font-medium text-foreground/80">Add optional meeting context</summary>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground/70">Tell Lucid what these documents cover or what the meeting is trying to decide.</p>
+              <textarea
+                value={meetingContext}
+                onChange={(event) => setMeetingContext(event.target.value.slice(0, 2000))}
+                maxLength={2000}
+                rows={3}
+                placeholder="For example: We are reviewing Q3 renewals. Match each account ID exactly and explain any variance."
+                aria-label="Optional meeting context"
+                className="mt-2 w-full resize-y rounded-md border border-border/40 bg-background px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              />
+            </details>
 
             {/* ── Scenario Picker ── */}
             <div>

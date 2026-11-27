@@ -3,10 +3,10 @@
 //! says: the last stderr line of a command that stopped, or the HTTP status a
 //! URL answered with. Secret values never appear in the text.
 
-use crate::sources::config::{McpServer, McpTransport};
-use crate::sources::mcp_json::{credential_id, header_credential_id};
 use super::command::{configure_command, sandbox_dir};
 use super::process_tree::ProcessTree;
+use crate::sources::config::{McpServer, McpTransport};
+use crate::sources::mcp_json::{credential_id, header_credential_id};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -26,7 +26,10 @@ pub async fn diagnose_start(
     server: &McpServer,
     secret: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Option<String> {
-    tokio::time::timeout(DIAGNOSE_LIMIT, diagnose_inner(server, secret)).await.ok().flatten()
+    tokio::time::timeout(DIAGNOSE_LIMIT, diagnose_inner(server, secret))
+        .await
+        .ok()
+        .flatten()
 }
 
 async fn diagnose_inner(
@@ -48,17 +51,25 @@ async fn diagnose_inner(
                 env.push((var.name.clone(), value));
             }
             let (command, args) = (command.clone(), args.clone());
-            tokio::task::spawn_blocking(move || diagnose_stdio(&command, &args, &env, &secrets, DIAGNOSE_WAIT))
-                .await
-                .ok()
-                .flatten()
+            tokio::task::spawn_blocking(move || {
+                diagnose_stdio(&command, &args, &env, &secrets, DIAGNOSE_WAIT)
+            })
+            .await
+            .ok()
+            .flatten()
         }
         McpTransport::Http { url, header_names } => {
             let mut headers: Vec<(String, String)> = Vec::new();
             for name in header_names {
-                headers.push((name.clone(), secret(&header_credential_id(&server.key, name))?));
+                headers.push((
+                    name.clone(),
+                    secret(&header_credential_id(&server.key, name))?,
+                ));
             }
-            let secrets: Vec<String> = headers.iter().flat_map(|(_, v)| secret_variants(v)).collect();
+            let secrets: Vec<String> = headers
+                .iter()
+                .flat_map(|(_, v)| secret_variants(v))
+                .collect();
             diagnose_http(url, &headers, &secrets).await
         }
     }
@@ -70,7 +81,9 @@ pub fn secret_variants(value: &str) -> Vec<String> {
     let mut out = vec![value.to_string()];
     if let Some((scheme, rest)) = value.split_once(' ') {
         let rest = rest.trim();
-        if ["bearer", "basic", "token"].contains(&scheme.to_ascii_lowercase().as_str()) && !rest.is_empty() {
+        if ["bearer", "basic", "token"].contains(&scheme.to_ascii_lowercase().as_str())
+            && !rest.is_empty()
+        {
             out.push(rest.to_string());
         }
     }
@@ -84,7 +97,12 @@ pub fn redact(text: &str, secrets: &[String]) -> String {
     for secret in secrets.iter().filter(|s| s.len() >= 3) {
         out = out.replace(secret.as_str(), "***");
     }
-    let line = out.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    let line = out
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
     if line.chars().count() > 200 {
         let mut cut: String = line.chars().take(200).collect();
         cut.push('…');
@@ -138,7 +156,10 @@ pub fn diagnose_stdio(
     secrets: &[String],
     wait: Duration,
 ) -> Option<String> {
-    let path = env.iter().find(|(k, _)| k.eq_ignore_ascii_case("PATH")).map(|(_, v)| std::ffi::OsString::from(v));
+    let path = env
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("PATH"))
+        .map(|(_, v)| std::ffi::OsString::from(v));
     let mut cmd = Command::new(resolve_command(command, path.as_deref()));
     configure_command(&mut cmd, &sandbox_dir());
     cmd.args(args)
@@ -148,14 +169,22 @@ pub fn diagnose_stdio(
         .stderr(Stdio::piped());
     let mut child = match cmd.spawn() {
         Ok(child) => child,
-        Err(e) => return Some(redact(&format!("It couldn't start {command}: {e}."), secrets)),
+        Err(e) => {
+            return Some(redact(
+                &format!("It couldn't start {command}: {e}."),
+                secrets,
+            ))
+        }
     };
     let mut tree = Some(ProcessTree::adopt(&child));
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     if let Some(stderr) = child.stderr.take() {
         // Ends when every holder of the pipe is gone; never joined.
         std::thread::spawn(move || {
-            for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
+            for line in std::io::BufReader::new(stderr)
+                .lines()
+                .map_while(Result::ok)
+            {
                 if tx.send(line).is_err() {
                     break;
                 }
@@ -186,23 +215,38 @@ pub fn diagnose_stdio(
         }
     }
     drop(tree); // a server that stopped by itself: ends what it left behind
-    let last = lines.iter().rev().find(|l| !l.trim().is_empty()).map(|l| redact(l, secrets));
+    let last = lines
+        .iter()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .map(|l| redact(l, secrets));
     match (exited, last) {
-        (Some(status), Some(line)) => {
-            Some(format!("It stopped right away{}. Its last message: {line}", code_text(status)))
-        }
-        (Some(status), None) => Some(format!("It stopped right away{}, without saying why.", code_text(status))),
+        (Some(status), Some(line)) => Some(format!(
+            "It stopped right away{}. Its last message: {line}",
+            code_text(status)
+        )),
+        (Some(status), None) => Some(format!(
+            "It stopped right away{}, without saying why.",
+            code_text(status)
+        )),
         (None, Some(line)) => Some(format!("Its last message: {line}")),
         (None, None) => None,
     }
 }
 
 fn code_text(status: std::process::ExitStatus) -> String {
-    status.code().map(|c| format!(" (exit code {c})")).unwrap_or_default()
+    status
+        .code()
+        .map(|c| format!(" (exit code {c})"))
+        .unwrap_or_default()
 }
 
 /// Ask the URL what an MCP client asks first and report a refusal.
-pub async fn diagnose_http(url: &str, headers: &[(String, String)], secrets: &[String]) -> Option<String> {
+pub async fn diagnose_http(
+    url: &str,
+    headers: &[(String, String)],
+    secrets: &[String],
+) -> Option<String> {
     // No redirects: the headers (saved secrets) go only to the URL that was saved.
     let client = reqwest::Client::builder()
         .timeout(DIAGNOSE_WAIT)
@@ -227,7 +271,10 @@ pub async fn diagnose_http(url: &str, headers: &[(String, String)], secrets: &[S
         }
         Ok(resp) => {
             let status = resp.status();
-            let reason = status.canonical_reason().map(|r| format!(" {r}")).unwrap_or_default();
+            let reason = status
+                .canonical_reason()
+                .map(|r| format!(" {r}"))
+                .unwrap_or_default();
             Some(format!("The server answered {}{reason}.", status.as_u16()))
         }
         Err(e) => {
@@ -249,8 +296,14 @@ mod tests {
 
     #[test]
     fn secret_variants_add_the_token_without_its_scheme() {
-        assert_eq!(secret_variants("Bearer abc123"), vec!["Bearer abc123", "abc123"]);
-        assert_eq!(secret_variants("basic dXNlcjpwdw=="), vec!["basic dXNlcjpwdw==", "dXNlcjpwdw=="]);
+        assert_eq!(
+            secret_variants("Bearer abc123"),
+            vec!["Bearer abc123", "abc123"]
+        );
+        assert_eq!(
+            secret_variants("basic dXNlcjpwdw=="),
+            vec!["basic dXNlcjpwdw==", "dXNlcjpwdw=="]
+        );
         assert_eq!(secret_variants("TOKEN x y"), vec!["TOKEN x y", "x y"]);
         assert_eq!(secret_variants("plainvalue"), vec!["plainvalue"]);
         assert_eq!(secret_variants("two words"), vec!["two words"]);
@@ -271,15 +324,24 @@ mod tests {
                 let _ = sock.shutdown().await;
             }
         });
-        let cause = diagnose_http(&url, &[("Authorization".into(), "Bearer abc".into())], &[]).await.unwrap();
+        let cause = diagnose_http(&url, &[("Authorization".into(), "Bearer abc".into())], &[])
+            .await
+            .unwrap();
         assert!(cause.contains("redirect"), "{cause}");
     }
 
     #[test]
     fn redact_hides_secrets_and_keeps_one_short_line() {
         let secrets = vec!["s3cret-value".to_string(), "ab".to_string()];
-        assert_eq!(redact("error: bad key s3cret-value\n", &secrets), "error: bad key ***");
-        assert_eq!(redact("first\n\nlast line ab\n", &secrets), "last line ab", "values under 3 chars are left alone");
+        assert_eq!(
+            redact("error: bad key s3cret-value\n", &secrets),
+            "error: bad key ***"
+        );
+        assert_eq!(
+            redact("first\n\nlast line ab\n", &secrets),
+            "last line ab",
+            "values under 3 chars are left alone"
+        );
         let long = "x".repeat(500);
         assert!(redact(&long, &[]).chars().count() <= 201);
     }
@@ -298,26 +360,54 @@ mod tests {
             "echo starting 1>&2 & echo token s3cret-value is wrong 1>&2 & exit 3",
             "echo starting >&2; echo token s3cret-value is wrong >&2; exit 3",
         );
-        let cause =
-            diagnose_stdio(&cmd, &args, &[], &["s3cret-value".to_string()], Duration::from_secs(5)).unwrap();
-        assert!(cause.contains("exit code 3") && cause.contains("token *** is wrong"), "{cause}");
-        assert!(!cause.contains("s3cret-value") && !cause.contains("starting"), "{cause}");
+        let cause = diagnose_stdio(
+            &cmd,
+            &args,
+            &[],
+            &["s3cret-value".to_string()],
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        assert!(
+            cause.contains("exit code 3") && cause.contains("token *** is wrong"),
+            "{cause}"
+        );
+        assert!(
+            !cause.contains("s3cret-value") && !cause.contains("starting"),
+            "{cause}"
+        );
     }
 
     #[test]
     fn a_missing_command_says_it_couldnt_start() {
-        let cause = diagnose_stdio("nexq-no-such-command-xyz", &[], &[], &[], Duration::from_secs(1)).unwrap();
-        assert!(cause.contains("couldn't start nexq-no-such-command-xyz"), "{cause}");
+        let cause = diagnose_stdio(
+            "nexq-no-such-command-xyz",
+            &[],
+            &[],
+            &[],
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        assert!(
+            cause.contains("couldn't start nexq-no-such-command-xyz"),
+            "{cause}"
+        );
     }
 
     #[test]
     fn a_command_that_keeps_running_quietly_shows_nothing() {
         let (cmd, args) = if cfg!(windows) {
-            ("ping".to_string(), vec!["-n".to_string(), "4".to_string(), "127.0.0.1".to_string()])
+            (
+                "ping".to_string(),
+                vec!["-n".to_string(), "4".to_string(), "127.0.0.1".to_string()],
+            )
         } else {
             ("sleep".to_string(), vec!["3".to_string()])
         };
-        assert_eq!(diagnose_stdio(&cmd, &args, &[], &[], Duration::from_millis(400)), None);
+        assert_eq!(
+            diagnose_stdio(&cmd, &args, &[], &[], Duration::from_millis(400)),
+            None
+        );
     }
 
     /// How many `ping.exe` processes run with `-n <count>` (the marker of one test).
@@ -330,13 +420,19 @@ mod tests {
             .args(["-NoProfile", "-Command", &script])
             .output()
             .unwrap();
-        String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0)
+        String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0)
     }
 
     /// A full path: a test run from a Unix-style shell can have no System32 on PATH.
     #[cfg(windows)]
     fn system32_ping() -> String {
-        format!(r"{}\System32\PING.EXE", std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into()))
+        format!(
+            r"{}\System32\PING.EXE",
+            std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into())
+        )
     }
 
     #[cfg(windows)]
@@ -354,10 +450,17 @@ mod tests {
     #[test]
     fn a_server_with_a_child_that_outlives_the_wait_is_ended_with_its_children() {
         // cmd starts ping, as `cmd /c npx` starts node. ping keeps stderr open.
-        let args: Vec<String> = ["/c", &system32_ping(), "-n", "37", "127.0.0.1"].iter().map(|s| s.to_string()).collect();
+        let args: Vec<String> = ["/c", &system32_ping(), "-n", "37", "127.0.0.1"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let started = Instant::now();
         let cause = diagnose_stdio("cmd", &args, &[], &[], Duration::from_millis(600));
-        assert!(started.elapsed() < Duration::from_secs(6), "took {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(6),
+            "took {:?}",
+            started.elapsed()
+        );
         assert_eq!(cause, None);
         assert_eq!(wait_until_no_pings(37), 0, "ping survived");
     }
@@ -366,10 +469,17 @@ mod tests {
     #[test]
     fn a_server_that_stops_but_leaves_a_child_holding_stderr_still_returns() {
         // cmd exits at once, the background ping keeps the stderr pipe open.
-        let args = vec!["/c".to_string(), format!("start /b {} -n 41 127.0.0.1 & exit 2", system32_ping())];
+        let args = vec![
+            "/c".to_string(),
+            format!("start /b {} -n 41 127.0.0.1 & exit 2", system32_ping()),
+        ];
         let started = Instant::now();
         let cause = diagnose_stdio("cmd", &args, &[], &[], Duration::from_secs(5)).unwrap();
-        assert!(started.elapsed() < Duration::from_secs(4), "took {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "took {:?}",
+            started.elapsed()
+        );
         assert!(cause.contains("exit code 2"), "{cause}");
         assert_eq!(wait_until_no_pings(41), 0, "ping survived");
     }
@@ -379,23 +489,41 @@ mod tests {
     fn a_bare_command_name_is_found_through_pathext_like_the_cli_does() {
         let dir = std::env::temp_dir().join(format!("nexq-resolve-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("fakenpx.cmd"), "@echo off
+        std::fs::write(
+            dir.join("fakenpx.cmd"),
+            "@echo off
 
 echo from the shim 1>&2
 
 exit 4
 
-").unwrap();
+",
+        )
+        .unwrap();
         let path = std::env::join_paths([dir.clone()]).unwrap();
         let found = resolve_command("fakenpx", Some(&path));
-        assert!(found.to_string_lossy().eq_ignore_ascii_case(&dir.join("fakenpx.cmd").to_string_lossy()), "{found:?}");
+        assert!(
+            found
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&dir.join("fakenpx.cmd").to_string_lossy()),
+            "{found:?}"
+        );
         // Not found: left alone, so the spawn error names it.
-        assert_eq!(resolve_command("nexq-nothing-xyz", Some(&path)), PathBuf::from("nexq-nothing-xyz"));
+        assert_eq!(
+            resolve_command("nexq-nothing-xyz", Some(&path)),
+            PathBuf::from("nexq-nothing-xyz")
+        );
         // An explicit extension or path is kept.
-        assert_eq!(resolve_command("fakenpx.cmd", Some(&path)), PathBuf::from("fakenpx.cmd"));
+        assert_eq!(
+            resolve_command("fakenpx.cmd", Some(&path)),
+            PathBuf::from("fakenpx.cmd")
+        );
         let env = vec![("PATH".to_string(), path.to_string_lossy().into_owned())];
         let cause = diagnose_stdio("fakenpx", &[], &env, &[], Duration::from_secs(5)).unwrap();
-        assert!(cause.contains("exit code 4") && cause.contains("from the shim"), "{cause}");
+        assert!(
+            cause.contains("exit code 4") && cause.contains("from the shim"),
+            "{cause}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -409,16 +537,32 @@ exit 4
             let mut buf = [0u8; 4096];
             let _ = sock.read(&mut buf).await;
             let _ = sock
-                .write_all(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .write_all(
+                    b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
                 .await;
         });
-        let cause = diagnose_http(&url, &[("Authorization".into(), "Bearer tok-123".into())], &["Bearer tok-123".into()]).await;
-        assert_eq!(cause.as_deref(), Some("The server answered 401 Unauthorized."));
+        let cause = diagnose_http(
+            &url,
+            &[("Authorization".into(), "Bearer tok-123".into())],
+            &["Bearer tok-123".into()],
+        )
+        .await;
+        assert_eq!(
+            cause.as_deref(),
+            Some("The server answered 401 Unauthorized.")
+        );
     }
 
     #[tokio::test]
     async fn a_server_that_cannot_be_reached_says_so_without_its_url() {
-        let cause = diagnose_http("http://127.0.0.1:1/mcp?token=hunter22", &[], &["hunter22".into()]).await.unwrap();
+        let cause = diagnose_http(
+            "http://127.0.0.1:1/mcp?token=hunter22",
+            &[],
+            &["hunter22".into()],
+        )
+        .await
+        .unwrap();
         assert!(cause.starts_with("It couldn't be reached"), "{cause}");
         assert!(!cause.contains("hunter22"), "{cause}");
     }

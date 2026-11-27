@@ -26,7 +26,10 @@ pub struct Rng(pub u64);
 
 impl Rng {
     pub fn next(&mut self) -> u32 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (self.0 >> 33) as u32
     }
     pub fn below(&mut self, n: usize) -> usize {
@@ -63,7 +66,9 @@ const JA_PARTICLES: [&str; 6] = ["の", "を", "は", "が", "に", "で"];
 const JA_ENDINGS: [&str; 4] = ["です。", "ます。", "ですね。", "でした。"];
 
 fn syllable_word(r: &mut Rng, lang: Lang) -> String {
-    let cons = ["b", "d", "f", "g", "k", "l", "m", "n", "p", "r", "s", "t", "v", "z", "ch", "st", "br"];
+    let cons = [
+        "b", "d", "f", "g", "k", "l", "m", "n", "p", "r", "s", "t", "v", "z", "ch", "st", "br",
+    ];
     let vows = ["a", "e", "i", "o", "u"];
     let syll = match lang {
         Lang::Es => 3,
@@ -120,7 +125,9 @@ pub fn utterance(lang: Lang, topic: usize, noise: &[String], r: &mut Rng, words:
             s
         }
         _ => {
-            let func: Vec<&str> = if lang == Lang::En { EN_FUNC } else { ES_FUNC }.split_whitespace().collect();
+            let func: Vec<&str> = if lang == Lang::En { EN_FUNC } else { ES_FUNC }
+                .split_whitespace()
+                .collect();
             let mut out: Vec<String> = Vec::new();
             for _ in 0..words {
                 let roll = r.below(100);
@@ -145,12 +152,26 @@ pub fn utterance(lang: Lang, topic: usize, noise: &[String], r: &mut Rng, words:
 }
 
 pub fn noise_pool(lang: Lang, r: &mut Rng, size: usize) -> Vec<String> {
-    (0..size).map(|_| if lang == Lang::Ja { kanji_word(r) } else { syllable_word(r, lang) }).collect()
+    (0..size)
+        .map(|_| {
+            if lang == Lang::Ja {
+                kanji_word(r)
+            } else {
+                syllable_word(r, lang)
+            }
+        })
+        .collect()
 }
 
 /// A conversation as consecutive blocks `(topic, seconds)`, one line every
 /// `line_secs` seconds of about `words_per_line` words (150 wpm = 12.5 per 5 s).
-pub fn conversation(lang: Lang, seed: u64, blocks: &[(usize, u64)], line_secs: u64, words_per_line: usize) -> Vec<Utter> {
+pub fn conversation(
+    lang: Lang,
+    seed: u64,
+    blocks: &[(usize, u64)],
+    line_secs: u64,
+    words_per_line: usize,
+) -> Vec<Utter> {
     let mut r = Rng(seed ^ 0xA5A5_5A5A_1234_4321);
     let noise = noise_pool(lang, &mut r, 70);
     let mut out = Vec::new();
@@ -158,7 +179,11 @@ pub fn conversation(lang: Lang, seed: u64, blocks: &[(usize, u64)], line_secs: u
     for (bi, (topic, secs)) in blocks.iter().enumerate() {
         let end = t + secs * 1000;
         while t < end {
-            out.push(Utter { ms: t, text: utterance(lang, *topic, &noise, &mut r, words_per_line), topic: bi });
+            out.push(Utter {
+                ms: t,
+                text: utterance(lang, *topic, &noise, &mut r, words_per_line),
+                topic: bi,
+            });
             t += line_secs * 1000;
         }
     }
@@ -174,7 +199,10 @@ mod tests {
         let a = conversation(Lang::En, 7, &[(0, 60), (1, 60)], 5, 12);
         let b = conversation(Lang::En, 7, &[(0, 60), (1, 60)], 5, 12);
         assert_eq!(a.len(), 24);
-        assert_eq!(a.iter().map(|u| &u.text).collect::<Vec<_>>(), b.iter().map(|u| &u.text).collect::<Vec<_>>());
+        assert_eq!(
+            a.iter().map(|u| &u.text).collect::<Vec<_>>(),
+            b.iter().map(|u| &u.text).collect::<Vec<_>>()
+        );
         let ja = conversation(Lang::Ja, 7, &[(2, 30)], 5, 12);
         assert!(ja[0].text.contains('。'));
         let words: usize = a.iter().map(|u| u.text.split_whitespace().count()).sum();

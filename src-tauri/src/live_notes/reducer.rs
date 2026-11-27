@@ -37,7 +37,12 @@ pub struct ReduceLimits {
 
 impl Default for ReduceLimits {
     fn default() -> Self {
-        Self { max_ops: 12, max_blocks: 500, dup_threshold: 0.8, topic_dup_threshold: 0.75 }
+        Self {
+            max_ops: 12,
+            max_blocks: 500,
+            dup_threshold: 0.8,
+            topic_dup_threshold: 0.75,
+        }
     }
 }
 
@@ -76,13 +81,18 @@ impl ReduceReport {
 /// Plain text for a block: no control characters or list markers, one line,
 /// well-formed entity tags, within the cap of its kind.
 pub fn clean_text(kind: BlockKind, raw: &str) -> String {
-    let mut s: String = raw.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    let mut s: String = raw
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
     s = s.split_whitespace().collect::<Vec<_>>().join(" ");
     loop {
         let t = s.trim_start();
-        let stripped = ["- ", "* ", "• ", "## ", "# ", "[] ", "[ ] ", "[x] ", "! ", "? ", "> "]
-            .iter()
-            .find_map(|p| t.strip_prefix(p));
+        let stripped = [
+            "- ", "* ", "• ", "## ", "# ", "[] ", "[ ] ", "[x] ", "! ", "? ", "> ",
+        ]
+        .iter()
+        .find_map(|p| t.strip_prefix(p));
         match stripped {
             Some(rest) => s = rest.to_string(),
             None => break,
@@ -93,7 +103,12 @@ pub fn clean_text(kind: BlockKind, raw: &str) -> String {
     if s.chars().count() > max {
         let mut cut: String = s.chars().take(max - 1).collect();
         if let Some(pos) = cut.rfind(char::is_whitespace) {
-            if cut.chars().count().saturating_sub(cut[..pos].chars().count()) <= 24 {
+            if cut
+                .chars()
+                .count()
+                .saturating_sub(cut[..pos].chars().count())
+                <= 24
+            {
                 cut.truncate(pos);
             }
         }
@@ -124,12 +139,19 @@ impl<'a> Reducer<'a> {
         match b.kind {
             BlockKind::Topic => recent.contains(&b.id),
             BlockKind::Summary if b.parent.is_none() => true,
-            _ => b.parent.as_ref().map(|p| recent.contains(p)).unwrap_or(false),
+            _ => b
+                .parent
+                .as_ref()
+                .map(|p| recent.contains(p))
+                .unwrap_or(false),
         }
     }
 
     fn clamp_t(&mut self, t: Option<u64>) -> u64 {
-        let (s, e) = (self.ctx.range_start_ms, self.ctx.range_end_ms.max(self.ctx.range_start_ms));
+        let (s, e) = (
+            self.ctx.range_start_ms,
+            self.ctx.range_end_ms.max(self.ctx.range_start_ms),
+        );
         match t {
             Some(t) if t >= s && t <= e => t,
             Some(t) => {
@@ -167,7 +189,11 @@ impl<'a> Reducer<'a> {
         if let Some(w) = wanted {
             if let Some(real) = self.resolve(w) {
                 if let Some(b) = self.doc.get(&real) {
-                    let candidate = if b.kind == BlockKind::Topic { Some(real.clone()) } else { b.parent.clone() };
+                    let candidate = if b.kind == BlockKind::Topic {
+                        Some(real.clone())
+                    } else {
+                        b.parent.clone()
+                    };
                     if let Some(c) = candidate {
                         if recent.contains(&c) {
                             return Some(c);
@@ -212,11 +238,19 @@ impl<'a> Reducer<'a> {
                 }
                 return self.report.drop(DropReason::Duplicate);
             }
-        } else if self.pool(None).iter().any(|(_, other)| similarity(other, &text) >= self.limits.dup_threshold) {
+        } else if self
+            .pool(None)
+            .iter()
+            .any(|(_, other)| similarity(other, &text) >= self.limits.dup_threshold)
+        {
             return self.report.drop(DropReason::Duplicate);
         }
 
-        let parent = if kind == BlockKind::Topic { None } else { self.pick_parent(op.parent.as_deref()) };
+        let parent = if kind == BlockKind::Topic {
+            None
+        } else {
+            self.pick_parent(op.parent.as_deref())
+        };
         let id = self.doc.alloc_id();
         let order = self.doc.next_order();
         if let Some(p) = &parent {
@@ -243,16 +277,24 @@ impl<'a> Reducer<'a> {
     }
 
     fn update(&mut self, op: RawOp) {
-        let Some(raw_id) = op.id.as_deref() else { return self.report.drop(DropReason::MissingField) };
-        let Some(id) = self.resolve(raw_id) else { return self.report.drop(DropReason::UnknownId) };
-        let Some(block) = self.doc.get(&id).cloned() else { return self.report.drop(DropReason::UnknownId) };
+        let Some(raw_id) = op.id.as_deref() else {
+            return self.report.drop(DropReason::MissingField);
+        };
+        let Some(id) = self.resolve(raw_id) else {
+            return self.report.drop(DropReason::UnknownId);
+        };
+        let Some(block) = self.doc.get(&id).cloned() else {
+            return self.report.drop(DropReason::UnknownId);
+        };
         if block.locked() {
             return self.report.drop(DropReason::Locked);
         }
         if !self.updatable(&block) {
             return self.report.drop(DropReason::NotUpdatable);
         }
-        let Some(raw_text) = op.text.as_deref() else { return self.report.drop(DropReason::MissingField) };
+        let Some(raw_text) = op.text.as_deref() else {
+            return self.report.drop(DropReason::MissingField);
+        };
         let text = clean_text(block.kind, raw_text);
         if text.is_empty() {
             return self.report.drop(DropReason::Empty);
@@ -261,7 +303,10 @@ impl<'a> Reducer<'a> {
             return self.report.drop(DropReason::Unchanged);
         }
         if block.kind != BlockKind::Topic
-            && self.pool(Some(&id)).iter().any(|(_, other)| similarity(other, &text) >= self.limits.dup_threshold)
+            && self
+                .pool(Some(&id))
+                .iter()
+                .any(|(_, other)| similarity(other, &text) >= self.limits.dup_threshold)
         {
             return self.report.drop(DropReason::Duplicate);
         }
@@ -276,17 +321,28 @@ impl<'a> Reducer<'a> {
         let (Some(raw_id), Some(raw_parent)) = (op.id.as_deref(), op.parent.as_deref()) else {
             return self.report.drop(DropReason::MissingField);
         };
-        let Some(id) = self.resolve(raw_id) else { return self.report.drop(DropReason::UnknownId) };
-        let Some(block) = self.doc.get(&id).cloned() else { return self.report.drop(DropReason::UnknownId) };
+        let Some(id) = self.resolve(raw_id) else {
+            return self.report.drop(DropReason::UnknownId);
+        };
+        let Some(block) = self.doc.get(&id).cloned() else {
+            return self.report.drop(DropReason::UnknownId);
+        };
         if block.locked() {
             return self.report.drop(DropReason::Locked);
         }
         if block.kind == BlockKind::Topic || !self.updatable(&block) {
             return self.report.drop(DropReason::NotUpdatable);
         }
-        let Some(target) = self.resolve(raw_parent) else { return self.report.drop(DropReason::BadParent) };
+        let Some(target) = self.resolve(raw_parent) else {
+            return self.report.drop(DropReason::BadParent);
+        };
         let recent = self.doc.recent_topic_ids();
-        let ok = self.doc.get(&target).map(|b| b.kind == BlockKind::Topic).unwrap_or(false) && recent.contains(&target);
+        let ok = self
+            .doc
+            .get(&target)
+            .map(|b| b.kind == BlockKind::Topic)
+            .unwrap_or(false)
+            && recent.contains(&target);
         if !ok {
             return self.report.drop(DropReason::BadParent);
         }
@@ -304,8 +360,19 @@ impl<'a> Reducer<'a> {
     }
 }
 
-pub fn apply_ops(doc: &mut NoteDoc, ops: Vec<RawOp>, ctx: ReduceCtx, limits: &ReduceLimits) -> ReduceReport {
-    let mut r = Reducer { doc, ctx, limits, alias: HashMap::new(), report: ReduceReport::default() };
+pub fn apply_ops(
+    doc: &mut NoteDoc,
+    ops: Vec<RawOp>,
+    ctx: ReduceCtx,
+    limits: &ReduceLimits,
+) -> ReduceReport {
+    let mut r = Reducer {
+        doc,
+        ctx,
+        limits,
+        alias: HashMap::new(),
+        report: ReduceReport::default(),
+    };
     for (i, op) in ops.into_iter().enumerate() {
         if i >= limits.max_ops {
             r.report.drop(DropReason::TooManyOps);
@@ -322,7 +389,12 @@ pub fn apply_ops(doc: &mut NoteDoc, ops: Vec<RawOp>, ctx: ReduceCtx, limits: &Re
 
 /// Independent check of the rules, used by tests and the eval scorer. Returns
 /// one message per violation; an empty list means the change is clean.
-pub fn check_invariants(before: &NoteDoc, after: &NoteDoc, ctx: ReduceCtx, limits: &ReduceLimits) -> Vec<String> {
+pub fn check_invariants(
+    before: &NoteDoc,
+    after: &NoteDoc,
+    ctx: ReduceCtx,
+    limits: &ReduceLimits,
+) -> Vec<String> {
     let mut v = Vec::new();
     let recent: Vec<String> = before.recent_topic_ids();
     let mut changed = 0usize;
@@ -339,13 +411,22 @@ pub fn check_invariants(before: &NoteDoc, after: &NoteDoc, ctx: ReduceCtx, limit
                     let in_recent = match b.kind {
                         BlockKind::Topic => recent.contains(&b.id),
                         BlockKind::Summary if b.parent.is_none() => true,
-                        _ => b.parent.as_ref().map(|p| recent.contains(p)).unwrap_or(false),
+                        _ => b
+                            .parent
+                            .as_ref()
+                            .map(|p| recent.contains(p))
+                            .unwrap_or(false),
                     };
                     if !in_recent {
                         v.push(format!("{} changed outside the last two topics", b.id));
                     }
                 }
-                if a.edited != b.edited || a.pinned != b.pinned || a.order != b.order || a.start_ms != b.start_ms || a.id != b.id {
+                if a.edited != b.edited
+                    || a.pinned != b.pinned
+                    || a.order != b.order
+                    || a.start_ms != b.start_ms
+                    || a.id != b.id
+                {
                     v.push(format!("{} metadata changed", b.id));
                 }
             }
@@ -370,7 +451,9 @@ pub fn check_invariants(before: &NoteDoc, after: &NoteDoc, ctx: ReduceCtx, limit
         }
         if before.get(&a.id).is_none() {
             changed += 1;
-            if a.start_ms < ctx.range_start_ms || a.start_ms > ctx.range_end_ms.max(ctx.range_start_ms) {
+            if a.start_ms < ctx.range_start_ms
+                || a.start_ms > ctx.range_end_ms.max(ctx.range_start_ms)
+            {
                 v.push(format!("{} timestamp outside range", a.id));
             }
             if a.edited || a.pinned {
@@ -379,7 +462,10 @@ pub fn check_invariants(before: &NoteDoc, after: &NoteDoc, ctx: ReduceCtx, limit
         }
     }
     if changed > limits.max_ops {
-        v.push(format!("{} blocks changed, max {}", changed, limits.max_ops));
+        v.push(format!(
+            "{} blocks changed, max {}",
+            changed, limits.max_ops
+        ));
     }
     // moves count: blocks whose parent changed are in `changed` already.
     // near duplicates among new non-topic blocks and the pool
@@ -393,9 +479,17 @@ pub fn check_invariants(before: &NoteDoc, after: &NoteDoc, ctx: ReduceCtx, limit
         })
         .map(|b| b.id.clone())
         .collect();
-    let news: Vec<&Block> = after.blocks.iter().filter(|b| before.get(&b.id).is_none() && b.kind != BlockKind::Topic).collect();
+    let news: Vec<&Block> = after
+        .blocks
+        .iter()
+        .filter(|b| before.get(&b.id).is_none() && b.kind != BlockKind::Topic)
+        .collect();
     for n in &news {
-        for o in after.blocks.iter().filter(|o| o.id != n.id && pool_ids.contains(&o.id)) {
+        for o in after
+            .blocks
+            .iter()
+            .filter(|o| o.id != n.id && pool_ids.contains(&o.id))
+        {
             // only older blocks or earlier-created new ones count against n
             if o.order < n.order && similarity(&o.text, &n.text) >= limits.dup_threshold + 0.001 {
                 v.push(format!("{} near-duplicates {}", n.id, o.id));
@@ -410,20 +504,51 @@ mod tests {
     use super::*;
 
     fn ctx() -> ReduceCtx {
-        ReduceCtx { range_start_ms: 60_000, range_end_ms: 120_000 }
+        ReduceCtx {
+            range_start_ms: 60_000,
+            range_end_ms: 120_000,
+        }
     }
 
     fn add(kind: BlockKind, text: &str) -> RawOp {
-        RawOp { op: OpKind::Add, id: None, kind: Some(kind), parent: None, text: Some(text.into()), t_ms: Some(70_000) }
+        RawOp {
+            op: OpKind::Add,
+            id: None,
+            kind: Some(kind),
+            parent: None,
+            text: Some(text.into()),
+            t_ms: Some(70_000),
+        }
     }
     fn add_in(kind: BlockKind, text: &str, alias: &str, parent: &str) -> RawOp {
-        RawOp { op: OpKind::Add, id: Some(alias.into()), kind: Some(kind), parent: Some(parent.into()), text: Some(text.into()), t_ms: Some(80_000) }
+        RawOp {
+            op: OpKind::Add,
+            id: Some(alias.into()),
+            kind: Some(kind),
+            parent: Some(parent.into()),
+            text: Some(text.into()),
+            t_ms: Some(80_000),
+        }
     }
     fn upd(id: &str, text: &str) -> RawOp {
-        RawOp { op: OpKind::Update, id: Some(id.into()), kind: None, parent: None, text: Some(text.into()), t_ms: None }
+        RawOp {
+            op: OpKind::Update,
+            id: Some(id.into()),
+            kind: None,
+            parent: None,
+            text: Some(text.into()),
+            t_ms: None,
+        }
     }
     fn mv(id: &str, parent: &str) -> RawOp {
-        RawOp { op: OpKind::Move, id: Some(id.into()), kind: None, parent: Some(parent.into()), text: None, t_ms: None }
+        RawOp {
+            op: OpKind::Move,
+            id: Some(id.into()),
+            kind: None,
+            parent: Some(parent.into()),
+            text: None,
+            t_ms: None,
+        }
     }
     fn run(doc: &mut NoteDoc, ops: Vec<RawOp>) -> ReduceReport {
         let before = doc.clone();
@@ -437,8 +562,21 @@ mod tests {
     fn doc_with_topics(n: usize) -> NoteDoc {
         let mut d = NoteDoc::new();
         for i in 0..n {
-            let t = d.user_add(BlockKind::Topic, None, &format!("Topic number {i} alpha{i}"), 1000 * i as u64).unwrap();
-            d.user_add(BlockKind::Bullet, Some(&t), &format!("point about subject{i} gamma{i}"), 1000 * i as u64).unwrap();
+            let t = d
+                .user_add(
+                    BlockKind::Topic,
+                    None,
+                    &format!("Topic number {i} alpha{i}"),
+                    1000 * i as u64,
+                )
+                .unwrap();
+            d.user_add(
+                BlockKind::Bullet,
+                Some(&t),
+                &format!("point about subject{i} gamma{i}"),
+                1000 * i as u64,
+            )
+            .unwrap();
             for b in d.blocks.iter_mut() {
                 b.edited = false;
             }
@@ -452,8 +590,16 @@ mod tests {
         let r = run(
             &mut d,
             vec![
-                RawOp { id: Some("t1".into()), ..add(BlockKind::Topic, "Quarterly budget") },
-                add_in(BlockKind::Bullet, "Marketing gets twelve percent more", "x1", "t1"),
+                RawOp {
+                    id: Some("t1".into()),
+                    ..add(BlockKind::Topic, "Quarterly budget")
+                },
+                add_in(
+                    BlockKind::Bullet,
+                    "Marketing gets twelve percent more",
+                    "x1",
+                    "t1",
+                ),
                 add_in(BlockKind::Decision, "Freeze hiring until June", "x2", "t1"),
             ],
         );
@@ -470,7 +616,14 @@ mod tests {
         d.blocks[1].pinned = true; // bullet of topic 1
         let id_edit = d.blocks[3].id.clone();
         let id_pin = d.blocks[1].id.clone();
-        let r = run(&mut d, vec![upd(&id_edit, "overwritten text here"), upd(&id_pin, "pinned overwritten"), mv(&id_edit, "b1")]);
+        let r = run(
+            &mut d,
+            vec![
+                upd(&id_edit, "overwritten text here"),
+                upd(&id_pin, "pinned overwritten"),
+                mv(&id_edit, "b1"),
+            ],
+        );
         assert_eq!(r.applied(), 0);
         assert_eq!(r.dropped[&DropReason::Locked], 3);
         assert_eq!(d.get(&id_edit).unwrap().text, "point about subject1 gamma1");
@@ -484,7 +637,11 @@ mod tests {
         let recent_bullet = d.blocks[7].id.clone();
         let r = run(
             &mut d,
-            vec![upd(&old_topic, "Renamed old topic"), upd(&old_bullet, "Changed old bullet"), upd(&recent_bullet, "Changed recent bullet text")],
+            vec![
+                upd(&old_topic, "Renamed old topic"),
+                upd(&old_bullet, "Changed old bullet"),
+                upd(&recent_bullet, "Changed recent bullet text"),
+            ],
         );
         assert_eq!(r.updated, 1);
         assert_eq!(r.dropped[&DropReason::NotUpdatable], 2);
@@ -499,7 +656,10 @@ mod tests {
         let r = run(&mut d, vec![mv(&b_recent, &t_old), mv(&b_recent, &t3)]);
         assert_eq!(r.moved, 1);
         assert_eq!(r.dropped[&DropReason::BadParent], 1);
-        assert_eq!(d.get(&b_recent).unwrap().parent.as_deref(), Some(t3.as_str()));
+        assert_eq!(
+            d.get(&b_recent).unwrap().parent.as_deref(),
+            Some(t3.as_str())
+        );
     }
 
     #[test]
@@ -507,14 +667,23 @@ mod tests {
         let mut d = NoteDoc::new();
         let mut ops = vec![add(BlockKind::Topic, "Everything")];
         for i in 0..20 {
-            ops.push(add(BlockKind::Bullet, &format!("distinct fact number{i} about widget{i} gizmo{i}")));
+            ops.push(add(
+                BlockKind::Bullet,
+                &format!("distinct fact number{i} about widget{i} gizmo{i}"),
+            ));
         }
         let r = run(&mut d, ops);
         assert_eq!(r.added, 12);
         assert_eq!(r.dropped[&DropReason::TooManyOps], 9);
         let long = "word ".repeat(200);
         let mut d2 = NoteDoc::new();
-        run(&mut d2, vec![add(BlockKind::Topic, &long), add(BlockKind::Bullet, &long.replace("word", "other"))]);
+        run(
+            &mut d2,
+            vec![
+                add(BlockKind::Topic, &long),
+                add(BlockKind::Bullet, &long.replace("word", "other")),
+            ],
+        );
         assert!(d2.blocks[0].text.chars().count() <= 80 && d2.blocks[0].text.ends_with('…'));
         assert!(d2.blocks[1].text.chars().count() <= 220);
         let cjk = "予算".repeat(300);
@@ -550,7 +719,10 @@ mod tests {
                 add(BlockKind::Bullet, "ship the beta friday"),
                 add(BlockKind::Decision, "Ship the beta on Friday."),
                 add(BlockKind::Topic, "The release plan"),
-                RawOp { parent: Some("b1".into()), ..add(BlockKind::Bullet, "Hire two testers") },
+                RawOp {
+                    parent: Some("b1".into()),
+                    ..add(BlockKind::Bullet, "Hire two testers")
+                },
             ],
         );
         assert_eq!(r.added, 3);
@@ -567,8 +739,14 @@ mod tests {
         let r = run(
             &mut d,
             vec![
-                RawOp { parent: Some("nope".into()), ..add(BlockKind::Bullet, "Orphan with a bad parent") },
-                RawOp { parent: Some(old_topic), ..add(BlockKind::Task, "Child of an old topic") },
+                RawOp {
+                    parent: Some("nope".into()),
+                    ..add(BlockKind::Bullet, "Orphan with a bad parent")
+                },
+                RawOp {
+                    parent: Some(old_topic),
+                    ..add(BlockKind::Task, "Child of an old topic")
+                },
                 add(BlockKind::Question, "Who owns the rollout"),
             ],
         );
@@ -587,7 +765,13 @@ mod tests {
     #[test]
     fn ids_are_stable_and_existing_ids_are_not_taken_as_aliases() {
         let mut d = doc_with_topics(1);
-        let r = run(&mut d, vec![RawOp { id: Some("b1".into()), ..add(BlockKind::Topic, "Totally different title") }]);
+        let r = run(
+            &mut d,
+            vec![RawOp {
+                id: Some("b1".into()),
+                ..add(BlockKind::Topic, "Totally different title")
+            }],
+        );
         assert_eq!(r.added, 1);
         assert_eq!(d.get("b1").unwrap().text, "Topic number 0 alpha0");
         assert_eq!(d.blocks.last().unwrap().id, "b3");
@@ -595,7 +779,10 @@ mod tests {
 
     #[test]
     fn messy_text_is_cleaned() {
-        assert_eq!(clean_text(BlockKind::Bullet, "  - hello\n  world {{p:Ana}} {{x"), "hello world {{p:Ana}} x");
+        assert_eq!(
+            clean_text(BlockKind::Bullet, "  - hello\n  world {{p:Ana}} {{x"),
+            "hello world {{p:Ana}} x"
+        );
         assert_eq!(clean_text(BlockKind::Task, "[] \u{0}send\tit"), "send it");
         assert_eq!(clean_text(BlockKind::Bullet, "   "), "");
     }
@@ -605,7 +792,14 @@ mod tests {
         let mut d = doc_with_topics(1);
         let bullet = d.blocks[1].id.clone();
         let same = d.blocks[1].text.to_uppercase();
-        let r = run(&mut d, vec![upd(&bullet, &same), upd("b99", "something else"), upd(&bullet, "   ")]);
+        let r = run(
+            &mut d,
+            vec![
+                upd(&bullet, &same),
+                upd("b99", "something else"),
+                upd(&bullet, "   "),
+            ],
+        );
         assert_eq!(r.dropped[&DropReason::Unchanged], 1);
         assert_eq!(r.dropped[&DropReason::UnknownId], 1);
         assert_eq!(r.dropped[&DropReason::Empty], 1);
@@ -614,10 +808,22 @@ mod tests {
     #[test]
     fn summary_without_parent_can_be_rewritten() {
         let mut d = NoteDoc::new();
-        run(&mut d, vec![add(BlockKind::Summary, "Short overview so far")]);
+        run(
+            &mut d,
+            vec![add(BlockKind::Summary, "Short overview so far")],
+        );
         let id = d.blocks[0].id.clone();
-        run(&mut d, vec![add(BlockKind::Topic, "A topic"), upd(&id, "Longer overview of the whole call now")]);
-        assert_eq!(d.get(&id).unwrap().text, "Longer overview of the whole call now");
+        run(
+            &mut d,
+            vec![
+                add(BlockKind::Topic, "A topic"),
+                upd(&id, "Longer overview of the whole call now"),
+            ],
+        );
+        assert_eq!(
+            d.get(&id).unwrap().text,
+            "Longer overview of the whole call now"
+        );
     }
 
     #[test]
@@ -625,17 +831,33 @@ mod tests {
         // deterministic LCG; random ids (some real, some aliases, some junk), kinds, times
         let mut s: u64 = 0x9E3779B97F4A7C15;
         let mut next = move || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (s >> 33) as u32
         };
-        let words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet", "kilo", "lima", "mike", "november"];
-        let kinds = [BlockKind::Topic, BlockKind::Summary, BlockKind::Bullet, BlockKind::Decision, BlockKind::Task, BlockKind::Question];
+        let words = [
+            "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india",
+            "juliet", "kilo", "lima", "mike", "november",
+        ];
+        let kinds = [
+            BlockKind::Topic,
+            BlockKind::Summary,
+            BlockKind::Bullet,
+            BlockKind::Decision,
+            BlockKind::Task,
+            BlockKind::Question,
+        ];
         let mut doc = NoteDoc::new();
         for round in 0..300 {
             let before = doc.clone();
             if round % 17 == 0 && !doc.blocks.is_empty() {
                 let i = next() as usize % doc.blocks.len();
-                if next() % 2 == 0 { doc.blocks[i].edited = true } else { doc.blocks[i].pinned = true }
+                if next() % 2 == 0 {
+                    doc.blocks[i].edited = true
+                } else {
+                    doc.blocks[i].pinned = true
+                }
             }
             let before_locked = doc.clone();
             let n = 1 + next() % 16;
@@ -646,8 +868,15 @@ mod tests {
                 } else {
                     doc.blocks[next() as usize % doc.blocks.len()].id.clone()
                 };
-                let text: String = (0..(next() % 8)).map(|_| words[next() as usize % words.len()]).collect::<Vec<_>>().join(" ");
-                let t = if next() % 3 == 0 { None } else { Some((next() % 300_000) as u64) };
+                let text: String = (0..(next() % 8))
+                    .map(|_| words[next() as usize % words.len()])
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let t = if next() % 3 == 0 {
+                    None
+                } else {
+                    Some((next() % 300_000) as u64)
+                };
                 let op = match next() % 3 {
                     0 => OpKind::Add,
                     1 => OpKind::Update,
@@ -657,7 +886,13 @@ mod tests {
                     op,
                     id: Some(id_pick),
                     kind: Some(kinds[next() as usize % 6]),
-                    parent: if next() % 2 == 0 { Some(format!("n{}", next() % 4)) } else { doc.blocks.get(next() as usize % (doc.blocks.len() + 1)).map(|b| b.id.clone()) },
+                    parent: if next() % 2 == 0 {
+                        Some(format!("n{}", next() % 4))
+                    } else {
+                        doc.blocks
+                            .get(next() as usize % (doc.blocks.len() + 1))
+                            .map(|b| b.id.clone())
+                    },
                     text: Some(text),
                     t_ms: t,
                 });

@@ -95,7 +95,9 @@ fn store_secrets(store: &dyn SecretStore, secrets: &[SecretValue]) -> Result<(),
                     None => store.delete(id),
                 }
             }
-            return Err(format!("Couldn't save a secret in Windows Credential Manager: {e}"));
+            return Err(format!(
+                "Couldn't save a secret in Windows Credential Manager: {e}"
+            ));
         }
         done.push((&secret.credential_id, previous));
     }
@@ -112,7 +114,11 @@ pub fn secret_ids(server: &McpServer) -> Vec<String> {
         .map(|e| credential_id(&server.key, &e.name))
         .collect();
     if let McpTransport::Http { header_names, .. } = &server.transport {
-        ids.extend(header_names.iter().map(|h| header_credential_id(&server.key, h)));
+        ids.extend(
+            header_names
+                .iter()
+                .map(|h| header_credential_id(&server.key, h)),
+        );
     }
     ids
 }
@@ -120,13 +126,19 @@ pub fn secret_ids(server: &McpServer) -> Vec<String> {
 /// Secrets `old` kept that `new` no longer does.
 fn stale_credential_ids(old: &McpServer, new: &McpServer) -> Vec<String> {
     let kept = secret_ids(new);
-    secret_ids(old).into_iter().filter(|id| !kept.contains(id)).collect()
+    secret_ids(old)
+        .into_iter()
+        .filter(|id| !kept.contains(id))
+        .collect()
 }
 
 /// A server key the generated mcp-config and the credential ids can trust:
 /// lowercase letters, digits and `-` only (so never `__`, `:` or a path).
 pub fn is_valid_key(key: &str) -> bool {
-    !key.is_empty() && key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    !key.is_empty()
+        && key
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// Everything a stored secret is tied to: where the server starts (command
@@ -145,22 +157,41 @@ fn launch_target(transport: &McpTransport, env: &[EnvVar]) -> LaunchTarget {
     let mut headers: Vec<String> = Vec::new();
     let transport = match transport {
         McpTransport::Http { url, header_names } => {
-            headers = header_names.iter().map(|h| h.to_ascii_uppercase()).collect();
-            McpTransport::Http { url: url.clone(), header_names: Vec::new() }
+            headers = header_names
+                .iter()
+                .map(|h| h.to_ascii_uppercase())
+                .collect();
+            McpTransport::Http {
+                url: url.clone(),
+                header_names: Vec::new(),
+            }
         }
         other => other.clone(),
     };
     let mut plain_env: Vec<(String, String)> = env
         .iter()
         .filter(|v| !v.secret)
-        .map(|v| (v.name.to_ascii_uppercase(), v.value.clone().unwrap_or_default()))
+        .map(|v| {
+            (
+                v.name.to_ascii_uppercase(),
+                v.value.clone().unwrap_or_default(),
+            )
+        })
         .collect();
-    let mut secret_names: Vec<String> =
-        env.iter().filter(|v| v.secret).map(|v| v.name.to_ascii_uppercase()).collect();
+    let mut secret_names: Vec<String> = env
+        .iter()
+        .filter(|v| v.secret)
+        .map(|v| v.name.to_ascii_uppercase())
+        .collect();
     plain_env.sort();
     secret_names.sort();
     headers.sort();
-    LaunchTarget { transport, plain_env, secret_names, header_names: headers }
+    LaunchTarget {
+        transport,
+        plain_env,
+        secret_names,
+        header_names: headers,
+    }
 }
 
 /// Does `new` start somewhere other than the saved `old`?
@@ -169,7 +200,8 @@ fn target_changed(old: &McpServer, new_transport: &McpTransport, new_env: &[EnvV
 }
 
 /// Shown when an edit moved a server and its secrets must be typed again.
-const SECRETS_RESET: &str = "Enter the secrets again: the server's command, URL, environment or secret names changed";
+const SECRETS_RESET: &str =
+    "Enter the secrets again: the server's command, URL, environment or secret names changed";
 
 /// Most servers kept in `AppState::pending_servers`.
 const PENDING_SERVERS_MAX: usize = 32;
@@ -179,8 +211,23 @@ const PENDING_KEY_HOLD: std::time::Duration = std::time::Duration::from_secs(60)
 /// The saved server with this id (backend state, never the frontend's copy):
 /// one the webview has saved, else one it was just handed and has not saved yet.
 fn saved_server(state: &AppState, id: &str) -> Option<McpServer> {
-    let saved = state.personal_sources.read().ok()?.mcp_servers.iter().find(|s| s.id == id).cloned();
-    saved.or_else(|| state.pending_servers.lock().ok()?.iter().find(|(s, _)| s.id == id).map(|(s, _)| s.clone()))
+    let saved = state
+        .personal_sources
+        .read()
+        .ok()?
+        .mcp_servers
+        .iter()
+        .find(|s| s.id == id)
+        .cloned();
+    saved.or_else(|| {
+        state
+            .pending_servers
+            .lock()
+            .ok()?
+            .iter()
+            .find(|(s, _)| s.id == id)
+            .map(|(s, _)| s.clone())
+    })
 }
 
 /// Make `server` known to backend state before the webview saves its config,
@@ -204,7 +251,10 @@ fn upsert_saved(state: &AppState, server: &McpServer) {
 /// The webview dropped these servers without saving them: forget them and free
 /// their keys.
 #[command]
-pub fn discard_pending_mcp_servers(ids: Vec<String>, state: State<'_, AppState>) -> Result<(), String> {
+pub fn discard_pending_mcp_servers(
+    ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     if let Ok(mut pending) = state.pending_servers.lock() {
         pending.retain(|(s, _)| !ids.contains(&s.id));
     }
@@ -269,8 +319,8 @@ pub fn is_inside_enabled_folder(path: &Path, cfg: &PersonalSourcesConfig) -> boo
 /// Extensions a note chip may open. Anything that could run (`.exe`, `.bat`,
 /// `.lnk`, scripts) or that renders active content (`.html`) is not here.
 const OPENABLE_EXTENSIONS: [&str; 22] = [
-    "md", "markdown", "txt", "text", "org", "rtf", "pdf", "png", "jpg", "jpeg", "gif", "webp", "csv",
-    "tsv", "json", "yaml", "yml", "docx", "xlsx", "pptx", "odt", "ods",
+    "md", "markdown", "txt", "text", "org", "rtf", "pdf", "png", "jpg", "jpeg", "gif", "webp",
+    "csv", "tsv", "json", "yaml", "yml", "docx", "xlsx", "pptx", "odt", "ods",
 ];
 
 fn is_openable_note(path: &Path) -> bool {
@@ -295,7 +345,9 @@ pub fn open_source_file(path: String, state: State<'_, AppState>) -> Result<(), 
         return Err("That file isn't inside one of your enabled notes folders.".to_string());
     }
     if !is_openable_note(target) {
-        return Err("Lucid only opens notes and documents from here, not other kinds of file.".to_string());
+        return Err(
+            "Lucid only opens notes and documents from here, not other kinds of file.".to_string(),
+        );
     }
     #[cfg(target_os = "windows")]
     let program = "explorer";
@@ -355,7 +407,11 @@ fn add_servers(
 /// Servers a new one is compared with: the saved ones, and those handed to the
 /// webview within the last [`PENDING_KEY_HOLD`] that it has not saved yet.
 fn known_servers(state: &AppState) -> Vec<McpServer> {
-    let mut known: Vec<McpServer> = state.personal_sources.read().map(|c| c.mcp_servers.clone()).unwrap_or_default();
+    let mut known: Vec<McpServer> = state
+        .personal_sources
+        .read()
+        .map(|c| c.mcp_servers.clone())
+        .unwrap_or_default();
     if let Ok(pending) = state.pending_servers.lock() {
         let now = std::time::Instant::now();
         known.extend(
@@ -370,7 +426,10 @@ fn known_servers(state: &AppState) -> Vec<McpServer> {
 
 /// Only servers that are new need to be kept for the webview's save.
 fn stage_new_servers(state: &AppState, servers: &[McpServer], known: &[McpServer]) {
-    servers.iter().filter(|s| !known.iter().any(|k| k.id == s.id)).for_each(|s| upsert_saved(state, s));
+    servers
+        .iter()
+        .filter(|s| !known.iter().any(|k| k.id == s.id))
+        .for_each(|s| upsert_saved(state, s));
 }
 
 fn import_json(
@@ -386,7 +445,10 @@ fn import_json(
 /// Credential Manager and are not in the returned servers. New keys avoid the
 /// keys Lucid has saved (not a list the webview sends).
 #[command]
-pub fn import_mcp_servers_json(json: String, state: State<'_, AppState>) -> Result<Vec<McpServer>, String> {
+pub fn import_mcp_servers_json(
+    json: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<McpServer>, String> {
     let known = known_servers(&state);
     let servers = import_json(&SystemSecrets::new(), &json, &saved_keys(&state), &known)?;
     stage_new_servers(&state, &servers, &known);
@@ -495,7 +557,13 @@ pub fn import_claude_code_mcp_servers(
 ) -> Result<Vec<McpServer>, String> {
     let text = read_claude_json()?.ok_or("Claude Code's config wasn't found on this PC")?;
     let known = known_servers(&state);
-    let servers = import_claude_code(&SystemSecrets::new(), &text, &names, &saved_keys(&state), &known)?;
+    let servers = import_claude_code(
+        &SystemSecrets::new(),
+        &text,
+        &names,
+        &saved_keys(&state),
+        &known,
+    )?;
     stage_new_servers(&state, &servers, &known);
     Ok(servers)
 }
@@ -512,7 +580,10 @@ pub struct FormPair {
 
 impl std::fmt::Debug for FormPair {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FormPair").field("name", &self.name).field("value", &"<redacted>").finish()
+        f.debug_struct("FormPair")
+            .field("name", &self.name)
+            .field("value", &"<redacted>")
+            .finish()
     }
 }
 
@@ -542,7 +613,10 @@ pub fn form_secrets(
     let mut secrets = Vec::new();
     let mut take = |id: String, what: String, value: &str| -> Result<(), String> {
         if !value.is_empty() {
-            secrets.push(SecretValue { credential_id: id, value: value.to_string() });
+            secrets.push(SecretValue {
+                credential_id: id,
+                value: value.to_string(),
+            });
         } else if !has_stored(&id) {
             return Err(format!("{what} needs a value"));
         }
@@ -555,7 +629,11 @@ pub fn form_secrets(
     if matches!(form.transport, McpTransport::Http { .. }) {
         for pair in &form.headers {
             let name = pair.name.trim();
-            take(header_credential_id(key, name), format!("The {name} header"), &pair.value)?;
+            take(
+                header_credential_id(key, name),
+                format!("The {name} header"),
+                &pair.value,
+            )?;
         }
     }
     Ok(secrets)
@@ -604,7 +682,11 @@ fn build_form_server(
             }
             McpTransport::Stdio {
                 command: command.to_string(),
-                args: args.iter().map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect(),
+                args: args
+                    .iter()
+                    .map(|a| a.trim().to_string())
+                    .filter(|a| !a.is_empty())
+                    .collect(),
             }
         }
         McpTransport::Http { url, .. } => {
@@ -623,7 +705,10 @@ fn build_form_server(
                 }
                 names.push(name.to_string());
             }
-            McpTransport::Http { url: url.to_string(), header_names: names }
+            McpTransport::Http {
+                url: url.to_string(),
+                header_names: names,
+            }
         }
     };
 
@@ -635,15 +720,25 @@ fn build_form_server(
                 return Err("An environment variable needs a name".to_string());
             }
             if name.contains('=') || name.contains(char::is_whitespace) {
-                return Err(format!("\"{name}\" isn't a valid environment variable name"));
+                return Err(format!(
+                    "\"{name}\" isn't a valid environment variable name"
+                ));
             }
             if env.iter().any(|e| e.name.eq_ignore_ascii_case(name)) {
                 return Err(format!("{name} is listed twice"));
             }
             env.push(if is_secret_name(name) {
-                EnvVar { name: name.to_string(), value: None, secret: true }
+                EnvVar {
+                    name: name.to_string(),
+                    value: None,
+                    secret: true,
+                }
             } else {
-                EnvVar { name: name.to_string(), value: Some(pair.value.clone()), secret: false }
+                EnvVar {
+                    name: name.to_string(),
+                    value: Some(pair.value.clone()),
+                    secret: false,
+                }
             });
         }
     }
@@ -651,13 +746,21 @@ fn build_form_server(
     // Only what the saved transport kind actually uses is read for secrets.
     let for_secrets = McpServerForm {
         transport: transport.clone(),
-        env: form.env.iter().filter(|_| matches!(transport, McpTransport::Stdio { .. })).cloned().collect(),
+        env: form
+            .env
+            .iter()
+            .filter(|_| matches!(transport, McpTransport::Stdio { .. }))
+            .cloned()
+            .collect(),
         ..form.clone()
     };
     let changed = old.is_some_and(|o| target_changed(o, &transport, &env));
     // Only the server being edited may keep a stored secret: a new server never
     // picks up a leftover one under its key.
-    let secrets = form_secrets(&for_secrets, &key, &|id| old.is_some() && !changed && stored(id)).map_err(|e| {
+    let secrets = form_secrets(&for_secrets, &key, &|id| {
+        old.is_some() && !changed && stored(id)
+    })
+    .map_err(|e| {
         if changed {
             format!("{SECRETS_RESET} ({e})")
         } else {
@@ -666,7 +769,9 @@ fn build_form_server(
     })?;
 
     let server = McpServer {
-        id: old.map(|o| o.id.clone()).unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        id: old
+            .map(|o| o.id.clone())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
         key,
         label: label.to_string(),
         transport,
@@ -687,7 +792,11 @@ fn build_form_server(
         last_check: None,
         needs_sign_in: false,
     };
-    Ok(FormBuild { server, secrets, target_changed: changed })
+    Ok(FormBuild {
+        server,
+        secrets,
+        target_changed: changed,
+    })
 }
 
 /// Save a form against the saved server `old` (backend state): store what was
@@ -741,7 +850,13 @@ pub fn save_mcp_server_form(
         None => None,
     };
     let known = known_servers(&state);
-    let server = save_form(&SystemSecrets::new(), &form, &saved_keys(&state), old.as_ref(), &known)?;
+    let server = save_form(
+        &SystemSecrets::new(),
+        &form,
+        &saved_keys(&state),
+        old.as_ref(),
+        &known,
+    )?;
     if old.is_some() || !known.iter().any(|k| k.id == server.id) {
         upsert_saved(&state, &server);
     }
@@ -757,7 +872,11 @@ pub fn save_mcp_server_form(
 /// `server` after a check: the tool list merged (earlier switches kept, new
 /// tools take the read-only default, vanished ones dropped) and a fresh
 /// status. A failed check keeps the tools and says why.
-fn apply_check(server: &McpServer, found: Result<crate::llm::cli_agent::mcp_handshake::Listed, String>, now_ms: u64) -> McpServer {
+fn apply_check(
+    server: &McpServer,
+    found: Result<crate::llm::cli_agent::mcp_handshake::Listed, String>,
+    now_ms: u64,
+) -> McpServer {
     let mut out = server.clone();
     match found {
         Ok((full_names, hints)) => {
@@ -811,14 +930,23 @@ fn plan_check(
 ) -> Result<CheckPlan, String> {
     match draft {
         None => {
-            let saved = saved.ok_or("Lucid doesn't have this server saved yet. Save your sources first.")?;
-            Ok(CheckPlan { server: saved.clone(), typed: Default::default(), use_stored: true })
+            let saved = saved
+                .ok_or("Lucid doesn't have this server saved yet. Save your sources first.")?;
+            Ok(CheckPlan {
+                server: saved.clone(),
+                typed: Default::default(),
+                use_stored: true,
+            })
         }
         Some(form) => {
             let build = build_form_server(form, taken_keys, saved, stored)?;
             Ok(CheckPlan {
                 use_stored: saved.is_some() && !build.target_changed,
-                typed: build.secrets.into_iter().map(|s| (s.credential_id, s.value)).collect(),
+                typed: build
+                    .secrets
+                    .into_iter()
+                    .map(|s| (s.credential_id, s.value))
+                    .collect(),
                 server: build.server,
             })
         }
@@ -828,7 +956,10 @@ fn plan_check(
 /// Where a check looks a secret up: typed values first, then (only when
 /// allowed) the saved ones.
 fn check_secret(plan: &CheckPlan, store: &dyn SecretStore, id: &str) -> Option<String> {
-    plan.typed.get(id).cloned().or_else(|| plan.use_stored.then(|| store.get(id)).flatten())
+    plan.typed
+        .get(id)
+        .cloned()
+        .or_else(|| plan.use_stored.then(|| store.get(id)).flatten())
 }
 
 /// Start a server the way a session would and list its tools (up to 60 s).
@@ -844,11 +975,16 @@ pub async fn check_mcp_server(
     state: State<'_, AppState>,
 ) -> Result<McpServer, String> {
     let saved = match &server_id {
-        Some(id) => Some(saved_server(&state, id).ok_or("Lucid doesn't have this server saved yet. Save your sources first.")?),
+        Some(id) => Some(
+            saved_server(&state, id)
+                .ok_or("Lucid doesn't have this server saved yet. Save your sources first.")?,
+        ),
         None => None,
     };
     let store = SystemSecrets::new();
-    let plan = plan_check(saved.as_ref(), draft.as_ref(), &saved_keys(&state), &|id| store.get(id).is_some())?;
+    let plan = plan_check(saved.as_ref(), draft.as_ref(), &saved_keys(&state), &|id| {
+        store.get(id).is_some()
+    })?;
     let secret = |id: &str| check_secret(&plan, &store, id);
     let found = list_server_tools_with_hints(&plan.server, &secret).await;
     Ok(apply_check(&plan.server, found, now_ms()))
@@ -891,17 +1027,26 @@ pub struct SourcesRepairResult {
 /// transaction. Nothing is deleted here (the removal of a server's secrets is
 /// the save's own cleanup, after this). On `Err` no link has moved. `plan` must
 /// come from `plan_saved_merges`, never from a webview.
-fn apply_merges(store: &dyn SecretStore, conn: &rusqlite::Connection, plan: &MergePlan) -> Result<usize, String> {
+fn apply_merges(
+    store: &dyn SecretStore,
+    conn: &rusqlite::Connection,
+    plan: &MergePlan,
+) -> Result<usize, String> {
     for m in &plan.secret_moves {
         if store.get(&m.to).is_none() {
             if let Some(value) = store.get(&m.from) {
-                store.set(&m.to, &value).map_err(|e| format!("couldn't carry a saved secret over ({e})"))?;
+                store
+                    .set(&m.to, &value)
+                    .map_err(|e| format!("couldn't carry a saved secret over ({e})"))?;
             }
         }
     }
     sources_seed::repoint_all(
         conn,
-        &[(ItemKind::Server, plan.server_map.as_slice()), (ItemKind::Folder, plan.folder_map.as_slice())],
+        &[
+            (ItemKind::Server, plan.server_map.as_slice()),
+            (ItemKind::Folder, plan.folder_map.as_slice()),
+        ],
     )
 }
 
@@ -940,11 +1085,24 @@ fn merge_for_save(
 /// comes back unchanged. Idempotent. Call it after the first `set_personal_sources`
 /// of the session: before that nothing is held.
 #[command]
-pub fn repair_personal_sources(state: State<'_, AppState>, app: AppHandle) -> Result<SourcesRepairResult, String> {
+pub fn repair_personal_sources(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<SourcesRepairResult, String> {
     use crate::commands::workspace_commands::{change_and_restart, Touch};
-    let _one_at_a_time = REPAIR_LOCK.lock().map_err(|_| "Couldn't look at your sources".to_string())?;
-    let held = state.personal_sources.read().map_err(|_| "Couldn't look at your sources".to_string())?.clone();
-    let unchanged = |config: PersonalSourcesConfig| SourcesRepairResult { config, merged_servers: 0, merged_folders: 0 };
+    let _one_at_a_time = REPAIR_LOCK
+        .lock()
+        .map_err(|_| "Couldn't look at your sources".to_string())?;
+    let held = state
+        .personal_sources
+        .read()
+        .map_err(|_| "Couldn't look at your sources".to_string())?
+        .clone();
+    let unchanged = |config: PersonalSourcesConfig| SourcesRepairResult {
+        config,
+        merged_servers: 0,
+        merged_folders: 0,
+    };
     if !crate::workspace::available() {
         return Ok(unchanged(held));
     }
@@ -954,9 +1112,12 @@ pub fn repair_personal_sources(state: State<'_, AppState>, app: AppHandle) -> Re
     }
     let proposal = plan.config.clone();
     // Strict: if a secret or a link can't move, the proposal is not saved and both stay.
-    let saved = change_and_restart(&state, &app, |_| Touch::none(), || {
-        set_personal_sources_now(proposal, None, true, true, &state, &app)
-    });
+    let saved = change_and_restart(
+        &state,
+        &app,
+        |_| Touch::none(),
+        || set_personal_sources_now(proposal, None, true, true, &state, &app),
+    );
     match saved {
         Ok(()) => Ok(SourcesRepairResult {
             merged_servers: plan.server_map.len(),
@@ -987,7 +1148,11 @@ pub fn needs_sources_restart(applied: &PersonalSourcesConfig, new: &PersonalSour
 /// (just handed to the webview) is never dropped for being missing: an older
 /// config can arrive after it was imported. A change made through
 /// `save_mcp_server_form` is already in `old`, so it does not count here.
-fn secrets_to_drop(old: &PersonalSourcesConfig, new: &PersonalSourcesConfig, pending: &[McpServer]) -> Vec<String> {
+fn secrets_to_drop(
+    old: &PersonalSourcesConfig,
+    new: &PersonalSourcesConfig,
+    pending: &[McpServer],
+) -> Vec<String> {
     let mut ids = Vec::new();
     for old_server in &old.mcp_servers {
         let lost = match new.mcp_servers.iter().find(|s| s.key == old_server.key) {
@@ -1007,13 +1172,20 @@ fn validate_sources(cfg: &PersonalSourcesConfig) -> Result<(), String> {
     let mut seen: Vec<&str> = Vec::new();
     for server in &cfg.mcp_servers {
         if !is_valid_key(&server.key) {
-            return Err(format!("The server \"{}\" has an invalid key", server.label));
+            return Err(format!(
+                "The server \"{}\" has an invalid key",
+                server.label
+            ));
         }
         if seen.contains(&server.key.as_str()) {
             return Err(format!("Two servers share the key \"{}\"", server.key));
         }
         seen.push(&server.key);
-        if let Some(tool) = server.tools.iter().find(|t| !is_valid_tool_full_name(&server.key, &t.full_name)) {
+        if let Some(tool) = server
+            .tools
+            .iter()
+            .find(|t| !is_valid_tool_full_name(&server.key, &t.full_name))
+        {
             return Err(format!(
                 "The server \"{}\" has a tool with an invalid name ({})",
                 server.label, tool.full_name
@@ -1053,8 +1225,16 @@ pub fn set_personal_sources(
     use crate::commands::workspace_commands::{change_and_restart, Touch};
     // What is filed is part of a workspace's material: the sessions that use
     // that workspace start again (the sources' own restart is below).
-    let touched = filing.as_ref().map(|f| Touch::ws(&f.workspace_id)).unwrap_or_default();
-    change_and_restart(&state, &app, |_| touched.clone(), || set_personal_sources_now(config, filing, loaded.unwrap_or(false), false, &state, &app))
+    let touched = filing
+        .as_ref()
+        .map(|f| Touch::ws(&f.workspace_id))
+        .unwrap_or_default();
+    change_and_restart(
+        &state,
+        &app,
+        |_| touched.clone(),
+        || set_personal_sources_now(config, filing, loaded.unwrap_or(false), false, &state, &app),
+    )
 }
 
 /// `strict_merge`: a failure to carry over what a merge needs refuses the save
@@ -1075,8 +1255,13 @@ fn set_personal_sources_now(
     // A filing names the workspace and the ids the user just added. An unknown
     // or archived workspace refuses the push before anything is saved.
     if let (Some(filing), true) = (filing.as_ref(), crate::workspace::available()) {
-        let db = state.database.as_ref().ok_or_else(|| "Database not initialized".to_string())?;
-        let db = db.lock().map_err(|e| format!("Failed to lock database: {e}"))?;
+        let db = state
+            .database
+            .as_ref()
+            .ok_or_else(|| "Database not initialized".to_string())?;
+        let db = db
+            .lock()
+            .map_err(|e| format!("Failed to lock database: {e}"))?;
         crate::workspace::sources_seed::check_filing(db.connection(), filing)?;
     }
     // Folders and servers are seeded into General once (the first push after the
@@ -1084,7 +1269,11 @@ fn set_personal_sources_now(
     if crate::workspace::available() {
         if let Some(db) = state.database.as_ref() {
             if let Ok(db) = db.lock() {
-                if let Err(e) = crate::workspace::sources_seed::sync_with_config(db.connection(), &config, loaded) {
+                if let Err(e) = crate::workspace::sources_seed::sync_with_config(
+                    db.connection(),
+                    &config,
+                    loaded,
+                ) {
                     log::warn!("Couldn't update the workspaces for the new sources: {e}");
                 }
             }
@@ -1094,7 +1283,11 @@ fn set_personal_sources_now(
     // A server or folder the held config had twice and that is gone from the new
     // one: its secrets and links go to the one that stays, before anything is
     // forgotten. Decided from the held copies only, never from what was sent.
-    let held = state.personal_sources.read().map(|c| c.clone()).unwrap_or_default();
+    let held = state
+        .personal_sources
+        .read()
+        .map(|c| c.clone())
+        .unwrap_or_default();
     if !plan_saved_merges(&held, &config).is_empty() {
         let merged = match (crate::workspace::available(), state.database.as_ref()) {
             (true, Some(db)) => db
@@ -1121,7 +1314,9 @@ fn set_personal_sources_now(
     if let (Some(filing), true) = (filing.as_ref(), crate::workspace::available()) {
         if let Some(db) = state.database.as_ref() {
             if let Ok(db) = db.lock() {
-                if let Err(e) = crate::workspace::sources_seed::file_explicit(db.connection(), &config, filing) {
+                if let Err(e) =
+                    crate::workspace::sources_seed::file_explicit(db.connection(), &config, filing)
+                {
                     log::warn!("Couldn't file the new sources in the workspace: {e}");
                 }
             }
@@ -1138,8 +1333,12 @@ fn set_personal_sources_now(
 
     let restart = {
         let rev = state.sources_secrets_rev.load(Ordering::SeqCst);
-        let mut applied = state.sources_applied.lock().map_err(|_| "Couldn't save your sources".to_string())?;
-        let restart = needs_sources_restart(&applied.0, &config) || (applied.1 != rev && config.has_enabled());
+        let mut applied = state
+            .sources_applied
+            .lock()
+            .map_err(|_| "Couldn't save your sources".to_string())?;
+        let restart = needs_sources_restart(&applied.0, &config)
+            || (applied.1 != rev && config.has_enabled());
         *applied = (config, rev);
         restart
     };
@@ -1186,13 +1385,19 @@ mod tests {
     }
 
     fn temp_tree(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("nexq-src-cmd-{name}-{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("nexq-src-cmd-{name}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
 
     fn folder(path: &Path, enabled: bool) -> NotesFolder {
-        NotesFolder { id: "f".into(), label: "Vault".into(), path: path.to_string_lossy().into(), enabled }
+        NotesFolder {
+            id: "f".into(),
+            label: "Vault".into(),
+            path: path.to_string_lossy().into(),
+            enabled,
+        }
     }
 
     #[test]
@@ -1203,24 +1408,47 @@ mod tests {
         std::fs::create_dir_all(vault.join("sub")).unwrap();
         std::fs::write(vault.join("sub").join("a.md"), "x").unwrap();
         std::fs::write(root.join("outside.md"), "x").unwrap();
-        let cfg = |enabled| PersonalSourcesConfig { notes_folders: vec![folder(&vault, enabled)], ..Default::default() };
+        let cfg = |enabled| PersonalSourcesConfig {
+            notes_folders: vec![folder(&vault, enabled)],
+            ..Default::default()
+        };
 
         let inside = vault.join("sub").join("a.md");
         assert!(is_inside_enabled_folder(&inside, &cfg(true)));
         // `..` cannot lead out.
-        assert!(!is_inside_enabled_folder(&vault.join("..").join("outside.md"), &cfg(true)));
-        assert!(!is_inside_enabled_folder(&root.join("outside.md"), &cfg(true)));
+        assert!(!is_inside_enabled_folder(
+            &vault.join("..").join("outside.md"),
+            &cfg(true)
+        ));
+        assert!(!is_inside_enabled_folder(
+            &root.join("outside.md"),
+            &cfg(true)
+        ));
         // Disabled folder, a path that doesn't exist, no folders at all.
         assert!(!is_inside_enabled_folder(&inside, &cfg(false)));
-        assert!(!is_inside_enabled_folder(&vault.join("nope.md"), &cfg(true)));
-        assert!(!is_inside_enabled_folder(&inside, &PersonalSourcesConfig::default()));
+        assert!(!is_inside_enabled_folder(
+            &vault.join("nope.md"),
+            &cfg(true)
+        ));
+        assert!(!is_inside_enabled_folder(
+            &inside,
+            &PersonalSourcesConfig::default()
+        ));
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn only_notes_and_documents_open() {
         let dir = temp_tree("kinds");
-        for (name, ok) in [("a.md", true), ("b.PDF", true), ("c.exe", false), ("d.bat", false), ("e.lnk", false), ("f.html", false), ("g", false)] {
+        for (name, ok) in [
+            ("a.md", true),
+            ("b.PDF", true),
+            ("c.exe", false),
+            ("d.bat", false),
+            ("e.lnk", false),
+            ("f.html", false),
+            ("g", false),
+        ] {
             let p = dir.join(name);
             std::fs::write(&p, "x").unwrap();
             assert_eq!(is_openable_note(&p), ok, "{name}");
@@ -1235,10 +1463,19 @@ mod tests {
             id: Some("i".into()),
             key: Some("mira".into()),
             label: "Mira".into(),
-            transport: McpTransport::Stdio { command: "node".into(), args: vec![] },
+            transport: McpTransport::Stdio {
+                command: "node".into(),
+                args: vec![],
+            },
             env: vec![
-                FormPair { name: "API_KEY".into(), value: "".into() },
-                FormPair { name: "MODE".into(), value: "ro".into() },
+                FormPair {
+                    name: "API_KEY".into(),
+                    value: "".into(),
+                },
+                FormPair {
+                    name: "MODE".into(),
+                    value: "ro".into(),
+                },
             ],
             headers: vec![],
         };
@@ -1251,7 +1488,13 @@ mod tests {
         let mut typed = form.clone();
         typed.env[0].value = "new".into();
         let got = form_secrets(&typed, "mira", &stored).unwrap();
-        assert_eq!(got, vec![SecretValue { credential_id: "mcp:mira:API_KEY".into(), value: "new".into() }]);
+        assert_eq!(
+            got,
+            vec![SecretValue {
+                credential_id: "mcp:mira:API_KEY".into(),
+                value: "new".into()
+            }]
+        );
         // Non-secret values are never secrets.
         assert!(got.iter().all(|s| !s.credential_id.ends_with("MODE")));
     }
@@ -1262,23 +1505,54 @@ mod tests {
             id: None,
             key: None,
             label: " My Mira ".into(),
-            transport: McpTransport::Stdio { command: " node ".into(), args: vec!["s.js".into(), "  ".into()] },
+            transport: McpTransport::Stdio {
+                command: " node ".into(),
+                args: vec!["s.js".into(), "  ".into()],
+            },
             env: vec![
-                FormPair { name: "API_KEY".into(), value: "k".into() },
-                FormPair { name: "MODE".into(), value: "ro".into() },
+                FormPair {
+                    name: "API_KEY".into(),
+                    value: "k".into(),
+                },
+                FormPair {
+                    name: "MODE".into(),
+                    value: "ro".into(),
+                },
             ],
-            headers: vec![FormPair { name: "Ignored".into(), value: "v".into() }],
+            headers: vec![FormPair {
+                name: "Ignored".into(),
+                value: "v".into(),
+            }],
         };
-        let FormBuild { server, secrets, .. } = build_form_server(&form, &["my-mira".into()], None, &|_| false).unwrap();
+        let FormBuild {
+            server, secrets, ..
+        } = build_form_server(&form, &["my-mira".into()], None, &|_| false).unwrap();
         assert_eq!(server.key, "my-mira-2");
         assert_eq!(server.label, "My Mira");
         assert!(!server.enabled && server.tools.is_empty() && server.last_check.is_none());
         // A new server arrives off: it is checked, then switched on.
-        assert_eq!(server.transport, McpTransport::Stdio { command: "node".into(), args: vec!["s.js".into()] });
-        assert_eq!(server.env, vec![
-            EnvVar { name: "API_KEY".into(), value: None, secret: true },
-            EnvVar { name: "MODE".into(), value: Some("ro".into()), secret: false },
-        ]);
+        assert_eq!(
+            server.transport,
+            McpTransport::Stdio {
+                command: "node".into(),
+                args: vec!["s.js".into()]
+            }
+        );
+        assert_eq!(
+            server.env,
+            vec![
+                EnvVar {
+                    name: "API_KEY".into(),
+                    value: None,
+                    secret: true
+                },
+                EnvVar {
+                    name: "MODE".into(),
+                    value: Some("ro".into()),
+                    secret: false
+                },
+            ]
+        );
         assert_eq!(secrets.len(), 1, "stdio ignores header rows: {secrets:?}");
         assert!(!serde_json::to_string(&server).unwrap().contains("\"k\""));
     }
@@ -1289,14 +1563,37 @@ mod tests {
             id: None,
             key: None,
             label: "Wiki".into(),
-            transport: McpTransport::Http { url: "https://h/mcp".into(), header_names: vec!["stale".into()] },
-            env: vec![FormPair { name: "API_KEY".into(), value: "ignored".into() }],
-            headers: vec![FormPair { name: "Authorization".into(), value: "Bearer t".into() }],
+            transport: McpTransport::Http {
+                url: "https://h/mcp".into(),
+                header_names: vec!["stale".into()],
+            },
+            env: vec![FormPair {
+                name: "API_KEY".into(),
+                value: "ignored".into(),
+            }],
+            headers: vec![FormPair {
+                name: "Authorization".into(),
+                value: "Bearer t".into(),
+            }],
         };
-        let FormBuild { server, secrets, .. } = build_form_server(&form, &[], None, &|_| false).unwrap();
-        assert_eq!(server.transport, McpTransport::Http { url: "https://h/mcp".into(), header_names: vec!["Authorization".into()] });
+        let FormBuild {
+            server, secrets, ..
+        } = build_form_server(&form, &[], None, &|_| false).unwrap();
+        assert_eq!(
+            server.transport,
+            McpTransport::Http {
+                url: "https://h/mcp".into(),
+                header_names: vec!["Authorization".into()]
+            }
+        );
         assert!(server.env.is_empty());
-        assert_eq!(secrets, vec![SecretValue { credential_id: "mcp:wiki:header:Authorization".into(), value: "Bearer t".into() }]);
+        assert_eq!(
+            secrets,
+            vec![SecretValue {
+                credential_id: "mcp:wiki:header:Authorization".into(),
+                value: "Bearer t".into()
+            }]
+        );
         assert!(!serde_json::to_string(&server).unwrap().contains("Bearer"));
     }
 
@@ -1306,16 +1603,57 @@ mod tests {
             id: None,
             key: None,
             label: "A".into(),
-            transport: McpTransport::Stdio { command: "node".into(), args: vec![] },
+            transport: McpTransport::Stdio {
+                command: "node".into(),
+                args: vec![],
+            },
             env: vec![],
             headers: vec![],
         };
         let check = |f: McpServerForm| build_form_server(&f, &[], None, &|_| false).unwrap_err();
-        assert!(check(McpServerForm { label: " ".into(), ..base.clone() }).contains("name"));
-        assert!(check(McpServerForm { transport: McpTransport::Stdio { command: " ".into(), args: vec![] }, ..base.clone() }).contains("command"));
-        assert!(check(McpServerForm { transport: McpTransport::Http { url: "ftp://x".into(), header_names: vec![] }, ..base.clone() }).contains("http"));
-        assert!(check(McpServerForm { env: vec![FormPair { name: "A B".into(), value: "".into() }], ..base.clone() }).contains("valid"));
-        assert!(check(McpServerForm { env: vec![FormPair { name: "X".into(), value: "1".into() }, FormPair { name: "x".into(), value: "2".into() }], ..base }).contains("twice"));
+        assert!(check(McpServerForm {
+            label: " ".into(),
+            ..base.clone()
+        })
+        .contains("name"));
+        assert!(check(McpServerForm {
+            transport: McpTransport::Stdio {
+                command: " ".into(),
+                args: vec![]
+            },
+            ..base.clone()
+        })
+        .contains("command"));
+        assert!(check(McpServerForm {
+            transport: McpTransport::Http {
+                url: "ftp://x".into(),
+                header_names: vec![]
+            },
+            ..base.clone()
+        })
+        .contains("http"));
+        assert!(check(McpServerForm {
+            env: vec![FormPair {
+                name: "A B".into(),
+                value: "".into()
+            }],
+            ..base.clone()
+        })
+        .contains("valid"));
+        assert!(check(McpServerForm {
+            env: vec![
+                FormPair {
+                    name: "X".into(),
+                    value: "1".into()
+                },
+                FormPair {
+                    name: "x".into(),
+                    value: "2".into()
+                }
+            ],
+            ..base
+        })
+        .contains("twice"));
     }
 
     #[test]
@@ -1324,14 +1662,35 @@ mod tests {
             id: "id1".into(),
             key: "mira".into(),
             label: "Mira".into(),
-            transport: McpTransport::Stdio { command: "node".into(), args: vec![] },
+            transport: McpTransport::Stdio {
+                command: "node".into(),
+                args: vec![],
+            },
             enabled: false,
             env: vec![
-                EnvVar { name: "API_KEY".into(), value: None, secret: true },
-                EnvVar { name: "OLD_TOKEN".into(), value: None, secret: true },
+                EnvVar {
+                    name: "API_KEY".into(),
+                    value: None,
+                    secret: true,
+                },
+                EnvVar {
+                    name: "OLD_TOKEN".into(),
+                    value: None,
+                    secret: true,
+                },
             ],
-            tools: vec![McpTool { name: "kb".into(), full_name: "mcp__mira__kb".into(), allowed: true, ..Default::default() }],
-            last_check: Some(McpCheckStatus { ok: true, tool_count: 1, error: None, checked_at_ms: 5 }),
+            tools: vec![McpTool {
+                name: "kb".into(),
+                full_name: "mcp__mira__kb".into(),
+                allowed: true,
+                ..Default::default()
+            }],
+            last_check: Some(McpCheckStatus {
+                ok: true,
+                tool_count: 1,
+                error: None,
+                checked_at_ms: 5,
+            }),
             ..Default::default()
         };
         let form = McpServerForm {
@@ -1339,18 +1698,36 @@ mod tests {
             key: Some("mira".into()),
             label: "Mira 2".into(),
             transport: old.transport.clone(),
-            env: vec![FormPair { name: "API_KEY".into(), value: "typed".into() }],
+            env: vec![FormPair {
+                name: "API_KEY".into(),
+                value: "typed".into(),
+            }],
             headers: vec![],
         };
-        let FormBuild { server, secrets, target_changed } =
-            build_form_server(&form, &["other".into()], Some(&old), &|id| id == "mcp:mira:API_KEY").unwrap();
+        let FormBuild {
+            server,
+            secrets,
+            target_changed,
+        } = build_form_server(&form, &["other".into()], Some(&old), &|id| {
+            id == "mcp:mira:API_KEY"
+        })
+        .unwrap();
         // OLD_TOKEN was dropped: the secret names changed, so API_KEY was typed again.
         assert!(target_changed);
         assert_eq!(secrets.len(), 1);
-        assert_eq!((server.key.as_str(), server.id.as_str(), server.enabled), ("mira", "id1", false));
+        assert_eq!(
+            (server.key.as_str(), server.id.as_str(), server.enabled),
+            ("mira", "id1", false)
+        );
         assert_eq!(server.tools, old.tools);
-        assert!(server.last_check.is_none(), "an edited server is unchecked again");
-        assert_eq!(stale_credential_ids(&old, &server), vec!["mcp:mira:OLD_TOKEN".to_string()]);
+        assert!(
+            server.last_check.is_none(),
+            "an edited server is unchecked again"
+        );
+        assert_eq!(
+            stale_credential_ids(&old, &server),
+            vec!["mcp:mira:OLD_TOKEN".to_string()]
+        );
     }
 
     #[test]
@@ -1362,7 +1739,10 @@ mod tests {
         let same = build_form_server(&form, &[], Some(&old), &|_| true).unwrap();
         assert!(same.server.enabled && !same.target_changed);
         let mut moved = form.clone();
-        moved.transport = McpTransport::Stdio { command: "other".into(), args: vec![] };
+        moved.transport = McpTransport::Stdio {
+            command: "other".into(),
+            args: vec![],
+        };
         let moved = build_form_server(&moved, &[], Some(&old), &|_| true).unwrap();
         assert!(moved.target_changed && !moved.server.enabled);
     }
@@ -1377,7 +1757,10 @@ mod tests {
         assert!(keys.iter().all(|k| k != "mira"), "{keys:?}");
         assert_ne!(keys[0], keys[1]);
         // Each server's own secret under its own id.
-        let values: Vec<_> = keys.iter().map(|k| store.get(&format!("mcp:{k}:API_KEY")).unwrap()).collect();
+        let values: Vec<_> = keys
+            .iter()
+            .map(|k| store.get(&format!("mcp:{k}:API_KEY")).unwrap())
+            .collect();
         assert_eq!(values.len(), 2);
         assert!(values.contains(&"k1".to_string()) && values.contains(&"k2".to_string()));
         let text = serde_json::to_string(&servers).unwrap();
@@ -1386,12 +1769,24 @@ mod tests {
 
     #[test]
     fn a_failed_secret_write_undoes_the_ones_before() {
-        let store = MemoryStore { fail_on: Some("mcp:b:API_KEY".into()), ..Default::default() };
+        let store = MemoryStore {
+            fail_on: Some("mcp:b:API_KEY".into()),
+            ..Default::default()
+        };
         store.set("mcp:a:API_KEY", "old").unwrap();
         let secrets = vec![
-            SecretValue { credential_id: "mcp:a:API_KEY".into(), value: "new".into() },
-            SecretValue { credential_id: "mcp:c:API_KEY".into(), value: "c".into() },
-            SecretValue { credential_id: "mcp:b:API_KEY".into(), value: "b".into() },
+            SecretValue {
+                credential_id: "mcp:a:API_KEY".into(),
+                value: "new".into(),
+            },
+            SecretValue {
+                credential_id: "mcp:c:API_KEY".into(),
+                value: "c".into(),
+            },
+            SecretValue {
+                credential_id: "mcp:b:API_KEY".into(),
+                value: "b".into(),
+            },
         ];
         assert!(store_secrets(&store, &secrets).is_err());
         assert_eq!(store.get("mcp:a:API_KEY").as_deref(), Some("old"));
@@ -1408,8 +1803,14 @@ mod tests {
     fn summary_of_claude_code_server() {
         let list = list_claude_code(CLAUDE_JSON).unwrap();
         let by = |n: &str| list.iter().find(|s| s.name == n).unwrap().clone();
-        assert_eq!((by("local").summary.as_str(), by("local").transport.as_str()), ("node s.js --x", "stdio"));
-        assert_eq!((by("hdr").summary.as_str(), by("hdr").transport.as_str()), ("https://a/mcp", "http"));
+        assert_eq!(
+            (by("local").summary.as_str(), by("local").transport.as_str()),
+            ("node s.js --x", "stdio")
+        );
+        assert_eq!(
+            (by("hdr").summary.as_str(), by("hdr").transport.as_str()),
+            ("https://a/mcp", "http")
+        );
         assert!(by("oauth").needs_sign_in && !by("hdr").needs_sign_in);
         // One unsupported entry doesn't hide the rest.
         assert!(by("old").unsupported.as_deref().unwrap().contains("SSE"));
@@ -1420,7 +1821,14 @@ mod tests {
     #[test]
     fn claude_code_import_copies_picked_servers_and_flags_oauth() {
         let store = MemoryStore::default();
-        let got = import_claude_code(&store, CLAUDE_JSON, &["hdr".into(), "oauth".into()], &[], &[]).unwrap();
+        let got = import_claude_code(
+            &store,
+            CLAUDE_JSON,
+            &["hdr".into(), "oauth".into()],
+            &[],
+            &[],
+        )
+        .unwrap();
         assert_eq!(got.len(), 2);
         let hdr = got.iter().find(|s| s.label == "hdr").unwrap();
         assert_eq!(store.get("mcp:hdr:header:X-Api-Key").as_deref(), Some("v"));
@@ -1428,21 +1836,45 @@ mod tests {
         let oauth = got.iter().find(|s| s.label == "oauth").unwrap();
         assert!(oauth.needs_sign_in && !oauth.enabled);
         assert!(import_claude_code(&store, CLAUDE_JSON, &["nope".into()], &[], &[]).is_err());
-        assert!(import_claude_code(&store, CLAUDE_JSON, &["old".into()], &[], &[]).unwrap_err().contains("SSE"));
+        assert!(
+            import_claude_code(&store, CLAUDE_JSON, &["old".into()], &[], &[])
+                .unwrap_err()
+                .contains("SSE")
+        );
     }
 
     #[test]
     fn check_result_merges_tools_and_a_failure_keeps_them() {
         let server = McpServer {
             key: "m".into(),
-            tools: vec![McpTool { name: "kb_search".into(), full_name: "mcp__m__kb_search".into(), allowed: false, ..Default::default() }],
+            tools: vec![McpTool {
+                name: "kb_search".into(),
+                full_name: "mcp__m__kb_search".into(),
+                allowed: false,
+                ..Default::default()
+            }],
             ..Default::default()
         };
-        let ok = apply_check(&server, Ok((vec!["mcp__m__kb_search".into(), "mcp__m__delete_note".into()], Default::default())), 7);
+        let ok = apply_check(
+            &server,
+            Ok((
+                vec!["mcp__m__kb_search".into(), "mcp__m__delete_note".into()],
+                Default::default(),
+            )),
+            7,
+        );
         assert_eq!(ok.tools.len(), 2);
         assert!(!ok.tools[0].allowed, "an earlier switch is kept");
         assert!(!ok.tools[1].allowed, "a write-looking new tool starts off");
-        assert_eq!(ok.last_check, Some(McpCheckStatus { ok: true, tool_count: 2, error: None, checked_at_ms: 7 }));
+        assert_eq!(
+            ok.last_check,
+            Some(McpCheckStatus {
+                ok: true,
+                tool_count: 2,
+                error: None,
+                checked_at_ms: 7
+            })
+        );
 
         let failed = apply_check(&ok, Err("The server failed to start.".into()), 9);
         assert_eq!(failed.tools, ok.tools);
@@ -1454,14 +1886,31 @@ mod tests {
     fn secret_ids_cover_env_secrets_and_headers() {
         let server = McpServer {
             key: "a".into(),
-            transport: McpTransport::Http { url: "https://h".into(), header_names: vec!["Authorization".into()] },
+            transport: McpTransport::Http {
+                url: "https://h".into(),
+                header_names: vec!["Authorization".into()],
+            },
             env: vec![
-                EnvVar { name: "API_KEY".into(), value: None, secret: true },
-                EnvVar { name: "MODE".into(), value: Some("ro".into()), secret: false },
+                EnvVar {
+                    name: "API_KEY".into(),
+                    value: None,
+                    secret: true,
+                },
+                EnvVar {
+                    name: "MODE".into(),
+                    value: Some("ro".into()),
+                    secret: false,
+                },
             ],
             ..Default::default()
         };
-        assert_eq!(secret_ids(&server), vec!["mcp:a:API_KEY".to_string(), "mcp:a:header:Authorization".to_string()]);
+        assert_eq!(
+            secret_ids(&server),
+            vec![
+                "mcp:a:API_KEY".to_string(),
+                "mcp:a:header:Authorization".to_string()
+            ]
+        );
     }
 
     // ── backend state is the source of truth ────────────────────────────────
@@ -1471,11 +1920,22 @@ mod tests {
             id: "id1".into(),
             key: "mira".into(),
             label: "Mira".into(),
-            transport: McpTransport::Stdio { command: "node".into(), args: vec!["s.js".into()] },
+            transport: McpTransport::Stdio {
+                command: "node".into(),
+                args: vec!["s.js".into()],
+            },
             enabled: true,
             env: vec![
-                EnvVar { name: "API_KEY".into(), value: None, secret: true },
-                EnvVar { name: "MODE".into(), value: Some("ro".into()), secret: false },
+                EnvVar {
+                    name: "API_KEY".into(),
+                    value: None,
+                    secret: true,
+                },
+                EnvVar {
+                    name: "MODE".into(),
+                    value: Some("ro".into()),
+                    secret: false,
+                },
             ],
             ..Default::default()
         }
@@ -1486,10 +1946,19 @@ mod tests {
             id: Some("id1".into()),
             key: key_claim.map(str::to_string),
             label: "Mira".into(),
-            transport: McpTransport::Stdio { command: command.into(), args: vec!["s.js".into()] },
+            transport: McpTransport::Stdio {
+                command: command.into(),
+                args: vec!["s.js".into()],
+            },
             env: vec![
-                FormPair { name: "API_KEY".into(), value: api_key.into() },
-                FormPair { name: "MODE".into(), value: "ro".into() },
+                FormPair {
+                    name: "API_KEY".into(),
+                    value: api_key.into(),
+                },
+                FormPair {
+                    name: "MODE".into(),
+                    value: "ro".into(),
+                },
             ],
             headers: vec![],
         }
@@ -1506,7 +1975,13 @@ mod tests {
         let old = saved_mira();
         // The form claims another server's key: ignored, the saved key stays.
         let form = mira_form("node", Some("other-server"), "");
-        let build = build_form_server(&form, &["mira".into(), "other-server".into()], Some(&old), &|_| true).unwrap();
+        let build = build_form_server(
+            &form,
+            &["mira".into(), "other-server".into()],
+            Some(&old),
+            &|_| true,
+        )
+        .unwrap();
         assert_eq!(build.server.key, "mira");
         assert_eq!(build.server.id, "id1");
         // A form's id never gives a new server a chosen id either.
@@ -1536,20 +2011,47 @@ mod tests {
         let store = store_with_mira_secret();
 
         // Blank secret on a moved server: refused with a clear message, nothing changed.
-        let err = save_form(&store, &mira_form("evil.exe", None, ""), &["mira".into()], Some(&old), &[]).unwrap_err();
+        let err = save_form(
+            &store,
+            &mira_form("evil.exe", None, ""),
+            &["mira".into()],
+            Some(&old),
+            &[],
+        )
+        .unwrap_err();
         assert!(err.contains("Enter the secrets again"), "{err}");
         assert!(err.contains("API_KEY"), "{err}");
-        assert_eq!(store.get("mcp:mira:API_KEY").as_deref(), Some("stored-secret"));
+        assert_eq!(
+            store.get("mcp:mira:API_KEY").as_deref(),
+            Some("stored-secret")
+        );
 
         // Typed again: the new value replaces the old one.
-        let saved = save_form(&store, &mira_form("evil.exe", None, "typed"), &["mira".into()], Some(&old), &[]).unwrap();
+        let saved = save_form(
+            &store,
+            &mira_form("evil.exe", None, "typed"),
+            &["mira".into()],
+            Some(&old),
+            &[],
+        )
+        .unwrap();
         assert_eq!(saved.key, "mira");
         assert_eq!(store.get("mcp:mira:API_KEY").as_deref(), Some("typed"));
 
         // Same command: a blank secret keeps the stored one.
         let store = store_with_mira_secret();
-        save_form(&store, &mira_form("node", None, ""), &["mira".into()], Some(&old), &[]).unwrap();
-        assert_eq!(store.get("mcp:mira:API_KEY").as_deref(), Some("stored-secret"));
+        save_form(
+            &store,
+            &mira_form("node", None, ""),
+            &["mira".into()],
+            Some(&old),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            store.get("mcp:mira:API_KEY").as_deref(),
+            Some("stored-secret")
+        );
     }
 
     #[test]
@@ -1558,14 +2060,20 @@ mod tests {
         let stored = |_: &str| true;
         let moved = |f: McpServerForm| build_form_server(&f, &[], Some(&old), &stored).unwrap_err();
         let mut args = mira_form("node", None, "");
-        args.transport = McpTransport::Stdio { command: "node".into(), args: vec!["evil.js".into()] };
+        args.transport = McpTransport::Stdio {
+            command: "node".into(),
+            args: vec!["evil.js".into()],
+        };
         assert!(moved(args).contains("Enter the secrets again"));
         let mut env = mira_form("node", None, "");
         env.env[1].value = "--require evil.js".into();
         assert!(moved(env).contains("Enter the secrets again"));
 
         let http = McpServer {
-            transport: McpTransport::Http { url: "https://a/mcp".into(), header_names: vec!["Authorization".into()] },
+            transport: McpTransport::Http {
+                url: "https://a/mcp".into(),
+                header_names: vec!["Authorization".into()],
+            },
             env: vec![],
             ..saved_mira()
         };
@@ -1573,12 +2081,26 @@ mod tests {
             id: Some("id1".into()),
             key: None,
             label: "Mira".into(),
-            transport: McpTransport::Http { url: url.into(), header_names: vec![] },
+            transport: McpTransport::Http {
+                url: url.into(),
+                header_names: vec![],
+            },
             env: vec![],
-            headers: vec![FormPair { name: "Authorization".into(), value: value.into() }],
+            headers: vec![FormPair {
+                name: "Authorization".into(),
+                value: value.into(),
+            }],
         };
-        assert!(build_form_server(&http_form("https://a/mcp", ""), &[], Some(&http), &stored).is_ok());
-        let err = build_form_server(&http_form("https://evil/mcp", ""), &[], Some(&http), &stored).unwrap_err();
+        assert!(
+            build_form_server(&http_form("https://a/mcp", ""), &[], Some(&http), &stored).is_ok()
+        );
+        let err = build_form_server(
+            &http_form("https://evil/mcp", ""),
+            &[],
+            Some(&http),
+            &stored,
+        )
+        .unwrap_err();
         assert!(err.contains("Enter the secrets again"), "{err}");
     }
 
@@ -1590,30 +2112,70 @@ mod tests {
 
         // No draft: the saved server, with its stored secrets.
         let plan = plan_check(Some(&saved), None, &["mira".into()], &stored).unwrap();
-        assert_eq!(check_secret(&plan, &store, "mcp:mira:API_KEY").as_deref(), Some("stored-secret"));
+        assert_eq!(
+            check_secret(&plan, &store, "mcp:mira:API_KEY").as_deref(),
+            Some("stored-secret")
+        );
 
         // A draft that moved the server and typed nothing: refused before anything starts.
-        assert!(plan_check(Some(&saved), Some(&mira_form("evil.exe", None, "")), &["mira".into()], &stored).is_err());
+        assert!(plan_check(
+            Some(&saved),
+            Some(&mira_form("evil.exe", None, "")),
+            &["mira".into()],
+            &stored
+        )
+        .is_err());
 
         // A moved draft with a typed secret: only the typed value, never the stored one.
-        let plan = plan_check(Some(&saved), Some(&mira_form("evil.exe", None, "typed")), &["mira".into()], &stored).unwrap();
+        let plan = plan_check(
+            Some(&saved),
+            Some(&mira_form("evil.exe", None, "typed")),
+            &["mira".into()],
+            &stored,
+        )
+        .unwrap();
         assert!(!plan.use_stored);
-        assert_eq!(check_secret(&plan, &store, "mcp:mira:API_KEY").as_deref(), Some("typed"));
+        assert_eq!(
+            check_secret(&plan, &store, "mcp:mira:API_KEY").as_deref(),
+            Some("typed")
+        );
         assert_eq!(check_secret(&plan, &store, "mcp:other:API_KEY"), None);
-        assert_eq!(plan.server.transport, McpTransport::Stdio { command: "evil.exe".into(), args: vec!["s.js".into()] });
+        assert_eq!(
+            plan.server.transport,
+            McpTransport::Stdio {
+                command: "evil.exe".into(),
+                args: vec!["s.js".into()]
+            }
+        );
 
         // The same draft with a blank secret and an unchanged command may use the stored one.
-        let plan = plan_check(Some(&saved), Some(&mira_form("node", None, "")), &["mira".into()], &stored).unwrap();
+        let plan = plan_check(
+            Some(&saved),
+            Some(&mira_form("node", None, "")),
+            &["mira".into()],
+            &stored,
+        )
+        .unwrap();
         assert!(plan.use_stored);
-        assert_eq!(check_secret(&plan, &store, "mcp:mira:API_KEY").as_deref(), Some("stored-secret"));
+        assert_eq!(
+            check_secret(&plan, &store, "mcp:mira:API_KEY").as_deref(),
+            Some("stored-secret")
+        );
 
         // A brand-new draft claiming a saved server's key gets a fresh key and no stored secrets.
         let mut fresh = mira_form("node", Some("mira"), "typed");
         fresh.id = None;
         let plan = plan_check(None, Some(&fresh), &["mira".into()], &stored).unwrap();
         assert_eq!(plan.server.key, "mira-2");
-        assert_eq!(check_secret(&plan, &store, "mcp:mira:API_KEY"), None, "nothing stored under another key");
-        assert_eq!(check_secret(&plan, &store, "mcp:mira-2:API_KEY").as_deref(), Some("typed"));
+        assert_eq!(
+            check_secret(&plan, &store, "mcp:mira:API_KEY"),
+            None,
+            "nothing stored under another key"
+        );
+        assert_eq!(
+            check_secret(&plan, &store, "mcp:mira-2:API_KEY").as_deref(),
+            Some("typed")
+        );
 
         // Without a draft the server must be a saved one.
         assert!(plan_check(None, None, &[], &stored).is_err());
@@ -1627,7 +2189,10 @@ mod tests {
 
         // Same command, but a new secret variable (blank, "keep what is stored"): refused.
         let mut added = mira_form("node", None, "");
-        added.env.push(FormPair { name: "EXTRA_TOKEN".into(), value: "".into() });
+        added.env.push(FormPair {
+            name: "EXTRA_TOKEN".into(),
+            value: "".into(),
+        });
         assert!(moved(added).contains("Enter the secrets again"));
 
         // A secret variable renamed.
@@ -1638,16 +2203,30 @@ mod tests {
         // A secret variable dropped: nothing left to type, but it counts as a change.
         let mut dropped = mira_form("node", None, "");
         dropped.env.remove(0);
-        assert!(build_form_server(&dropped, &[], Some(&old), &stored).unwrap().target_changed);
+        assert!(
+            build_form_server(&dropped, &[], Some(&old), &stored)
+                .unwrap()
+                .target_changed
+        );
 
         // Typing the values again is how it goes through.
         let mut typed = mira_form("node", None, "typed");
-        typed.env.push(FormPair { name: "EXTRA_TOKEN".into(), value: "x".into() });
-        assert!(build_form_server(&typed, &[], Some(&old), &stored).unwrap().target_changed);
+        typed.env.push(FormPair {
+            name: "EXTRA_TOKEN".into(),
+            value: "x".into(),
+        });
+        assert!(
+            build_form_server(&typed, &[], Some(&old), &stored)
+                .unwrap()
+                .target_changed
+        );
 
         // A secret moved to a different header, same URL.
         let http = McpServer {
-            transport: McpTransport::Http { url: "https://a/mcp".into(), header_names: vec!["Authorization".into()] },
+            transport: McpTransport::Http {
+                url: "https://a/mcp".into(),
+                header_names: vec!["Authorization".into()],
+            },
             env: vec![],
             ..saved_mira()
         };
@@ -1655,11 +2234,21 @@ mod tests {
             id: Some("id1".into()),
             key: None,
             label: "Mira".into(),
-            transport: McpTransport::Http { url: "https://a/mcp".into(), header_names: vec![] },
+            transport: McpTransport::Http {
+                url: "https://a/mcp".into(),
+                header_names: vec![],
+            },
             env: vec![],
-            headers: vec![FormPair { name: header.into(), value: value.into() }],
+            headers: vec![FormPair {
+                name: header.into(),
+                value: value.into(),
+            }],
         };
-        assert!(!build_form_server(&form("authorization", ""), &[], Some(&http), &stored).unwrap().target_changed);
+        assert!(
+            !build_form_server(&form("authorization", ""), &[], Some(&http), &stored)
+                .unwrap()
+                .target_changed
+        );
         let err = build_form_server(&form("X-Api-Key", ""), &[], Some(&http), &stored).unwrap_err();
         assert!(err.contains("Enter the secrets again"), "{err}");
 
@@ -1667,12 +2256,21 @@ mod tests {
         let store = store_with_mira_secret();
         let has = |id: &str| store.get(id).is_some();
         let mut draft = mira_form("node", None, "typed");
-        draft.env.push(FormPair { name: "EXTRA_TOKEN".into(), value: "x".into() });
+        draft.env.push(FormPair {
+            name: "EXTRA_TOKEN".into(),
+            value: "x".into(),
+        });
         let plan = plan_check(Some(&old), Some(&draft), &["mira".into()], &has).unwrap();
         assert!(!plan.use_stored);
-        assert_eq!(check_secret(&plan, &store, "mcp:mira:API_KEY").as_deref(), Some("typed"));
+        assert_eq!(
+            check_secret(&plan, &store, "mcp:mira:API_KEY").as_deref(),
+            Some("typed")
+        );
         let mut blank = mira_form("node", None, "");
-        blank.env.push(FormPair { name: "EXTRA_TOKEN".into(), value: "".into() });
+        blank.env.push(FormPair {
+            name: "EXTRA_TOKEN".into(),
+            value: "".into(),
+        });
         assert!(plan_check(Some(&old), Some(&blank), &["mira".into()], &has).is_err());
     }
 
@@ -1681,9 +2279,19 @@ mod tests {
     #[test]
     fn sources_restart_needed_only_when_fingerprint_changes() {
         let folder_cfg = PersonalSourcesConfig {
-            notes_folders: vec![NotesFolder { id: "f".into(), label: "Vault".into(), path: "D:/v".into(), enabled: true }],
+            notes_folders: vec![NotesFolder {
+                id: "f".into(),
+                label: "Vault".into(),
+                path: "D:/v".into(),
+                enabled: true,
+            }],
             mcp_servers: vec![McpServer {
-                tools: vec![McpTool { name: "kb".into(), full_name: "mcp__m__kb".into(), allowed: true, ..Default::default() }],
+                tools: vec![McpTool {
+                    name: "kb".into(),
+                    full_name: "mcp__m__kb".into(),
+                    allowed: true,
+                    ..Default::default()
+                }],
                 ..saved_mira()
             }],
             ..Default::default()
@@ -1692,8 +2300,12 @@ mod tests {
         renamed.notes_folders[0].label = "Renamed".into(); // it is in the system prompt
         assert!(needs_sources_restart(&folder_cfg, &renamed));
         let mut checked = folder_cfg.clone();
-        checked.mcp_servers[0].last_check =
-            Some(McpCheckStatus { ok: true, tool_count: 1, error: None, checked_at_ms: 3 });
+        checked.mcp_servers[0].last_check = Some(McpCheckStatus {
+            ok: true,
+            tool_count: 1,
+            error: None,
+            checked_at_ms: 3,
+        });
         checked.mcp_notice_seen = true;
         assert!(!needs_sources_restart(&folder_cfg, &checked));
         let mut switched = folder_cfg.clone();
@@ -1704,7 +2316,10 @@ mod tests {
 
     #[test]
     fn secrets_follow_the_saved_server_they_were_saved_for() {
-        let old = PersonalSourcesConfig { mcp_servers: vec![saved_mira()], ..Default::default() };
+        let old = PersonalSourcesConfig {
+            mcp_servers: vec![saved_mira()],
+            ..Default::default()
+        };
         // Same server (label and tools may change): nothing dropped.
         let mut same = old.clone();
         same.mcp_servers[0].label = "Mira 2".into();
@@ -1715,21 +2330,42 @@ mod tests {
             vec!["mcp:mira:API_KEY".to_string()]
         );
         // Missing from an older push while it is a just-imported (pending) server: they stay.
-        assert!(secrets_to_drop(&old, &PersonalSourcesConfig::default(), &[saved_mira()]).is_empty());
+        assert!(
+            secrets_to_drop(&old, &PersonalSourcesConfig::default(), &[saved_mira()]).is_empty()
+        );
         // Pointed somewhere else behind the form's back: its secrets go.
         let mut moved = old.clone();
-        moved.mcp_servers[0].transport = McpTransport::Stdio { command: "evil.exe".into(), args: vec![] };
-        assert_eq!(secrets_to_drop(&old, &moved, &[]), vec!["mcp:mira:API_KEY".to_string()]);
+        moved.mcp_servers[0].transport = McpTransport::Stdio {
+            command: "evil.exe".into(),
+            args: vec![],
+        };
+        assert_eq!(
+            secrets_to_drop(&old, &moved, &[]),
+            vec!["mcp:mira:API_KEY".to_string()]
+        );
     }
 
     #[test]
     fn saved_tools_must_be_this_servers_mcp_names() {
         use crate::sources::config::McpTool;
-        let mut cfg = PersonalSourcesConfig { mcp_servers: vec![saved_mira()], ..Default::default() };
-        cfg.mcp_servers[0].tools =
-            vec![McpTool { name: "kb".into(), full_name: "mcp__mira__kb".into(), allowed: true, ..Default::default() }];
+        let mut cfg = PersonalSourcesConfig {
+            mcp_servers: vec![saved_mira()],
+            ..Default::default()
+        };
+        cfg.mcp_servers[0].tools = vec![McpTool {
+            name: "kb".into(),
+            full_name: "mcp__mira__kb".into(),
+            allowed: true,
+            ..Default::default()
+        }];
         assert!(validate_sources(&cfg).is_ok());
-        for bad in ["--add-dir", "--add-dir=C:\\Users", "Bash", "mcp__other__kb", "mcp__mira__a b"] {
+        for bad in [
+            "--add-dir",
+            "--add-dir=C:\\Users",
+            "Bash",
+            "mcp__other__kb",
+            "mcp__mira__a b",
+        ] {
             cfg.mcp_servers[0].tools[0].full_name = bad.into();
             assert!(validate_sources(&cfg).is_err(), "{bad}");
         }
@@ -1738,7 +2374,12 @@ mod tests {
     #[test]
     fn secret_names_are_classified_here() {
         assert_eq!(
-            classify_secret_names(vec!["API_KEY".into(), " token ".into(), "MODE".into(), "".into()]),
+            classify_secret_names(vec![
+                "API_KEY".into(),
+                " token ".into(),
+                "MODE".into(),
+                "".into()
+            ]),
             vec![true, true, false, false]
         );
     }
@@ -1746,7 +2387,14 @@ mod tests {
     #[test]
     fn saved_config_keys_must_be_safe_and_unique() {
         let with = |keys: &[&str]| PersonalSourcesConfig {
-            mcp_servers: keys.iter().map(|k| McpServer { key: (*k).into(), label: (*k).into(), ..Default::default() }).collect(),
+            mcp_servers: keys
+                .iter()
+                .map(|k| McpServer {
+                    key: (*k).into(),
+                    label: (*k).into(),
+                    ..Default::default()
+                })
+                .collect(),
             ..Default::default()
         };
         assert!(validate_sources(&with(&["mira", "wiki-2"])).is_ok());
@@ -1766,10 +2414,16 @@ mod tests {
         assert_eq!(saved_keys(&state), vec!["mira".to_string()]);
         assert_eq!(unique_key("Mira", &saved_keys(&state)), "mira-2");
         // One the webview never saved stops reserving its key after a while.
-        let later = std::time::Instant::now() + PENDING_KEY_HOLD + std::time::Duration::from_secs(1);
+        let later =
+            std::time::Instant::now() + PENDING_KEY_HOLD + std::time::Duration::from_secs(1);
         assert!(taken_keys_at(&state, later).is_empty());
         // The webview saves it: now its key is taken for good, and the saved copy is the one used.
-        state.personal_sources.write().unwrap().mcp_servers.push(server.clone());
+        state
+            .personal_sources
+            .write()
+            .unwrap()
+            .mcp_servers
+            .push(server.clone());
         assert_eq!(taken_keys_at(&state, later), vec!["mira".to_string()]);
         let mut renamed = server.clone();
         renamed.label = "Mira 2".into();
@@ -1782,20 +2436,31 @@ mod tests {
     #[test]
     fn a_new_server_never_picks_up_a_leftover_secret_under_its_key() {
         let store = MemoryStore::default();
-        store.set("mcp:mira:API_KEY", "left-by-an-old-server").unwrap();
+        store
+            .set("mcp:mira:API_KEY", "left-by-an-old-server")
+            .unwrap();
         let mut form = mira_form("node", None, "");
         form.id = None;
         // Nothing typed: the leftover is not accepted in its place.
         let err = save_form(&store, &form, &[], None, &[]).unwrap_err();
         assert!(err.contains("needs a value"), "{err}");
-        assert_eq!(store.get("mcp:mira:API_KEY").as_deref(), Some("left-by-an-old-server"));
+        assert_eq!(
+            store.get("mcp:mira:API_KEY").as_deref(),
+            Some("left-by-an-old-server")
+        );
         // Typed: it replaces the leftover.
         form.env[0].value = "fresh".into();
         save_form(&store, &form, &[], None, &[]).unwrap();
         assert_eq!(store.get("mcp:mira:API_KEY").as_deref(), Some("fresh"));
         // An import clears what an earlier server of that key left, too.
         store.set("mcp:imp:API_KEY", "left").unwrap();
-        let servers = import_json(&store, r#"{"imp":{"command":"x","env":{"API_KEY":"new"}}}"#, &[], &[]).unwrap();
+        let servers = import_json(
+            &store,
+            r#"{"imp":{"command":"x","env":{"API_KEY":"new"}}}"#,
+            &[],
+            &[],
+        )
+        .unwrap();
         assert_eq!(servers[0].key, "imp");
         assert_eq!(store.get("mcp:imp:API_KEY").as_deref(), Some("new"));
     }
@@ -1804,7 +2469,14 @@ mod tests {
     fn pending_servers_are_capped() {
         let state = AppState::new();
         for i in 0..(PENDING_SERVERS_MAX + 5) {
-            upsert_saved(&state, &McpServer { id: format!("p{i}"), key: format!("k{i}"), ..Default::default() });
+            upsert_saved(
+                &state,
+                &McpServer {
+                    id: format!("p{i}"),
+                    key: format!("k{i}"),
+                    ..Default::default()
+                },
+            );
         }
         assert!(saved_server(&state, "p0").is_none());
         assert!(saved_server(&state, &format!("p{}", PENDING_SERVERS_MAX + 4)).is_some());
@@ -1815,7 +2487,10 @@ mod tests {
         let hinted = |args: &[&str]| McpServer {
             id: "s".into(),
             key: "m".into(),
-            transport: McpTransport::Stdio { command: "node".into(), args: args.iter().map(|a| a.to_string()).collect() },
+            transport: McpTransport::Stdio {
+                command: "node".into(),
+                args: args.iter().map(|a| a.to_string()).collect(),
+            },
             tools: vec![McpTool {
                 name: "kb".into(),
                 full_name: "mcp__m__kb".into(),
@@ -1825,20 +2500,40 @@ mod tests {
             }],
             ..Default::default()
         };
-        let saved = PersonalSourcesConfig { mcp_servers: vec![hinted(&["a.js"])], ..Default::default() };
-        let mut same = PersonalSourcesConfig { mcp_servers: vec![hinted(&["a.js"])], ..Default::default() };
+        let saved = PersonalSourcesConfig {
+            mcp_servers: vec![hinted(&["a.js"])],
+            ..Default::default()
+        };
+        let mut same = PersonalSourcesConfig {
+            mcp_servers: vec![hinted(&["a.js"])],
+            ..Default::default()
+        };
         forget_stale_hints(&saved, &mut same);
         assert_eq!(same.mcp_servers[0].tools[0].read_only_hint, Some(true));
-        let mut moved = PersonalSourcesConfig { mcp_servers: vec![hinted(&["evil.js"])], ..Default::default() };
+        let mut moved = PersonalSourcesConfig {
+            mcp_servers: vec![hinted(&["evil.js"])],
+            ..Default::default()
+        };
         forget_stale_hints(&saved, &mut moved);
-        assert_eq!((moved.mcp_servers[0].tools[0].read_only_hint, moved.mcp_servers[0].tools[0].destructive_hint), (None, None));
-        assert!(moved.mcp_servers[0].tools[0].allowed, "the user's switch stays");
+        assert_eq!(
+            (
+                moved.mcp_servers[0].tools[0].read_only_hint,
+                moved.mcp_servers[0].tools[0].destructive_hint
+            ),
+            (None, None)
+        );
+        assert!(
+            moved.mcp_servers[0].tools[0].allowed,
+            "the user's switch stays"
+        );
     }
 
     // ── One server exists once ──
 
     fn mira_json(command: &str) -> String {
-        format!(r#"{{"mira":{{"command":"{command}","args":["D:\\x\\mira.js"],"env":{{"API_KEY":"k1","MODE":"ro"}}}}}}"#)
+        format!(
+            r#"{{"mira":{{"command":"{command}","args":["D:\\x\\mira.js"],"env":{{"API_KEY":"k1","MODE":"ro"}}}}}}"#
+        )
     }
 
     #[test]
@@ -1851,9 +2546,23 @@ mod tests {
         saved.enabled = true;
         // The same thing again, written another way (case, slashes), with another secret.
         let again = r#"{"Mira":{"command":"node","args":["d:/x/Mira.js"],"env":{"API_KEY":"other","MODE":"ro"}}}"#;
-        let got = import_json(&store, again, &["mira".into()], std::slice::from_ref(&saved)).unwrap();
-        assert_eq!(got, vec![saved.clone()], "the saved server itself, not a new one");
-        assert_eq!(store.get("mcp:mira:API_KEY").as_deref(), Some("k1"), "its secret was not replaced");
+        let got = import_json(
+            &store,
+            again,
+            &["mira".into()],
+            std::slice::from_ref(&saved),
+        )
+        .unwrap();
+        assert_eq!(
+            got,
+            vec![saved.clone()],
+            "the saved server itself, not a new one"
+        );
+        assert_eq!(
+            store.get("mcp:mira:API_KEY").as_deref(),
+            Some("k1"),
+            "its secret was not replaced"
+        );
         assert!(store.get("mcp:mira-2:API_KEY").is_none());
     }
 
@@ -1871,7 +2580,8 @@ mod tests {
     #[test]
     fn two_equal_entries_of_one_import_make_one_server() {
         let store = MemoryStore::default();
-        let json = r#"{"a":{"command":"node","args":["s.js"]},"b":{"command":"node","args":["s.js"]}}"#;
+        let json =
+            r#"{"a":{"command":"node","args":["s.js"]},"b":{"command":"node","args":["s.js"]}}"#;
         let got = import_json(&store, json, &[], &[]).unwrap();
         assert_eq!(got.len(), 1);
     }
@@ -1884,28 +2594,53 @@ mod tests {
         let mut form = mira_form("node", None, "typed");
         form.id = None;
         form.label = "Mira again".into();
-        let got = save_form(&store, &form, &["mira".into()], None, std::slice::from_ref(&saved)).unwrap();
+        let got = save_form(
+            &store,
+            &form,
+            &["mira".into()],
+            None,
+            std::slice::from_ref(&saved),
+        )
+        .unwrap();
         assert_eq!(got, saved);
         assert_eq!(store.get("mcp:mira:API_KEY").as_deref(), Some("kept"));
         assert!(store.get("mcp:mira-again:API_KEY").is_none());
         // An edit of the saved server itself is not a duplicate of itself.
-        let edited = save_form(&store, &mira_form("node", None, ""), &["mira".into()], Some(&saved), std::slice::from_ref(&saved)).unwrap();
+        let edited = save_form(
+            &store,
+            &mira_form("node", None, ""),
+            &["mira".into()],
+            Some(&saved),
+            std::slice::from_ref(&saved),
+        )
+        .unwrap();
         assert_eq!(edited.id, saved.id);
     }
 
     // ── Merging what was saved twice: only what the backend held counts ──
 
     fn dup(id: &str, key: &str) -> McpServer {
-        McpServer { id: id.into(), key: key.into(), label: key.into(), ..saved_mira() }
+        McpServer {
+            id: id.into(),
+            key: key.into(),
+            label: key.into(),
+            ..saved_mira()
+        }
     }
 
     fn rows(conn: &rusqlite::Connection) -> Vec<(String, String, String)> {
         let mut stmt = conn.prepare("SELECT workspace_id, kind, ref_id FROM workspace_items ORDER BY workspace_id, kind, ref_id").unwrap();
-        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap().map(Result::unwrap).collect()
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
     }
 
     fn servers(list: Vec<McpServer>) -> PersonalSourcesConfig {
-        PersonalSourcesConfig { mcp_servers: list, ..Default::default() }
+        PersonalSourcesConfig {
+            mcp_servers: list,
+            ..Default::default()
+        }
     }
 
     /// A store that remembers every write and delete it was asked for.
@@ -1917,10 +2652,23 @@ mod tests {
     fn a_saved_duplicate_merges_moves_secrets_and_repoints_every_workspace() {
         use crate::workspace::test_support::*;
         let conn = memory_db();
-        let (a, b) = (new_ws(&conn, "A", false, false), new_ws(&conn, "B", false, false));
+        let (a, b) = (
+            new_ws(&conn, "A", false, false),
+            new_ws(&conn, "B", false, false),
+        );
         let mut kept = dup("kept", "mira");
-        kept.last_check = Some(McpCheckStatus { ok: true, tool_count: 1, error: None, checked_at_ms: 1 });
-        kept.tools = vec![McpTool { name: "kb".into(), full_name: "mcp__mira__kb".into(), allowed: true, ..Default::default() }];
+        kept.last_check = Some(McpCheckStatus {
+            ok: true,
+            tool_count: 1,
+            error: None,
+            checked_at_ms: 1,
+        });
+        kept.tools = vec![McpTool {
+            name: "kb".into(),
+            full_name: "mcp__mira__kb".into(),
+            allowed: true,
+            ..Default::default()
+        }];
         let mut dropped = dup("dropped", "mira-2");
         dropped.enabled = false;
         // Workspace A lists both, B lists only the duplicate, General only the kept one.
@@ -1928,7 +2676,11 @@ mod tests {
         file(&conn, &a, "server", "dropped");
         file(&conn, &b, "server", "dropped");
         file(&conn, "general", "server", "kept");
-        conn.execute("UPDATE workspace_items SET pinned = 1 WHERE workspace_id = ?1 AND ref_id = 'dropped'", [&a]).unwrap();
+        conn.execute(
+            "UPDATE workspace_items SET pinned = 1 WHERE workspace_id = ?1 AND ref_id = 'dropped'",
+            [&a],
+        )
+        .unwrap();
         // Only the duplicate has a secret value.
         let store = MemoryStore::default();
         store.set("mcp:mira-2:API_KEY", "only-here").unwrap();
@@ -1939,21 +2691,36 @@ mod tests {
         assert_eq!(plan.config.mcp_servers, vec![kept.clone()]);
         // ... and the save of the proposal acts, from the held copies.
         merge_for_save(&store, Some(&conn), &held, &plan.config).unwrap();
-        assert_eq!(store.get("mcp:mira:API_KEY").as_deref(), Some("only-here"), "the value moved to the kept server");
+        assert_eq!(
+            store.get("mcp:mira:API_KEY").as_deref(),
+            Some("only-here"),
+            "the value moved to the kept server"
+        );
         // The old copy goes with the save's own cleanup of removed servers.
         for id in secrets_to_drop(&held, &plan.config, &[]) {
             store.delete(&id);
         }
-        assert!(store.get("mcp:mira-2:API_KEY").is_none(), "the dropped server's secret is gone");
+        assert!(
+            store.get("mcp:mira-2:API_KEY").is_none(),
+            "the dropped server's secret is gone"
+        );
         let mut expected = vec![
-            ("general".to_string(), "server".to_string(), "kept".to_string()),
+            (
+                "general".to_string(),
+                "server".to_string(),
+                "kept".to_string(),
+            ),
             (a.clone(), "server".to_string(), "kept".to_string()),
             (b.clone(), "server".to_string(), "kept".to_string()),
         ];
         expected.sort();
         assert_eq!(rows(&conn), expected);
         let pinned: i64 = conn
-            .query_row("SELECT pinned FROM workspace_items WHERE workspace_id = ?1 AND ref_id = 'kept'", [&a], |r| r.get(0))
+            .query_row(
+                "SELECT pinned FROM workspace_items WHERE workspace_id = ?1 AND ref_id = 'kept'",
+                [&a],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(pinned, 1, "a pin on the merged row is kept");
 
@@ -1991,8 +2758,15 @@ mod tests {
         let before = rows(&conn);
         let real = dup("real", "mira");
         let mut other = dup("other", "other");
-        other.transport = McpTransport::Stdio { command: "python".into(), args: vec!["o.py".into()] };
-        other.env = vec![EnvVar { name: "TOKEN".into(), value: None, secret: true }];
+        other.transport = McpTransport::Stdio {
+            command: "python".into(),
+            args: vec!["o.py".into()],
+        };
+        other.env = vec![EnvVar {
+            name: "TOKEN".into(),
+            value: None,
+            secret: true,
+        }];
         let held = servers(vec![real.clone(), other.clone()]);
 
         let cases = [
@@ -2003,7 +2777,11 @@ mod tests {
             // Same command in the incoming config, but the held copies are different servers.
             servers(vec![dup("other", "other"), real.clone()]),
             // The kept one is changed to look like the dropped one, and the dropped one leaves.
-            servers(vec![McpServer { transport: other.transport.clone(), env: other.env.clone(), ..real.clone() }]),
+            servers(vec![McpServer {
+                transport: other.transport.clone(),
+                env: other.env.clone(),
+                ..real.clone()
+            }]),
             // One server leaves that is no duplicate of any held server.
             servers(vec![real.clone()]),
             // Everything removed.
@@ -2012,7 +2790,11 @@ mod tests {
         for incoming in cases {
             merge_for_save(&store, Some(&conn), &held, &incoming).unwrap();
         }
-        assert!(writes(&store).is_empty(), "no secret was written or deleted: {:?}", writes(&store));
+        assert!(
+            writes(&store).is_empty(),
+            "no secret was written or deleted: {:?}",
+            writes(&store)
+        );
         assert_eq!(rows(&conn), before, "no link moved");
         assert_eq!(store.get("mcp:mira:API_KEY").as_deref(), Some("real-key"));
         assert_eq!(store.get("mcp:other:TOKEN").as_deref(), Some("other-key"));
@@ -2027,10 +2809,22 @@ mod tests {
         store.set("mcp:mira-2:API_KEY", "x").unwrap();
         let before = rows(&conn);
         // An empty held config (first push of a session) can't prove any duplicate.
-        merge_for_save(&store, Some(&conn), &PersonalSourcesConfig::default(), &servers(vec![dup("a", "mira")])).unwrap();
+        merge_for_save(
+            &store,
+            Some(&conn),
+            &PersonalSourcesConfig::default(),
+            &servers(vec![dup("a", "mira")]),
+        )
+        .unwrap();
         assert!(writes(&store).len() == 1 && rows(&conn) == before);
         // Not even with no database at all: nothing to do is not an error.
-        merge_for_save(&store, None, &PersonalSourcesConfig::default(), &servers(vec![dup("a", "mira")])).unwrap();
+        merge_for_save(
+            &store,
+            None,
+            &PersonalSourcesConfig::default(),
+            &servers(vec![dup("a", "mira")]),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -2044,11 +2838,22 @@ mod tests {
         // No workspace database.
         assert!(merge_for_save(&MemoryStore::default(), None, &held, &kept_only).is_err());
         // The secret store refuses the write.
-        let failing = MemoryStore { fail_on: Some("mcp:mira:API_KEY".into()), ..Default::default() };
-        failing.values.lock().unwrap().insert("mcp:mira-2:API_KEY".into(), "x".into());
+        let failing = MemoryStore {
+            fail_on: Some("mcp:mira:API_KEY".into()),
+            ..Default::default()
+        };
+        failing
+            .values
+            .lock()
+            .unwrap()
+            .insert("mcp:mira-2:API_KEY".into(), "x".into());
         assert!(merge_for_save(&failing, Some(&conn), &held, &kept_only).is_err());
         assert!(failing.get("mcp:mira-2:API_KEY").is_some());
-        assert_eq!(rows(&conn), before, "the link stayed on the server that was kept in the saved config");
+        assert_eq!(
+            rows(&conn),
+            before,
+            "the link stayed on the server that was kept in the saved config"
+        );
     }
 
     #[test]
@@ -2061,7 +2866,11 @@ mod tests {
         store.set("mcp:mira-2:API_KEY", "x").unwrap();
         let a = dup("a", "mira");
         let mut b = dup("b", "mira-2");
-        b.env[1] = EnvVar { name: "MODE".into(), value: Some("rw".into()), secret: false };
+        b.env[1] = EnvVar {
+            name: "MODE".into(),
+            value: Some("rw".into()),
+            secret: false,
+        };
         let held = servers(vec![a, b]);
         assert!(plan_repair(&held).is_empty(), "the proposal keeps both");
         merge_for_save(&store, Some(&conn), &held, &servers(vec![dup("a", "mira")])).unwrap();
@@ -2080,16 +2889,33 @@ mod tests {
         conn.execute("UPDATE workspace_items SET index_opt_in = 1 WHERE ref_id = 'f1' AND workspace_id = 'general'", []).unwrap();
         conn.execute("INSERT INTO workspace_chat_item_prefs (chat_id, kind, ref_id, pref) VALUES ('c', 'folder', 'f1', 'pin')", []).unwrap();
         let folders = vec![
-            NotesFolder { id: "f1".into(), label: "A".into(), path: r"D:\Notes".into(), enabled: false },
-            NotesFolder { id: "f2".into(), label: "B".into(), path: "d:/notes/".into(), enabled: true },
+            NotesFolder {
+                id: "f1".into(),
+                label: "A".into(),
+                path: r"D:\Notes".into(),
+                enabled: false,
+            },
+            NotesFolder {
+                id: "f2".into(),
+                label: "B".into(),
+                path: "d:/notes/".into(),
+                enabled: true,
+            },
         ];
-        let held = PersonalSourcesConfig { notes_folders: folders, ..Default::default() };
+        let held = PersonalSourcesConfig {
+            notes_folders: folders,
+            ..Default::default()
+        };
         let plan = plan_repair(&held);
         assert_eq!(plan.config.notes_folders.len(), 1);
         assert_eq!(plan.config.notes_folders[0].id, "f2");
         merge_for_save(&MemoryStore::default(), Some(&conn), &held, &plan.config).unwrap();
         let mut expected = vec![
-            ("general".to_string(), "folder".to_string(), "f2".to_string()),
+            (
+                "general".to_string(),
+                "folder".to_string(),
+                "f2".to_string(),
+            ),
             (a, "folder".to_string(), "f2".to_string()),
         ];
         expected.sort();
@@ -2098,7 +2924,13 @@ mod tests {
             .query_row("SELECT index_opt_in FROM workspace_items WHERE workspace_id = 'general' AND ref_id = 'f2'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(opt_in, 1, "search-its-text opt-in survives the merge");
-        let pref_ref: String = conn.query_row("SELECT ref_id FROM workspace_chat_item_prefs WHERE chat_id = 'c'", [], |r| r.get(0)).unwrap();
+        let pref_ref: String = conn
+            .query_row(
+                "SELECT ref_id FROM workspace_chat_item_prefs WHERE chat_id = 'c'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(pref_ref, "f2");
     }
 
@@ -2109,10 +2941,21 @@ mod tests {
         file(&conn, "general", "folder", "f1");
         file(&conn, "general", "folder", "f2");
         let before = rows(&conn);
-        let f = |id: &str, path: &str| NotesFolder { id: id.into(), label: id.into(), path: path.into(), enabled: true };
-        let held = PersonalSourcesConfig { notes_folders: vec![f("f1", r"D:\A"), f("f2", r"D:\B")], ..Default::default() };
+        let f = |id: &str, path: &str| NotesFolder {
+            id: id.into(),
+            label: id.into(),
+            path: path.into(),
+            enabled: true,
+        };
+        let held = PersonalSourcesConfig {
+            notes_folders: vec![f("f1", r"D:\A"), f("f2", r"D:\B")],
+            ..Default::default()
+        };
         // Incoming f2 pretends to be folder A's path while f1 leaves.
-        let incoming = PersonalSourcesConfig { notes_folders: vec![f("f2", r"D:\A")], ..Default::default() };
+        let incoming = PersonalSourcesConfig {
+            notes_folders: vec![f("f2", r"D:\A")],
+            ..Default::default()
+        };
         merge_for_save(&MemoryStore::default(), Some(&conn), &held, &incoming).unwrap();
         assert_eq!(rows(&conn), before);
     }

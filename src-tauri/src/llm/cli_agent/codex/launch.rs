@@ -85,7 +85,10 @@ impl std::fmt::Debug for CodexLaunch {
             .field("system_prompt_len", &self.system_prompt.len())
             .field("mcp_overrides", &self.mcp_overrides)
             // The tables hold the servers' secrets.
-            .field("mcp_servers", &format_args!("<redacted, {}>", self.mcp_servers.len()))
+            .field(
+                "mcp_servers",
+                &format_args!("<redacted, {}>", self.mcp_servers.len()),
+            )
             .field("has_notes", &self.has_notes)
             .field("policy", &self.policy)
             .finish()
@@ -123,7 +126,9 @@ impl CodexLaunch {
         }
         let mut servers = self.mcp_servers.clone();
         for name in user_servers {
-            servers.entry(name.clone()).or_insert_with(|| serde_json::json!({ "enabled": false }));
+            servers
+                .entry(name.clone())
+                .or_insert_with(|| serde_json::json!({ "enabled": false }));
         }
         let mut config = fixed_config();
         config.insert("mcp_servers".into(), serde_json::Value::Object(servers));
@@ -218,7 +223,10 @@ pub(crate) fn fixed_config() -> serde_json::Map<String, serde_json::Value> {
     for pair in FIXED_OVERRIDES {
         let (key, value) = pair.split_once('=').expect("key=value");
         let path: Vec<&str> = key.split('.').collect();
-        set(&path, serde_json::from_str(value).unwrap_or_else(|_| json!(value)));
+        set(
+            &path,
+            serde_json::from_str(value).unwrap_or_else(|_| json!(value)),
+        );
     }
     for feature in DISABLED_FEATURES {
         set(&["features", feature], json!(false));
@@ -228,7 +236,11 @@ pub(crate) fn fixed_config() -> serde_json::Map<String, serde_json::Value> {
 
 /// A TOML key as a dotted-path segment: bare when it can be, else quoted.
 pub(crate) fn toml_key(name: &str) -> String {
-    if !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+    if !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
         name.to_string()
     } else {
         format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\""))
@@ -294,7 +306,10 @@ pub fn build_args(launch: &CodexLaunch, user_servers: &[String]) -> Vec<String> 
 /// Apply cwd (created if missing), the stripped environment and CREATE_NO_WINDOW.
 pub fn configure_command(cmd: &mut std::process::Command, launch: &CodexLaunch) {
     if let Err(e) = std::fs::create_dir_all(&launch.cwd) {
-        log::warn!("codex: cannot create working dir {}: {e}", launch.cwd.display());
+        log::warn!(
+            "codex: cannot create working dir {}: {e}",
+            launch.cwd.display()
+        );
     }
     cmd.current_dir(&launch.cwd);
     for key in STRIPPED_ENV
@@ -345,7 +360,10 @@ pub async fn run_probe(
     }
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
-    let out = tokio::time::timeout(PROBE_TIMEOUT, cmd.output()).await.ok()?.ok()?;
+    let out = tokio::time::timeout(PROBE_TIMEOUT, cmd.output())
+        .await
+        .ok()?
+        .ok()?;
     Some((
         out.status.success(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -357,11 +375,22 @@ pub async fn run_probe(
 /// (`codex mcp list --json`, run with plugins and apps off so their servers
 /// are not listed). Fails (`None`) when Codex cannot answer: the caller must
 /// not start a session then, or the user's servers would load.
-pub async fn discover_user_mcp_servers(program: &Path, prefix_args: &[String]) -> Option<Vec<String>> {
+pub async fn discover_user_mcp_servers(
+    program: &Path,
+    prefix_args: &[String],
+) -> Option<Vec<String>> {
     let (ok, stdout, _) = run_probe(
         program,
         prefix_args,
-        &["--disable", "plugins", "--disable", "apps", "mcp", "list", "--json"],
+        &[
+            "--disable",
+            "plugins",
+            "--disable",
+            "apps",
+            "mcp",
+            "list",
+            "--json",
+        ],
     )
     .await?;
     if !ok {
@@ -375,7 +404,12 @@ pub async fn discover_user_mcp_servers(program: &Path, prefix_args: &[String]) -
 pub fn parse_mcp_list(json: &str) -> Option<Vec<String>> {
     let v: serde_json::Value = serde_json::from_str(json.trim()).ok()?;
     let items = v.as_array()?;
-    Some(items.iter().filter_map(|i| i.get("name")?.as_str().map(str::to_string)).collect())
+    Some(
+        items
+            .iter()
+            .filter_map(|i| i.get("name")?.as_str().map(str::to_string))
+            .collect(),
+    )
 }
 
 /// The program and leading args to run for a `codex` found on PATH.
@@ -393,10 +427,17 @@ pub fn resolve_program(shim_or_exe: &Path) -> Option<(PathBuf, Vec<String>)> {
     if !is_cmd {
         // Only a real executable: npm also drops an extensionless shell script
         // next to the .cmd shim, which CreateProcess cannot run.
-        let is_exe = shim_or_exe.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("exe"));
+        let is_exe = shim_or_exe
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("exe"));
         return (is_exe && shim_or_exe.is_file()).then(|| (shim_or_exe.to_path_buf(), Vec::new()));
     }
-    let package = shim_or_exe.parent()?.join("node_modules").join("@openai").join("codex");
+    let package = shim_or_exe
+        .parent()?
+        .join("node_modules")
+        .join("@openai")
+        .join("codex");
     if !package.is_dir() {
         return None;
     }
@@ -419,7 +460,11 @@ pub fn resolve_program(shim_or_exe: &Path) -> Option<(PathBuf, Vec<String>)> {
     let script = package.join("bin").join("codex.js");
     if script.is_file() {
         let node = shim_or_exe.parent()?.join("node.exe");
-        let node = if node.is_file() { node } else { PathBuf::from("node") };
+        let node = if node.is_file() {
+            node
+        } else {
+            PathBuf::from("node")
+        };
         return Some((node, vec![script.to_string_lossy().into_owned()]));
     }
     None
@@ -427,7 +472,9 @@ pub fn resolve_program(shim_or_exe: &Path) -> Option<(PathBuf, Vec<String>)> {
 
 /// The first `codex` on PATH that Lucid can spawn.
 pub fn find_codex() -> Option<(PathBuf, Vec<String>)> {
-    find_on_path("codex").iter().find_map(|p| resolve_program(p))
+    find_on_path("codex")
+        .iter()
+        .find_map(|p| resolve_program(p))
 }
 
 #[cfg(test)]
@@ -435,7 +482,12 @@ mod tests {
     use super::*;
 
     fn launch() -> CodexLaunch {
-        CodexLaunch::new(PathBuf::from("codex.exe"), vec![], PathBuf::from("C:\\sandbox"), "gpt-6.2-sol".into())
+        CodexLaunch::new(
+            PathBuf::from("codex.exe"),
+            vec![],
+            PathBuf::from("C:\\sandbox"),
+            "gpt-6.2-sol".into(),
+        )
     }
 
     #[test]
@@ -443,18 +495,27 @@ mod tests {
         let args = build_args(&launch(), &[]);
         assert_eq!(args[0], "app-server");
         for feature in DISABLED_FEATURES {
-            let at = args.iter().position(|a| a == feature).unwrap_or_else(|| panic!("{feature}"));
+            let at = args
+                .iter()
+                .position(|a| a == feature)
+                .unwrap_or_else(|| panic!("{feature}"));
             assert_eq!(args[at - 1], "--disable");
         }
         for pair in FIXED_OVERRIDES {
-            let at = args.iter().position(|a| a == pair).unwrap_or_else(|| panic!("{pair}"));
+            let at = args
+                .iter()
+                .position(|a| a == pair)
+                .unwrap_or_else(|| panic!("{pair}"));
             assert_eq!(args[at - 1], "-c");
         }
         assert!(args.contains(&"notify=[]".to_string()));
     }
 
     fn features_disabled(args: &[String]) -> Vec<&str> {
-        args.windows(2).filter(|w| w[0] == "--disable").map(|w| w[1].as_str()).collect()
+        args.windows(2)
+            .filter(|w| w[0] == "--disable")
+            .map(|w| w[1].as_str())
+            .collect()
     }
 
     #[test]
@@ -467,12 +528,21 @@ mod tests {
         // Notes (an MCP server) and other servers do not bring it back.
         let mut with = launch();
         with.has_notes = true;
-        with.mcp_servers.insert("nexq_notes".into(), serde_json::json!({ "command": "nexq.exe" }));
-        with.mcp_servers.insert("mira".into(), serde_json::json!({ "command": "x" }));
+        with.mcp_servers.insert(
+            "nexq_notes".into(),
+            serde_json::json!({ "command": "nexq.exe" }),
+        );
+        with.mcp_servers
+            .insert("mira".into(), serde_json::json!({ "command": "x" }));
         let args = build_args(&with, &["other".to_string()]);
         assert!(features_disabled(&args).contains(&"shell_tool"));
         assert!(features_disabled(&args).contains(&"view_image"));
-        assert!(!args.iter().any(|a| a.contains("shell_tool=true") || a.contains("features.shell_tool")), "{args:?}");
+        assert!(
+            !args
+                .iter()
+                .any(|a| a.contains("shell_tool=true") || a.contains("features.shell_tool")),
+            "{args:?}"
+        );
     }
 
     #[test]
@@ -483,25 +553,39 @@ mod tests {
             "mira".into(),
             serde_json::json!({ "command": "node", "args": ["s.js"], "env": { "TOKEN": "s3cret" }, "enabled_tools": ["kb_search"] }),
         );
-        let cfg = l.thread_config(&["mira".to_string(), "other".to_string()]).unwrap();
+        let cfg = l
+            .thread_config(&["mira".to_string(), "other".to_string()])
+            .unwrap();
         // The user's servers are switched off in the thread's config too, ours are not.
-        assert_eq!(cfg["mcp_servers"]["other"], serde_json::json!({ "enabled": false }));
+        assert_eq!(
+            cfg["mcp_servers"]["other"],
+            serde_json::json!({ "enabled": false })
+        );
         assert_eq!(cfg["mcp_servers"]["mira"]["command"], "node");
         assert_eq!(cfg["mcp_servers"]["mira"]["env"]["TOKEN"], "s3cret");
         assert_eq!(cfg["mcp_servers"]["mira"]["enabled_tools"][0], "kb_search");
         let args = build_args(&l, &["mira".to_string(), "other".to_string()]);
-        assert!(args.iter().all(|a| !a.contains("s3cret")), "a secret reached argv");
+        assert!(
+            args.iter().all(|a| !a.contains("s3cret")),
+            "a secret reached argv"
+        );
         // The user's own `mira` is not switched off (ours has the same key), `other` is.
         assert!(!args.contains(&"mcp_servers.mira.enabled=false".to_string()));
         assert!(args.contains(&"mcp_servers.other.enabled=false".to_string()));
         assert_eq!(l.server_keys(), ["mira"]);
-        assert!(!format!("{l:?}").contains("s3cret"), "Debug leaked a secret");
+        assert!(
+            !format!("{l:?}").contains("s3cret"),
+            "Debug leaked a secret"
+        );
     }
 
     #[test]
     fn the_thread_config_repeats_everything_the_command_line_switches_off() {
         let mut l = launch();
-        l.mcp_servers.insert("nexq_notes".into(), serde_json::json!({ "command": "nexq", "args": ["--notes-mcp"] }));
+        l.mcp_servers.insert(
+            "nexq_notes".into(),
+            serde_json::json!({ "command": "nexq", "args": ["--notes-mcp"] }),
+        );
         let cfg = l.thread_config(&["mira".to_string()]).unwrap();
         // The values the thread must carry (a thread config re-reads the user's config).
         assert_eq!(cfg["web_search"], "disabled");
@@ -512,7 +596,10 @@ mod tests {
         for feature in DISABLED_FEATURES {
             assert_eq!(cfg["features"][feature], false, "{feature}");
         }
-        assert_eq!(cfg["mcp_servers"]["mira"], serde_json::json!({ "enabled": false }));
+        assert_eq!(
+            cfg["mcp_servers"]["mira"],
+            serde_json::json!({ "enabled": false })
+        );
         // Every fixed override of the command line is in there, whatever new one is added.
         for pair in FIXED_OVERRIDES {
             let (key, value) = pair.split_once('=').unwrap();
@@ -520,7 +607,11 @@ mod tests {
             for part in key.split('.') {
                 at = &at[part];
             }
-            assert_eq!(*at, serde_json::from_str::<serde_json::Value>(value).unwrap(), "{pair}");
+            assert_eq!(
+                *at,
+                serde_json::from_str::<serde_json::Value>(value).unwrap(),
+                "{pair}"
+            );
         }
         // Without servers there is no thread config at all (the command line stands alone).
         assert_eq!(launch().thread_config(&["mira".to_string()]), None);
@@ -556,14 +647,23 @@ mod tests {
         assert!(args.contains(&"mcp_servers.mira.enabled=false".to_string()));
         assert!(args.contains(&"mcp_servers.lucid-notes.command=\"npx\"".to_string()));
         // Each override is its own `-c` value.
-        let at = args.iter().position(|a| a == "mcp_servers.lucid-notes.command=\"npx\"").unwrap();
+        let at = args
+            .iter()
+            .position(|a| a == "mcp_servers.lucid-notes.command=\"npx\"")
+            .unwrap();
         assert_eq!(args[at - 1], "-c");
     }
 
     #[test]
     fn override_keys_are_read_bare_or_quoted() {
-        assert_eq!(override_server_key("mcp_servers.mira.command=\"x\"").as_deref(), Some("mira"));
-        assert_eq!(override_server_key("mcp_servers.\"a.b\".enabled=true").as_deref(), Some("a.b"));
+        assert_eq!(
+            override_server_key("mcp_servers.mira.command=\"x\"").as_deref(),
+            Some("mira")
+        );
+        assert_eq!(
+            override_server_key("mcp_servers.\"a.b\".enabled=true").as_deref(),
+            Some("a.b")
+        );
         assert_eq!(override_server_key("notify=[]"), None);
         let keys = override_server_keys(&[
             "mcp_servers.a.command=\"x\"".into(),
@@ -578,11 +678,24 @@ mod tests {
         let mut l = launch();
         l.env_remove.push("MY_EXTRA".into());
         let mut cmd = std::process::Command::new("codex.exe");
-        cmd.env("OPENAI_API_KEY", "sk-test").env("CODEX_API_KEY", "x").env("MY_EXTRA", "1");
+        cmd.env("OPENAI_API_KEY", "sk-test")
+            .env("CODEX_API_KEY", "x")
+            .env("MY_EXTRA", "1");
         configure_command(&mut cmd, &l);
         let envs: Vec<_> = cmd.get_envs().collect();
-        for key in ["OPENAI_API_KEY", "OPENAI_BASE_URL", "CODEX_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "MY_EXTRA"] {
-            let entry = envs.iter().find(|(k, _)| *k == key).unwrap_or_else(|| panic!("{key}"));
+        for key in [
+            "OPENAI_API_KEY",
+            "OPENAI_BASE_URL",
+            "CODEX_API_KEY",
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "MY_EXTRA",
+        ] {
+            let entry = envs
+                .iter()
+                .find(|(k, _)| *k == key)
+                .unwrap_or_else(|| panic!("{key}"));
             assert!(entry.1.is_none(), "{key} must be removed, not set");
         }
     }

@@ -156,11 +156,21 @@ impl Restarts {
 
     /// What wakes the waiter of `key`.
     pub fn waker(&self, key: &str) -> Arc<Notify> {
-        self.slots.lock().unwrap().entry(key.to_string()).or_default().wake.clone()
+        self.slots
+            .lock()
+            .unwrap()
+            .entry(key.to_string())
+            .or_default()
+            .wake
+            .clone()
     }
 
     pub fn is_pending(&self, key: &str) -> bool {
-        self.slots.lock().unwrap().get(key).is_some_and(|s| s.pending)
+        self.slots
+            .lock()
+            .unwrap()
+            .get(key)
+            .is_some_and(|s| s.pending)
     }
 
     /// Forget a meeting or chat (it ended or was deleted); a waiter is woken to stop.
@@ -173,14 +183,18 @@ impl Restarts {
 
 fn decide_in(slot: Option<&Slot>, now: Instant, busy: bool, gap: Duration) -> Action {
     if busy {
-        let waited = slot.and_then(|s| s.waiting_since).map(|t| now.saturating_duration_since(t));
+        let waited = slot
+            .and_then(|s| s.waiting_since)
+            .map(|t| now.saturating_duration_since(t));
         return match waited {
             Some(w) if w >= MAX_DEFER => Action::Now,
             _ => Action::Later(BUSY_RECHECK),
         };
     }
     match slot.and_then(|s| s.last) {
-        Some(last) if now.saturating_duration_since(last) < gap => Action::Later(gap - now.saturating_duration_since(last)),
+        Some(last) if now.saturating_duration_since(last) < gap => {
+            Action::Later(gap - now.saturating_duration_since(last))
+        }
         _ => Action::Now,
     }
 }
@@ -199,11 +213,23 @@ mod tests {
         assert_eq!(r.decide("meeting:m", t0, false), Action::Now);
         r.restarted("meeting:m", t0);
         // An autosave 800 ms later, and again: they wait for what is left of 30 s.
-        assert_eq!(r.decide("meeting:m", t0 + Duration::from_millis(800), false), Action::Later(GRANT_COALESCE - Duration::from_millis(800)));
-        assert_eq!(r.decide("meeting:m", t0 + Duration::from_secs(29), false), Action::Later(Duration::from_secs(1)));
-        assert_eq!(r.decide("meeting:m", t0 + GRANT_COALESCE, false), Action::Now);
+        assert_eq!(
+            r.decide("meeting:m", t0 + Duration::from_millis(800), false),
+            Action::Later(GRANT_COALESCE - Duration::from_millis(800))
+        );
+        assert_eq!(
+            r.decide("meeting:m", t0 + Duration::from_secs(29), false),
+            Action::Later(Duration::from_secs(1))
+        );
+        assert_eq!(
+            r.decide("meeting:m", t0 + GRANT_COALESCE, false),
+            Action::Now
+        );
         // Another meeting is not held back.
-        assert_eq!(r.decide("meeting:other", t0 + Duration::from_secs(1), false), Action::Now);
+        assert_eq!(
+            r.decide("meeting:other", t0 + Duration::from_secs(1), false),
+            Action::Now
+        );
     }
 
     #[test]
@@ -218,14 +244,30 @@ mod tests {
             assert!(!r.edit_at("meeting:m", now));
             assert_eq!(r.step("meeting:m", now, false), Step::Sleep(EDIT_QUIET));
         }
-        assert_eq!(r.step("meeting:m", now + Duration::from_secs(29), false), Step::Sleep(Duration::from_secs(1)));
+        assert_eq!(
+            r.step("meeting:m", now + Duration::from_secs(29), false),
+            Step::Sleep(Duration::from_secs(1))
+        );
         assert_eq!(r.step("meeting:m", now + EDIT_QUIET, false), Step::Restart);
         // a live answer still holds it back, for at most MAX_DEFER
-        assert_eq!(r.step("meeting:m", now + EDIT_QUIET, true), Step::Sleep(BUSY_RECHECK));
-        assert_eq!(r.step("meeting:m", t0 + MAX_DEFER + EDIT_QUIET + Duration::from_secs(60), true), Step::Restart);
+        assert_eq!(
+            r.step("meeting:m", now + EDIT_QUIET, true),
+            Step::Sleep(BUSY_RECHECK)
+        );
+        assert_eq!(
+            r.step(
+                "meeting:m",
+                t0 + MAX_DEFER + EDIT_QUIET + Duration::from_secs(60),
+                true
+            ),
+            Step::Restart
+        );
         r.restarted("meeting:m", now + EDIT_QUIET);
         assert!(!r.is_pending("meeting:m"));
-        assert!(r.edit_at("meeting:m", now + EDIT_QUIET + Duration::from_secs(1)), "a later edit starts a new wait");
+        assert!(
+            r.edit_at("meeting:m", now + EDIT_QUIET + Duration::from_secs(1)),
+            "a later edit starts a new wait"
+        );
     }
 
     #[test]
@@ -235,7 +277,10 @@ mod tests {
         assert!(r.edit_at("chat:c", t0));
         assert!(!r.mark_pending_at("chat:c", GRANT_COALESCE, t0));
         // no restart happened before, so the grant is not held for the typing
-        assert_eq!(r.step("chat:c", t0 + Duration::from_secs(1), false), Step::Restart);
+        assert_eq!(
+            r.step("chat:c", t0 + Duration::from_secs(1), false),
+            Step::Restart
+        );
     }
 
     #[test]
@@ -243,8 +288,24 @@ mod tests {
         let r = Restarts::default();
         assert!(r.mark_pending("meeting:m", GRANT_COALESCE));
         let t1 = Instant::now();
-        assert_eq!(r.decide_gap("meeting:m", t1 + Duration::from_secs(30), true, GRANT_COALESCE), Action::Later(BUSY_RECHECK));
-        assert_eq!(r.decide_gap("meeting:m", t1 + MAX_DEFER + Duration::from_millis(5), true, GRANT_COALESCE), Action::Now);
+        assert_eq!(
+            r.decide_gap(
+                "meeting:m",
+                t1 + Duration::from_secs(30),
+                true,
+                GRANT_COALESCE
+            ),
+            Action::Later(BUSY_RECHECK)
+        );
+        assert_eq!(
+            r.decide_gap(
+                "meeting:m",
+                t1 + MAX_DEFER + Duration::from_millis(5),
+                true,
+                GRANT_COALESCE
+            ),
+            Action::Now
+        );
     }
 
     #[test]
@@ -253,15 +314,27 @@ mod tests {
         let t0 = Instant::now();
         assert_eq!(r.decide("meeting:m", t0, true), Action::Later(BUSY_RECHECK));
         r.restarted("meeting:m", t0);
-        assert_eq!(r.decide("meeting:m", t0 + Duration::from_secs(60), true), Action::Later(BUSY_RECHECK));
-        assert_eq!(r.decide("meeting:m", t0 + Duration::from_secs(60), false), Action::Now);
+        assert_eq!(
+            r.decide("meeting:m", t0 + Duration::from_secs(60), true),
+            Action::Later(BUSY_RECHECK)
+        );
+        assert_eq!(
+            r.decide("meeting:m", t0 + Duration::from_secs(60), false),
+            Action::Now
+        );
     }
 
     #[test]
     fn one_waiting_restart_per_key_and_a_restart_clears_it() {
         let r = Restarts::default();
-        assert!(r.mark_pending("chat:c", GRANT_COALESCE), "the first grant starts the timer");
-        assert!(!r.mark_pending("chat:c", GRANT_COALESCE), "the rest ride on it");
+        assert!(
+            r.mark_pending("chat:c", GRANT_COALESCE),
+            "the first grant starts the timer"
+        );
+        assert!(
+            !r.mark_pending("chat:c", GRANT_COALESCE),
+            "the rest ride on it"
+        );
         assert!(r.is_pending("chat:c"));
         // A revocation restarts at once: the waiting grant is covered.
         r.restarted("chat:c", Instant::now());
@@ -283,16 +356,40 @@ mod tests {
         let t0 = Instant::now();
         r.restarted("meeting:m", t0);
         // The grant waits for the 30 s mark.
-        assert_eq!(r.decide_gap("meeting:m", t0 + Duration::from_secs(1), false, GRANT_COALESCE), Action::Later(Duration::from_secs(29)));
+        assert_eq!(
+            r.decide_gap(
+                "meeting:m",
+                t0 + Duration::from_secs(1),
+                false,
+                GRANT_COALESCE
+            ),
+            Action::Later(Duration::from_secs(29))
+        );
         assert!(r.mark_pending_at("meeting:m", GRANT_COALESCE, t0 + Duration::from_secs(1)));
-        assert_eq!(waiter(&r, "meeting:m", t0 + Duration::from_secs(5), false), Step::Sleep(Duration::from_secs(25)));
+        assert_eq!(
+            waiter(&r, "meeting:m", t0 + Duration::from_secs(5), false),
+            Step::Sleep(Duration::from_secs(25))
+        );
         // An edit of what the session already used joins it: 5 s from the last restart.
-        assert!(!r.mark_pending_at("meeting:m", EDIT_GAP, t0 + Duration::from_secs(2)), "it rides on the waiter");
-        assert_eq!(waiter(&r, "meeting:m", t0 + Duration::from_secs(4), false), Step::Sleep(Duration::from_secs(1)));
-        assert_eq!(waiter(&r, "meeting:m", t0 + Duration::from_secs(5), false), Step::Restart, "not at 30 s");
+        assert!(
+            !r.mark_pending_at("meeting:m", EDIT_GAP, t0 + Duration::from_secs(2)),
+            "it rides on the waiter"
+        );
+        assert_eq!(
+            waiter(&r, "meeting:m", t0 + Duration::from_secs(4), false),
+            Step::Sleep(Duration::from_secs(1))
+        );
+        assert_eq!(
+            waiter(&r, "meeting:m", t0 + Duration::from_secs(5), false),
+            Step::Restart,
+            "not at 30 s"
+        );
         // A later grant never lengthens it again.
         r.mark_pending_at("meeting:m", GRANT_COALESCE, t0 + Duration::from_secs(3));
-        assert_eq!(waiter(&r, "meeting:m", t0 + Duration::from_secs(5), false), Step::Restart);
+        assert_eq!(
+            waiter(&r, "meeting:m", t0 + Duration::from_secs(5), false),
+            Step::Restart
+        );
     }
 
     #[test]
@@ -301,17 +398,29 @@ mod tests {
         let t0 = Instant::now();
         r.restarted("meeting:m", t0);
         r.mark_pending_at("meeting:m", GRANT_COALESCE, t0 + Duration::from_secs(1));
-        assert!(matches!(waiter(&r, "meeting:m", t0 + Duration::from_secs(2), false), Step::Sleep(_)));
+        assert!(matches!(
+            waiter(&r, "meeting:m", t0 + Duration::from_secs(2), false),
+            Step::Sleep(_)
+        ));
         // The revocation restarts at once.
         r.restarted("meeting:m", t0 + Duration::from_secs(3));
-        assert_eq!(waiter(&r, "meeting:m", t0 + Duration::from_secs(4), false), Step::Cancelled);
+        assert_eq!(
+            waiter(&r, "meeting:m", t0 + Duration::from_secs(4), false),
+            Step::Cancelled
+        );
         assert!(!r.is_pending("meeting:m"));
         // The next grant waits from the revocation, not from the old restart.
-        assert_eq!(r.decide("meeting:m", t0 + Duration::from_secs(10), false), Action::Later(Duration::from_secs(23)));
+        assert_eq!(
+            r.decide("meeting:m", t0 + Duration::from_secs(10), false),
+            Action::Later(Duration::from_secs(23))
+        );
         // A forgotten key cancels too.
         r.mark_pending_at("meeting:m", EDIT_GAP, t0 + Duration::from_secs(11));
         r.forget("meeting:m");
-        assert_eq!(waiter(&r, "meeting:m", t0 + Duration::from_secs(12), false), Step::Cancelled);
+        assert_eq!(
+            waiter(&r, "meeting:m", t0 + Duration::from_secs(12), false),
+            Step::Cancelled
+        );
     }
 
     #[test]
@@ -322,16 +431,34 @@ mod tests {
         assert!(r.mark_pending_at("meeting:m", EDIT_GAP, t0 + Duration::from_secs(6)));
         // Answers keep running: it keeps waiting, however short its gap is.
         for s in [7, 20, 40, 65] {
-            assert_eq!(waiter(&r, "meeting:m", t0 + Duration::from_secs(s), true), Step::Sleep(BUSY_RECHECK), "{s} s");
+            assert_eq!(
+                waiter(&r, "meeting:m", t0 + Duration::from_secs(s), true),
+                Step::Sleep(BUSY_RECHECK),
+                "{s} s"
+            );
         }
         // 60 s after it began to wait it goes ahead.
-        assert_eq!(waiter(&r, "meeting:m", t0 + Duration::from_secs(6) + MAX_DEFER, true), Step::Restart);
+        assert_eq!(
+            waiter(
+                &r,
+                "meeting:m",
+                t0 + Duration::from_secs(6) + MAX_DEFER,
+                true
+            ),
+            Step::Restart
+        );
         // And when the answer ends sooner it goes at its gap.
         let r2 = Restarts::default();
         r2.restarted("meeting:n", t0);
         r2.mark_pending_at("meeting:n", EDIT_GAP, t0 + Duration::from_secs(1));
-        assert_eq!(waiter(&r2, "meeting:n", t0 + Duration::from_secs(3), true), Step::Sleep(BUSY_RECHECK));
-        assert_eq!(waiter(&r2, "meeting:n", t0 + Duration::from_secs(8), false), Step::Restart);
+        assert_eq!(
+            waiter(&r2, "meeting:n", t0 + Duration::from_secs(3), true),
+            Step::Sleep(BUSY_RECHECK)
+        );
+        assert_eq!(
+            waiter(&r2, "meeting:n", t0 + Duration::from_secs(8), false),
+            Step::Restart
+        );
     }
 
     #[test]
@@ -341,8 +468,14 @@ mod tests {
         r.restarted("meeting:m", t0);
         r.mark_pending_at("meeting:m", GRANT_COALESCE, t0 + Duration::from_secs(1));
         r.mark_pending_at("meeting:m", EDIT_GAP, t0 + Duration::from_secs(2));
-        assert_eq!(waiter(&r, "meeting:m", t0 + Duration::from_secs(10), true), Step::Sleep(BUSY_RECHECK));
-        assert_eq!(waiter(&r, "meeting:m", t0 + Duration::from_secs(10), false), Step::Restart);
+        assert_eq!(
+            waiter(&r, "meeting:m", t0 + Duration::from_secs(10), true),
+            Step::Sleep(BUSY_RECHECK)
+        );
+        assert_eq!(
+            waiter(&r, "meeting:m", t0 + Duration::from_secs(10), false),
+            Step::Restart
+        );
     }
 
     #[tokio::test]
@@ -350,10 +483,18 @@ mod tests {
         let r = Restarts::default();
         r.mark_pending("meeting:m", GRANT_COALESCE);
         let wake = r.waker("meeting:m");
-        let woken = |wake: Arc<Notify>| async move { tokio::time::timeout(Duration::from_millis(500), wake.notified()).await.is_ok() };
+        let woken = |wake: Arc<Notify>| async move {
+            tokio::time::timeout(Duration::from_millis(500), wake.notified())
+                .await
+                .is_ok()
+        };
         // A longer or equal gap does not wake it.
         r.mark_pending("meeting:m", GRANT_COALESCE);
-        assert!(!tokio::time::timeout(Duration::from_millis(50), wake.notified()).await.is_ok());
+        assert!(
+            !tokio::time::timeout(Duration::from_millis(50), wake.notified())
+                .await
+                .is_ok()
+        );
         // A shorter one does.
         r.mark_pending("meeting:m", EDIT_GAP);
         assert!(woken(wake.clone()).await);

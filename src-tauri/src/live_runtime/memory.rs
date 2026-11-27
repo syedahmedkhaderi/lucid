@@ -6,9 +6,11 @@ use crate::ai_runs::AiPurpose;
 use crate::live_common::{estimate_tokens, similarity};
 use crate::live_notes::prompts::OutputLanguage;
 use crate::live_runtime::llm::Selection;
-use crate::live_runtime::{LiveRuntimes, Deps};
+use crate::live_runtime::{Deps, LiveRuntimes};
 use crate::workspace::types::{MemoryCreate, MemoryItem};
-use crate::workspace_memory::{suggest_memory, MemLine, MemoryConfig, MemoryInput, Proposal, MAX_SUGGESTIONS};
+use crate::workspace_memory::{
+    suggest_memory, MemLine, MemoryConfig, MemoryInput, Proposal, MAX_SUGGESTIONS,
+};
 use serde_json::json;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -38,10 +40,21 @@ impl Drop for RunGuard {
     }
 }
 
-fn register_run(meeting: &str, workspace: &str, automatic: bool, cancel: Arc<CancelToken>) -> RunGuard {
+fn register_run(
+    meeting: &str,
+    workspace: &str,
+    automatic: bool,
+    cancel: Arc<CancelToken>,
+) -> RunGuard {
     let id = NEXT_RUN.fetch_add(1, Ordering::SeqCst);
     if let Ok(mut r) = RUNS.lock() {
-        r.push(RunEntry { id, meeting: meeting.to_string(), workspace: workspace.to_string(), automatic, cancel });
+        r.push(RunEntry {
+            id,
+            meeting: meeting.to_string(),
+            workspace: workspace.to_string(),
+            automatic,
+            cancel,
+        });
     }
     RunGuard(id)
 }
@@ -49,7 +62,10 @@ fn register_run(meeting: &str, workspace: &str, automatic: bool, cancel: Arc<Can
 /// Cancel every run for which `stop(meeting, workspace, automatic)` says so.
 pub(crate) fn cancel_runs_where(stop: impl Fn(&str, &str, bool) -> bool) {
     if let Ok(r) = RUNS.lock() {
-        for e in r.iter().filter(|e| stop(&e.meeting, &e.workspace, e.automatic)) {
+        for e in r
+            .iter()
+            .filter(|e| stop(&e.meeting, &e.workspace, e.automatic))
+        {
             e.cancel.cancel();
         }
     }
@@ -57,7 +73,11 @@ pub(crate) fn cancel_runs_where(stop: impl Fn(&str, &str, bool) -> bool) {
 
 /// Register a run (tests drive the central cancel rule with one).
 #[cfg(test)]
-pub(crate) fn register_test_run(meeting: &str, workspace: &str, automatic: bool) -> (Arc<CancelToken>, impl Drop) {
+pub(crate) fn register_test_run(
+    meeting: &str,
+    workspace: &str,
+    automatic: bool,
+) -> (Arc<CancelToken>, impl Drop) {
     let token = Arc::new(CancelToken::new());
     let guard = register_run(meeting, workspace, automatic, token.clone());
     (token, guard)
@@ -76,7 +96,10 @@ pub fn cancel_runs_of_meeting(meeting_id: &str) {
 /// the runs nobody asked for stop. A person's own request is not touched.
 pub fn cancel_automatic_runs_of(workspace_id: &str) {
     if let Ok(r) = RUNS.lock() {
-        for e in r.iter().filter(|e| e.automatic && e.workspace == workspace_id) {
+        for e in r
+            .iter()
+            .filter(|e| e.automatic && e.workspace == workspace_id)
+        {
             e.cancel.cancel();
         }
     }
@@ -121,7 +144,9 @@ fn merge(all: Vec<Proposal>) -> Vec<Proposal> {
     let mut out: Vec<Proposal> = Vec::new();
     for p in all {
         let both = format!("{}. {}", p.title, p.text);
-        if out.iter().any(|o| o.kind == p.kind && similarity(&format!("{}. {}", o.title, o.text), &both) >= 0.8) {
+        if out.iter().any(|o| {
+            o.kind == p.kind && similarity(&format!("{}. {}", o.title, o.text), &both) >= 0.8
+        }) {
             continue;
         }
         if out.len() < MAX_SUGGESTIONS {
@@ -133,13 +158,22 @@ fn merge(all: Vec<Proposal>) -> Vec<Proposal> {
 
 impl LiveRuntimes {
     /// `suggest_memory(workspaceId, meetingId)`: only after the meeting ended.
-    pub async fn suggest_memory(&self, workspace_id: &str, meeting_id: &str) -> Result<Vec<MemoryItem>, String> {
+    pub async fn suggest_memory(
+        &self,
+        workspace_id: &str,
+        meeting_id: &str,
+    ) -> Result<Vec<MemoryItem>, String> {
         suggest(self.deps(), workspace_id, meeting_id, None).await
     }
 }
 
 /// `cap`: the most tokens the calls may send (automatic runs follow the notes cap; a person asking is not capped).
-pub async fn suggest(deps: &Deps, workspace_id: &str, meeting_id: &str, cap: Option<u64>) -> Result<Vec<MemoryItem>, String> {
+pub async fn suggest(
+    deps: &Deps,
+    workspace_id: &str,
+    meeting_id: &str,
+    cap: Option<u64>,
+) -> Result<Vec<MemoryItem>, String> {
     if (deps.live_meeting)().as_deref() == Some(meeting_id) {
         return Err("Memory is suggested after the meeting ends".into());
     }
@@ -162,11 +196,23 @@ pub async fn suggest(deps: &Deps, workspace_id: &str, meeting_id: &str, cap: Opt
         return Ok(Vec::new());
     }
     let saved = deps.db.saved_memory(workspace_id);
-    let settings: crate::live_runtime::settings::MemorySettings =
-        deps.db.kv_get(crate::live_runtime::settings::MEMORY_KEY).and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
-    let selection = Selection { provider: settings.provider.clone(), model: settings.model.clone(), effort: settings.effort.clone() };
+    let settings: crate::live_runtime::settings::MemorySettings = deps
+        .db
+        .kv_get(crate::live_runtime::settings::MEMORY_KEY)
+        .and_then(|j| serde_json::from_str(&j).ok())
+        .unwrap_or_default();
+    let selection = Selection {
+        provider: settings.provider.clone(),
+        model: settings.model.clone(),
+        effort: settings.effort.clone(),
+    };
     // resolved again before every chunk: a provider or model that changed applies to the next call
-    let slot = crate::live_runtime::llm::SwapLlm::new(deps.factory.clone(), AiPurpose::Memory, meeting_id, selection)?;
+    let slot = crate::live_runtime::llm::SwapLlm::new(
+        deps.factory.clone(),
+        AiPurpose::Memory,
+        meeting_id,
+        selection,
+    )?;
     let stop = slot.stop_token();
     let _registered = register_run(meeting_id, workspace_id, automatic, stop.clone());
     let mut proposals: Vec<Proposal> = Vec::new();
@@ -174,7 +220,10 @@ pub async fn suggest(deps: &Deps, workspace_id: &str, meeting_id: &str, cap: Opt
     let mut ok_calls = 0;
     let mut sent: u64 = 0;
     for chunk in chunk_lines(&lines, CHUNK_TOKENS, MAX_CHUNKS) {
-        let chunk_tokens: u64 = chunk.iter().map(|l| u64::from(estimate_tokens(&l.text)) + 8).sum();
+        let chunk_tokens: u64 = chunk
+            .iter()
+            .map(|l| u64::from(estimate_tokens(&l.text)) + 8)
+            .sum();
         if let Some(cap) = cap {
             if sent + chunk_tokens > cap {
                 last_err = Some("The token cap for automatic runs was reached, so some of the meeting was not read".into());
@@ -236,9 +285,12 @@ pub async fn suggest(deps: &Deps, workspace_id: &str, meeting_id: &str, cap: Opt
         })
         .collect();
     // one transaction that re-checks the meeting and its home
-    let stored = deps.db.save_suggestions(meeting_id, workspace_id, items, automatic);
+    let stored = deps
+        .db
+        .save_suggestions(meeting_id, workspace_id, items, automatic);
     if !stored.is_empty() {
-        deps.emitter.emit("memory_changed", json!({"workspace_id": workspace_id}));
+        deps.emitter
+            .emit("memory_changed", json!({"workspace_id": workspace_id}));
     }
     Ok(stored)
 }
@@ -247,14 +299,18 @@ pub async fn suggest(deps: &Deps, workspace_id: &str, meeting_id: &str, cap: Opt
 pub fn auto_suggest_after(deps: Arc<Deps>, meeting_id: String, delay: std::time::Duration) {
     tokio::spawn(async move {
         tokio::time::sleep(delay).await;
-        let Some(home) = deps.db.meeting_home(&meeting_id) else { return };
+        let Some(home) = deps.db.meeting_home(&meeting_id) else {
+            return;
+        };
         if !deps.db.suggest_flag(&home) {
             return;
         }
         let cap = deps
             .db
             .kv_get(crate::live_runtime::settings::NOTETAKER_KEY)
-            .and_then(|j| serde_json::from_str::<crate::live_runtime::settings::NotetakerSettings>(&j).ok())
+            .and_then(|j| {
+                serde_json::from_str::<crate::live_runtime::settings::NotetakerSettings>(&j).ok()
+            })
             .map(|n| n.cap)
             .unwrap_or(crate::live_runtime::settings::DEFAULT_CAP);
         if let Err(e) = suggest(&deps, &home, &meeting_id, Some(cap)).await {
@@ -268,7 +324,13 @@ mod tests {
     use super::*;
 
     fn lines(n: usize) -> Vec<MemLine> {
-        (0..n).map(|i| MemLine { ms: i as u64 * 1000, speaker: "Them".into(), text: format!("line {i} {}", "word ".repeat(50)) }).collect()
+        (0..n)
+            .map(|i| MemLine {
+                ms: i as u64 * 1000,
+                speaker: "Them".into(),
+                text: format!("line {i} {}", "word ".repeat(50)),
+            })
+            .collect()
     }
 
     #[test]

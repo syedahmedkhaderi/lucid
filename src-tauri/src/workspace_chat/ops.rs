@@ -14,9 +14,9 @@ use crate::ai_runs::{AiPurpose, AiRunRequest};
 use crate::llm::provider::CancelToken;
 use crate::workspace_search::cards::{get_card, put_card, Card, CardOrigin};
 use crate::workspace_search::context_plan::{flatten, new_nonce, wrap_data};
-use crate::workspace_search::{store as sstore, PassageKind};
 #[cfg(test)]
 use crate::workspace_search::{search, Passage};
+use crate::workspace_search::{store as sstore, PassageKind};
 
 /// Most results one search returns.
 #[cfg(test)]
@@ -32,12 +32,21 @@ pub fn search_workspace(
     limit: usize,
 ) -> Result<Vec<Passage>, String> {
     let scope = scope_adapter::workspace_search_scope(conn, workspace_id)?;
-    let kinds: Vec<PassageKind> = kinds.unwrap_or_default().iter().filter_map(|k| PassageKind::parse(k)).collect();
+    let kinds: Vec<PassageKind> = kinds
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|k| PassageKind::parse(k))
+        .collect();
     search::search(conn, &scope, query, &kinds, limit.clamp(1, MAX_RESULTS))
 }
 
 /// What the library page shows about the index of a workspace.
-pub fn index_status(conn: &Connection, hub: &ChatHub, workspace_id: &str, meeting_active: bool) -> Result<IndexStatus, String> {
+pub fn index_status(
+    conn: &Connection,
+    hub: &ChatHub,
+    workspace_id: &str,
+    meeting_active: bool,
+) -> Result<IndexStatus, String> {
     let scope = scope_adapter::workspace_search_scope(conn, workspace_id)?;
     let json = |v: &[String]| serde_json::to_string(v).unwrap_or_else(|_| "[]".into());
     let meetings = match &scope.meetings {
@@ -51,17 +60,32 @@ pub fn index_status(conn: &Connection, hub: &ChatHub, workspace_id: &str, meetin
                 OR (kind = 'document' AND ref_id IN (SELECT value FROM json_each(?2)))
                 OR (kind = 'folder' AND ref_id IN (SELECT value FROM json_each(?3)))
                 OR (kind = 'talking_point' AND ref_id IN (SELECT value FROM json_each(?4)))",
-            rusqlite::params![json(&meetings), json(&scope.document_ids), json(&scope.folder_ids), json(&scope.talking_point_ids)],
+            rusqlite::params![
+                json(&meetings),
+                json(&scope.document_ids),
+                json(&scope.folder_ids),
+                json(&scope.talking_point_ids)
+            ],
             |r| r.get(0),
         )
         .map_err(|e| format!("Couldn't read the index: {e}"))?;
     let mut skipped = Vec::new();
     for f in &scope.folder_ids {
-        for p in sstore::list_problem_sources(conn, PassageKind::Folder, f).map_err(|e| e.to_string())? {
-            skipped.push(SkippedFile { folder_id: f.clone(), path: p.sub_ref, reason: p.error.unwrap_or(p.status) });
+        for p in
+            sstore::list_problem_sources(conn, PassageKind::Folder, f).map_err(|e| e.to_string())?
+        {
+            skipped.push(SkippedFile {
+                folder_id: f.clone(),
+                path: p.sub_ref,
+                reason: p.error.unwrap_or(p.status),
+            });
         }
     }
-    let last: Option<i64> = conn.query_row("SELECT MAX(indexed_at) FROM search_sources", [], |r| r.get(0)).unwrap_or(None);
+    let last: Option<i64> = conn
+        .query_row("SELECT MAX(indexed_at) FROM search_sources", [], |r| {
+            r.get(0)
+        })
+        .unwrap_or(None);
     // The backlog is read from the database, so it shows from the first moment
     // (also before the indexer thread has started) and until it is done.
     let meetings_all = scope_adapter::home_meetings(conn, workspace_id)?;
@@ -98,7 +122,10 @@ pub fn index_status(conn: &Connection, hub: &ChatHub, workspace_id: &str, meetin
         skipped,
         last_indexed_at: last,
         ai_recaps: ai_recaps.max(0) as usize,
-        ai_recaps_failed: RecapFailures { count: failed, reason },
+        ai_recaps_failed: RecapFailures {
+            count: failed,
+            reason,
+        },
         folders: folder_infos(conn, &scope.folder_ids)?,
     })
 }
@@ -114,7 +141,11 @@ fn folder_infos(conn: &Connection, folder_ids: &[String]) -> Result<Vec<FolderIn
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(|e| format!("Couldn't read the index: {e}"))?;
-        out.push(FolderIndexInfo { folder_id: id.clone(), files: files.max(0) as usize, indexed_at: at.filter(|_| files > 0) });
+        out.push(FolderIndexInfo {
+            folder_id: id.clone(),
+            files: files.max(0) as usize,
+            indexed_at: at.filter(|_| files > 0),
+        });
     }
     Ok(out)
 }
@@ -122,7 +153,11 @@ fn folder_infos(conn: &Connection, folder_ids: &[String]) -> Result<Vec<FolderIn
 /// The AI-written recap of a meeting (not the meeting's own summary), if there is one.
 pub fn meeting_recap(conn: &Connection, meeting_id: &str) -> Result<Option<MeetingRecap>, String> {
     match get_card(conn, meeting_id) {
-        Ok(Some(c)) if c.origin == CardOrigin::Ai => Ok(Some(MeetingRecap { text: c.recap, model: None, created_at: c.updated_at })),
+        Ok(Some(c)) if c.origin == CardOrigin::Ai => Ok(Some(MeetingRecap {
+            text: c.recap,
+            model: None,
+            created_at: c.updated_at,
+        })),
         _ => Ok(None), // no card, another origin, or no search tables yet
     }
 }
@@ -131,7 +166,8 @@ pub fn meeting_recap(conn: &Connection, meeting_id: &str) -> Result<Option<Meeti
 
 /// The answer a message holds and the workspace its chat belongs to.
 pub fn answer_of(conn: &Connection, message_id: i64) -> Result<(WorkspaceMessage, String), String> {
-    let m = super::store::get_message(conn, message_id)?.ok_or_else(|| "That answer no longer exists".to_string())?;
+    let m = super::store::get_message(conn, message_id)?
+        .ok_or_else(|| "That answer no longer exists".to_string())?;
     if m.role != "assistant" {
         return Err("Only an answer can be saved".to_string());
     }
@@ -160,16 +196,35 @@ pub fn save_answer_as_document(
     if clean_document_text(text) != text {
         return Err(DOCUMENT_CHANGED.to_string());
     }
-    let title = if title.trim().is_empty() { "Chat answer".to_string() } else { title.trim().to_string() };
+    let title = if title.trim().is_empty() {
+        "Chat answer".to_string()
+    } else {
+        title.trim().to_string()
+    };
     let resource = context.add_text(&title, text)?;
     // the check and the inserts are one transaction
     let saved = super::guard::atomically(
         conn,
         |c| super::guard::answer_is_clean(c, &message),
         |c| {
-            crate::db::context::add_context_resource(c, &crate::workspace::documents::db_row(&resource)).map_err(|e| e.to_string())?;
-            crate::workspace::documents::store_text(c, &resource.id, text, resource.token_count as i64)?;
-            crate::workspace::store::add_item(c, &workspace_id, crate::workspace::types::ItemKind::Document, &resource.id, None)
+            crate::db::context::add_context_resource(
+                c,
+                &crate::workspace::documents::db_row(&resource),
+            )
+            .map_err(|e| e.to_string())?;
+            crate::workspace::documents::store_text(
+                c,
+                &resource.id,
+                text,
+                resource.token_count as i64,
+            )?;
+            crate::workspace::store::add_item(
+                c,
+                &workspace_id,
+                crate::workspace::types::ItemKind::Document,
+                &resource.id,
+                None,
+            )
         },
     );
     match saved {
@@ -238,7 +293,12 @@ fn one_pass(raw: &str, cap: usize) -> String {
     let t = k.link.replace_all(&t, "${1}");
     let t = k.reflink.replace_all(&t, "${1}");
     let t = k.blanks.replace_all(&t, "\n\n");
-    t.trim().chars().take(cap).collect::<String>().trim_end().to_string()
+    t.trim()
+        .chars()
+        .take(cap)
+        .collect::<String>()
+        .trim_end()
+        .to_string()
 }
 
 /// Most characters (code points) of a document saved from an answer.
@@ -250,7 +310,10 @@ pub const DOCUMENT_CHANGED: &str =
 /// A document keeps everything it says (code, `<T>`, links, HTML samples): only hidden characters go,
 /// and it is cut at `DOCUMENT_CAP`. It is wrapped as data whenever it is used.
 pub fn clean_document_text(raw: &str) -> String {
-    crate::prompt_data::strip_hidden(raw).chars().take(DOCUMENT_CAP).collect()
+    crate::prompt_data::strip_hidden(raw)
+        .chars()
+        .take(DOCUMENT_CAP)
+        .collect()
 }
 
 /// Plain text up to `cap` characters, applied until nothing changes, so the result is a fixed
@@ -276,7 +339,11 @@ pub fn sanitize_instruction_text(raw: &str) -> String {
 /// instructions after a separator, in the same transaction that checks that nothing the answer
 /// used has left the workspace. Text that sanitising would change is refused, so what was
 /// shown is what is stored. Returns the workspace id.
-pub fn add_answer_to_instructions(conn: &Connection, message_id: i64, text: &str) -> Result<String, String> {
+pub fn add_answer_to_instructions(
+    conn: &Connection,
+    message_id: i64,
+    text: &str,
+) -> Result<String, String> {
     let (message, workspace_id) = answer_of(conn, message_id)?;
     if text.trim().is_empty() {
         return Err("There is nothing to add.".to_string());
@@ -292,7 +359,11 @@ pub fn add_answer_to_instructions(conn: &Connection, message_id: i64, text: &str
             let stored = super::engine::append_to_instructions(&ws.instructions, text);
             c.execute(
                 "UPDATE workspaces SET instructions = ?2, updated_at = ?3 WHERE id = ?1",
-                rusqlite::params![workspace_id, stored, crate::db::workspace_migrations::now_ms()],
+                rusqlite::params![
+                    workspace_id,
+                    stored,
+                    crate::db::workspace_migrations::now_ms()
+                ],
             )
             .map(|_| ())
             .map_err(|e| format!("Couldn't save the instructions: {e}"))
@@ -338,12 +409,20 @@ struct RecapJob {
     source_hash: String,
 }
 
-fn recap_job(conn: &Connection, workspace_id: &str, meeting_id: &str, load_text: bool) -> Option<RecapJob> {
+fn recap_job(
+    conn: &Connection,
+    workspace_id: &str,
+    meeting_id: &str,
+    load_text: bool,
+) -> Option<RecapJob> {
     let ws = crate::workspace::store::get_workspace(conn, workspace_id).ok()?;
     if ws.archived || !ws.recaps_with_ai {
         return None;
     }
-    let m = scope_adapter::home_meetings(conn, workspace_id).ok()?.into_iter().find(|m| m.id == meeting_id)?;
+    let m = scope_adapter::home_meetings(conn, workspace_id)
+        .ok()?
+        .into_iter()
+        .find(|m| m.id == meeting_id)?;
     if m.summary || crate::workspace_search::cards::recap_declined(conn, meeting_id) {
         return None;
     }
@@ -361,7 +440,11 @@ fn recap_job(conn: &Connection, workspace_id: &str, meeting_id: &str, load_text:
     } else {
         String::new()
     };
-    Some(RecapJob { title: m.title, text, source_hash: card.source_hash })
+    Some(RecapJob {
+        title: m.title,
+        text,
+        source_hash: card.source_hash,
+    })
 }
 
 /// Recaps for meetings of a workspace that have no summary, newest first, only
@@ -376,23 +459,44 @@ pub async fn recap_missing(deps: &ChatDeps, workspace_id: &str, cancel: Arc<Canc
 
 /// [`recap_missing`], or with `only` the one meeting that just ended (the backlog waits for
 /// the workspace to be opened).
-pub async fn recap_missing_for(deps: &ChatDeps, workspace_id: &str, cancel: Arc<CancelToken>, only: Option<&str>) -> usize {
+pub async fn recap_missing_for(
+    deps: &ChatDeps,
+    workspace_id: &str,
+    cancel: Arc<CancelToken>,
+    only: Option<&str>,
+) -> usize {
     let todo: Vec<String> = {
         let Ok(conn) = deps.conn() else { return 0 };
-        let Ok(meetings) = scope_adapter::home_meetings(&conn, workspace_id) else { return 0 };
-        meetings.into_iter().filter(|m| only.map_or(true, |o| o == m.id)).filter(|m| recap_job(&conn, workspace_id, &m.id, false).is_some()).map(|m| m.id).take(MAX_RECAPS).collect()
+        let Ok(meetings) = scope_adapter::home_meetings(&conn, workspace_id) else {
+            return 0;
+        };
+        meetings
+            .into_iter()
+            .filter(|m| only.map_or(true, |o| o == m.id))
+            .filter(|m| recap_job(&conn, workspace_id, &m.id, false).is_some())
+            .map(|m| m.id)
+            .take(MAX_RECAPS)
+            .collect()
     };
     if todo.is_empty() {
         return 0;
     }
-    let Some(selection) = (deps.recap_selection)() else { return 0 };
+    let Some(selection) = (deps.recap_selection)() else {
+        return 0;
+    };
     let mut made = 0;
     for id in todo {
         if cancel.is_cancelled() || (deps.meeting_active)() {
             break;
         }
         // read now, not when it was queued
-        let Some(job) = deps.conn().ok().and_then(|c| recap_job(&c, workspace_id, &id, true)) else { continue };
+        let Some(job) = deps
+            .conn()
+            .ok()
+            .and_then(|c| recap_job(&c, workspace_id, &id, true))
+        else {
+            continue;
+        };
         let nonce = new_nonce();
         let mut req = AiRunRequest::new(
             AiPurpose::Recap,
@@ -406,10 +510,26 @@ pub async fn recap_missing_for(deps: &ChatDeps, workspace_id: &str, cancel: Arc<
             Ok(r) => r,
             Err(e) => {
                 // a cancel or a preemption by something more urgent is not a failure; anything else is counted, once, with its reason
-                if !matches!(e, crate::ai_runs::AiRunError::Cancelled | crate::ai_runs::AiRunError::Preempted) && !cancel.is_cancelled() {
+                if !matches!(
+                    e,
+                    crate::ai_runs::AiRunError::Cancelled | crate::ai_runs::AiRunError::Preempted
+                ) && !cancel.is_cancelled()
+                {
                     if let Ok(conn) = deps.conn() {
-                        let reason: String = e.to_string().split_whitespace().collect::<Vec<_>>().join(" ").chars().take(RECAP_REASON_CHARS).collect();
-                        crate::workspace_search::cards::record_recap_failure(&conn, &id, &job.source_hash, &reason);
+                        let reason: String = e
+                            .to_string()
+                            .split_whitespace()
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                            .chars()
+                            .take(RECAP_REASON_CHARS)
+                            .collect();
+                        crate::workspace_search::cards::record_recap_failure(
+                            &conn,
+                            &id,
+                            &job.source_hash,
+                            &reason,
+                        );
                     }
                 }
                 continue;
@@ -433,7 +553,11 @@ pub async fn recap_missing_for(deps: &ChatDeps, workspace_id: &str, cancel: Arc<
         // the same checks, in the transaction that writes
         let written = super::guard::atomically(
             &conn,
-            |c| !cancel.is_cancelled() && recap_job(c, workspace_id, &id, false).map_or(false, |j| j.source_hash == job.source_hash),
+            |c| {
+                !cancel.is_cancelled()
+                    && recap_job(c, workspace_id, &id, false)
+                        .map_or(false, |j| j.source_hash == job.source_hash)
+            },
             |c| put_card(c, &card).map_err(|e| e.to_string()),
         );
         if written.is_ok() {
@@ -452,11 +576,20 @@ pub const RECAP_INDEX_WAIT: std::time::Duration = std::time::Duration::from_secs
 /// backlog. Both wait at most [`RECAP_INDEX_WAIT`] and then go ahead (a meeting that is
 /// still not indexed is indexed right here). Gives up when cancelled and never works
 /// during a meeting.
-pub async fn recaps_when_ready(deps: &ChatDeps, workspace_id: &str, cancel: Arc<CancelToken>) -> usize {
+pub async fn recaps_when_ready(
+    deps: &ChatDeps,
+    workspace_id: &str,
+    cancel: Arc<CancelToken>,
+) -> usize {
     recaps_when_ready_for(deps, workspace_id, cancel, None).await
 }
 
-pub async fn recaps_when_ready_for(deps: &ChatDeps, workspace_id: &str, cancel: Arc<CancelToken>, only: Option<&str>) -> usize {
+pub async fn recaps_when_ready_for(
+    deps: &ChatDeps,
+    workspace_id: &str,
+    cancel: Arc<CancelToken>,
+    only: Option<&str>,
+) -> usize {
     recaps_when_ready_within(deps, workspace_id, cancel, only, RECAP_INDEX_WAIT).await
 }
 
@@ -474,7 +607,10 @@ pub async fn recaps_when_ready_within(
         }
         let ready = deps.conn().ok().map_or(false, |c| match only {
             Some(m) => meeting_is_indexed(&c, m),
-            None => scope_adapter::home_meetings(&c, workspace_id).ok().map(|m| scope_adapter::meeting_backlog(&c, &m)).map_or(false, |(done, total)| done >= total),
+            None => scope_adapter::home_meetings(&c, workspace_id)
+                .ok()
+                .map(|m| scope_adapter::meeting_backlog(&c, &m))
+                .map_or(false, |(done, total)| done >= total),
         });
         if ready {
             break;
@@ -518,8 +654,14 @@ mod instruction_text_tests {
     }
 
     fn vectors() -> Vec<Vector> {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("src").join("contracts").join("vectors").join("instruction_text.json");
-        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("src")
+            .join("contracts")
+            .join("vectors")
+            .join("instruction_text.json");
+        let text =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         serde_json::from_str(&text).expect("vectors are JSON")
     }
 
@@ -530,13 +672,21 @@ mod instruction_text_tests {
         for v in all {
             assert_eq!(sanitize_instruction_text(&v.input), v.output, "{}", v.name);
             // what comes out is what goes in: sanitising it again changes nothing
-            assert_eq!(sanitize_instruction_text(&v.output), v.output, "{} (second pass)", v.name);
+            assert_eq!(
+                sanitize_instruction_text(&v.output),
+                v.output,
+                "{} (second pass)",
+                v.name
+            );
         }
     }
 
     #[test]
     fn emoji_and_right_to_left_text_are_never_refused() {
-        for text in ["family \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} heart \u{2764}\u{FE0F}", "\u{05E9}\u{05DC}\u{05D5}\u{05DD} and \u{0645}\u{0631}\u{062D}\u{0628}\u{0627}"] {
+        for text in [
+            "family \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} heart \u{2764}\u{FE0F}",
+            "\u{05E9}\u{05DC}\u{05D5}\u{05DD} and \u{0645}\u{0631}\u{062D}\u{0628}\u{0627}",
+        ] {
             assert_eq!(sanitize_instruction_text(text), text);
         }
     }
@@ -550,8 +700,16 @@ mod document_text_tests {
     fn a_saved_document_keeps_code_html_and_links_and_loses_only_hidden_characters() {
         let sample = "fn first<T>(x: Vec<T>) -> Option<T> {\n    // <b>bold</b> <!-- note --> [docs](https://example.com/a \"t\")\n    x.into_iter().next()\n}\n`inline`, ```fence```, 10\u{b2}, 3\u{bd}";
         assert_eq!(clean_document_text(sample), sample);
-        assert_eq!(clean_document_text("pay\u{202e}\u{200b} now <T>"), "pay now <T>");
-        assert_eq!(clean_document_text(&"x".repeat(DOCUMENT_CAP + 5)).chars().count(), DOCUMENT_CAP);
+        assert_eq!(
+            clean_document_text("pay\u{202e}\u{200b} now <T>"),
+            "pay now <T>"
+        );
+        assert_eq!(
+            clean_document_text(&"x".repeat(DOCUMENT_CAP + 5))
+                .chars()
+                .count(),
+            DOCUMENT_CAP
+        );
         // instructions stay strict
         assert_ne!(sanitize_instruction_text(sample), sample);
     }

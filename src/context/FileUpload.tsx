@@ -58,12 +58,12 @@ export function useTauriFileDrop(
 export function describeAdd(added: number, failed: number, skipped: number): string | null {
   const parts: string[] = [];
   if (failed > 0) parts.push(`${failed} couldn't be read`);
-  if (skipped > 0) parts.push(`${skipped} ${skipped === 1 ? "isn't" : "aren't"} a PDF, text, Markdown, Word or PowerPoint file`);
+  if (skipped > 0) parts.push(`${skipped} ${skipped === 1 ? "isn't" : "aren't"} a PDF, text, Markdown, Word, PowerPoint or CSV file`);
   return parts.length ? parts.join(", ") + "." : added > 0 ? null : "Nothing was added.";
 }
 
 /**
- * "Choose files": adds PDF, text, Markdown, Word and PowerPoint files to the workspace
+ * "Choose files": adds PDF, text, Markdown, Word, PowerPoint and CSV files to the workspace
  * (library and workspace together). Dropping files on the window does the same
  * (see `useTauriFileDrop`, wired where the window's content lives).
  */
@@ -78,7 +78,7 @@ export function FileUpload({ workspaceId: given, className, compact = false }: {
     try {
       const selected = await open({
         multiple: true,
-        filters: [{ name: "Context files", extensions: ["pdf", "txt", "md", "docx", "pptx"] }],
+        filters: [{ name: "Context files", extensions: ["pdf", "txt", "md", "docx", "pptx", "csv"] }],
       });
       if (!selected) return;
       const paths = Array.isArray(selected) ? selected : [selected];
@@ -99,7 +99,7 @@ export function FileUpload({ workspaceId: given, className, compact = false }: {
     return () => clearTimeout(t);
   }, [message]);
 
-  const hint = "Up to 10 documents, 50 MB each. PDF, text, Markdown, Word or PowerPoint.";
+  const hint = "Up to 10 documents, 50 MB each. PDF, text, Markdown, Word, PowerPoint or CSV.";
   return (
     <div className={cn("w-full", className)}>
       <div className={compact ? "flex items-center gap-1" : undefined}>

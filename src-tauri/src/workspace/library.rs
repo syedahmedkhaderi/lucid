@@ -77,7 +77,11 @@ impl LibrarySnapshot {
                 kind: ItemKind::Server,
                 ref_id: s.id.clone(),
                 label: s.label.clone(),
-                detail: if s.needs_sign_in { Some("Needs sign-in".to_string()) } else { Some(kind.to_string()) },
+                detail: if s.needs_sign_in {
+                    Some("Needs sign-in".to_string())
+                } else {
+                    Some(kind.to_string())
+                },
                 status: status.to_string(),
                 tokens: None,
             });
@@ -86,13 +90,19 @@ impl LibrarySnapshot {
     }
 
     fn find(&self, kind: ItemKind, ref_id: &str) -> Option<&LibraryEntry> {
-        self.items.iter().find(|e| e.kind == kind && e.ref_id == ref_id)
+        self.items
+            .iter()
+            .find(|e| e.kind == kind && e.ref_id == ref_id)
     }
 }
 
 /// A workspace's items with the library item each points to resolved. An item
 /// the library no longer holds shows as missing.
-pub fn resolve_items(workspace_id: &str, items: &[ItemRow], library: &LibrarySnapshot) -> Vec<WorkspaceItem> {
+pub fn resolve_items(
+    workspace_id: &str,
+    items: &[ItemRow],
+    library: &LibrarySnapshot,
+) -> Vec<WorkspaceItem> {
     items
         .iter()
         .map(|item| {
@@ -102,9 +112,14 @@ pub fn resolve_items(workspace_id: &str, items: &[ItemRow], library: &LibrarySna
                 kind: item.kind,
                 ref_id: item.ref_id.clone(),
                 label: item.label.clone(),
-                name: entry.map(|e| e.label.clone()).or_else(|| item.label.clone()).unwrap_or_else(|| item.ref_id.clone()),
+                name: entry
+                    .map(|e| e.label.clone())
+                    .or_else(|| item.label.clone())
+                    .unwrap_or_else(|| item.ref_id.clone()),
                 pinned: item.pinned,
-                status: entry.map(|e| e.status.clone()).unwrap_or_else(|| "missing".to_string()),
+                status: entry
+                    .map(|e| e.status.clone())
+                    .unwrap_or_else(|| "missing".to_string()),
                 detail: entry.and_then(|e| e.detail.clone()),
                 tokens: entry.and_then(|e| e.tokens),
                 added_at: item.added_at,
@@ -115,12 +130,18 @@ pub fn resolve_items(workspace_id: &str, items: &[ItemRow], library: &LibrarySna
 
 /// The whole library with the workspaces that use each item; one that no
 /// workspace uses has an empty list and is unfiled (used nowhere).
-pub fn library_items(memberships: &HashMap<(ItemKind, String), Vec<String>>, library: &LibrarySnapshot) -> Vec<LibraryItem> {
+pub fn library_items(
+    memberships: &HashMap<(ItemKind, String), Vec<String>>,
+    library: &LibrarySnapshot,
+) -> Vec<LibraryItem> {
     library
         .items
         .iter()
         .map(|e| {
-            let workspace_ids = memberships.get(&(e.kind, e.ref_id.clone())).cloned().unwrap_or_default();
+            let workspace_ids = memberships
+                .get(&(e.kind, e.ref_id.clone()))
+                .cloned()
+                .unwrap_or_default();
             LibraryItem {
                 kind: e.kind,
                 ref_id: e.ref_id.clone(),
@@ -157,26 +178,74 @@ mod tests {
     #[test]
     fn the_library_lists_everything_with_status_and_the_workspaces_using_it() {
         let sources = PersonalSourcesConfig {
-            notes_folders: vec![NotesFolder { id: "f1".into(), label: "Vault".into(), path: "Z:/does/not/exist".into(), enabled: true }],
-            mcp_servers: vec![McpServer { id: "s1".into(), key: "s1".into(), label: "Tools".into(), enabled: false, ..Default::default() }],
+            notes_folders: vec![NotesFolder {
+                id: "f1".into(),
+                label: "Vault".into(),
+                path: "Z:/does/not/exist".into(),
+                enabled: true,
+            }],
+            mcp_servers: vec![McpServer {
+                id: "s1".into(),
+                key: "s1".into(),
+                label: "Tools".into(),
+                enabled: false,
+                ..Default::default()
+            }],
             ..Default::default()
         };
-        let lib = LibrarySnapshot::from_app(&[resource("d1", "ready"), resource("d2", "missing")], &sources);
+        let lib = LibrarySnapshot::from_app(
+            &[resource("d1", "ready"), resource("d2", "missing")],
+            &sources,
+        );
         let mut members = HashMap::new();
-        members.insert((ItemKind::Document, "d1".to_string()), vec!["general".to_string()]);
+        members.insert(
+            (ItemKind::Document, "d1".to_string()),
+            vec!["general".to_string()],
+        );
         let items = library_items(&members, &lib);
         assert_eq!(items.len(), 4);
-        let status = |id: &str| items.iter().find(|i| i.ref_id == id).unwrap().status.clone();
-        assert_eq!((status("d1").as_str(), status("d2").as_str(), status("f1").as_str(), status("s1").as_str()), ("ready", "missing", "missing", "off"));
-        assert_eq!(items.iter().find(|i| i.ref_id == "d1").unwrap().workspace_ids, vec!["general"]);
+        let status = |id: &str| {
+            items
+                .iter()
+                .find(|i| i.ref_id == id)
+                .unwrap()
+                .status
+                .clone()
+        };
+        assert_eq!(
+            (
+                status("d1").as_str(),
+                status("d2").as_str(),
+                status("f1").as_str(),
+                status("s1").as_str()
+            ),
+            ("ready", "missing", "missing", "off")
+        );
+        assert_eq!(
+            items
+                .iter()
+                .find(|i| i.ref_id == "d1")
+                .unwrap()
+                .workspace_ids,
+            vec!["general"]
+        );
         assert!(items.iter().find(|i| i.ref_id == "d2").unwrap().unfiled);
     }
 
     #[test]
     fn a_membership_of_a_vanished_item_shows_as_missing_with_its_own_label() {
         let lib = LibrarySnapshot::default();
-        let item = ItemRow { kind: ItemKind::Folder, ref_id: "gone".into(), label: Some("Old notes".into()), pinned: false, added_at: 1 };
+        let item = ItemRow {
+            kind: ItemKind::Folder,
+            ref_id: "gone".into(),
+            label: Some("Old notes".into()),
+            pinned: false,
+            added_at: 1,
+        };
         let resolved = resolve_items("w", &[item], &lib);
-        assert_eq!((resolved[0].name.as_str(), resolved[0].status.as_str()), ("Old notes", "missing"));
+        assert_eq!(
+            (resolved[0].name.as_str(), resolved[0].status.as_str()),
+            ("Old notes", "missing")
+        );
     }
 }

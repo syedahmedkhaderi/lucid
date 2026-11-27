@@ -19,8 +19,12 @@ fn err(what: &str, e: impl std::fmt::Display) -> String {
 }
 
 fn meeting_exists(conn: &Connection, id: &str) -> Result<bool, String> {
-    conn.query_row("SELECT EXISTS(SELECT 1 FROM meetings WHERE id = ?1)", params![id], |r| r.get(0))
-        .map_err(|e| err("Couldn't read the meeting", e))
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM meetings WHERE id = ?1)",
+        params![id],
+        |r| r.get(0),
+    )
+    .map_err(|e| err("Couldn't read the meeting", e))
 }
 
 /// What each of `meetings` may use from, right now. A meeting that does not
@@ -78,12 +82,16 @@ pub fn prune_after(conn: &Connection, before: &Snapshot) -> Result<(), String> {
         }
         let scope = scope_for(conn, ScopeOwner::Meeting(meeting))?;
         let now: BTreeSet<String> = scope.material_workspaces.iter().cloned().collect();
-        let now_json = serde_json::to_string(&scope.material_workspaces).map_err(|e| e.to_string())?;
+        let now_json =
+            serde_json::to_string(&scope.material_workspaces).map_err(|e| e.to_string())?;
         let (m, n) = (meeting as &dyn ToSql, &now_json as &dyn ToSql);
         // The brief summarises whatever the workspace held: if anything left, it goes.
         if !was.is_subset(&now) {
-            conn.execute("DELETE FROM meeting_briefs WHERE meeting_id = ?1", params![meeting])
-                .map_err(|e| err("Couldn't clear the brief", e))?;
+            conn.execute(
+                "DELETE FROM meeting_briefs WHERE meeting_id = ?1",
+                params![meeting],
+            )
+            .map_err(|e| err("Couldn't clear the brief", e))?;
             // The home's chats may have condensed text that quotes what left.
             clear_condensed(conn, &scope.home)?;
         }
@@ -132,7 +140,11 @@ mod tests {
     use crate::workspace::types::WorkspacePatch;
 
     fn seed(conn: &Connection, meeting: &str, home: &str) {
-        conn.execute("INSERT INTO meetings (id, title, start_time, workspace_id) VALUES (?1, 't', 'x', ?2)", params![meeting, home]).unwrap();
+        conn.execute(
+            "INSERT INTO meetings (id, title, start_time, workspace_id) VALUES (?1, 't', 'x', ?2)",
+            params![meeting, home],
+        )
+        .unwrap();
         conn.execute("INSERT INTO meeting_briefs (meeting_id, sheet_json, updated_at) VALUES (?1, 'CANARY_BRIEF', 0)", params![meeting]).unwrap();
     }
 
@@ -146,7 +158,8 @@ mod tests {
     }
 
     fn count(conn: &Connection, table: &str) -> i64 {
-        conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap()
+        conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap()
     }
 
     #[test]
@@ -161,9 +174,23 @@ mod tests {
         mark(&conn, "m", "own");
         mark(&conn, "m", "borrowed");
         set_meeting_scope(&conn, "m", &[]).unwrap();
-        assert_eq!(count(&conn, "meeting_briefs"), 0, "the brief came from material that left");
-        let left: Vec<String> = conn.prepare("SELECT point_id FROM talking_point_edits").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
-        assert_eq!(left, vec!["own"], "only the point of the home workspace stays");
+        assert_eq!(
+            count(&conn, "meeting_briefs"),
+            0,
+            "the brief came from material that left"
+        );
+        let left: Vec<String> = conn
+            .prepare("SELECT point_id FROM talking_point_edits")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            left,
+            vec!["own"],
+            "only the point of the home workspace stays"
+        );
         assert_eq!(count(&conn, "talking_point_progress"), 1);
     }
 
@@ -176,7 +203,13 @@ mod tests {
         point(&conn, "own", &a);
         mark(&conn, "m", "own");
         set_meeting_scope(&conn, "m", &[b]).unwrap();
-        assert_eq!((count(&conn, "meeting_briefs"), count(&conn, "talking_point_edits")), (1, 1));
+        assert_eq!(
+            (
+                count(&conn, "meeting_briefs"),
+                count(&conn, "talking_point_edits")
+            ),
+            (1, 1)
+        );
     }
 
     #[test]
@@ -188,7 +221,14 @@ mod tests {
         point(&conn, "from_a", &a);
         mark(&conn, "m", "from_a");
         move_meeting(&conn, "m", &b).unwrap();
-        assert_eq!((count(&conn, "meeting_briefs"), count(&conn, "talking_point_edits"), count(&conn, "talking_point_progress")), (0, 0, 0));
+        assert_eq!(
+            (
+                count(&conn, "meeting_briefs"),
+                count(&conn, "talking_point_edits"),
+                count(&conn, "talking_point_progress")
+            ),
+            (0, 0, 0)
+        );
     }
 
     #[test]
@@ -200,15 +240,43 @@ mod tests {
         point(&conn, "general_point", "general");
         mark(&conn, "m", "general_point");
         // Switching General off for A.
-        store::update_workspace(&conn, &a, WorkspacePatch { include_general: Some(false), ..Default::default() }).unwrap();
-        assert_eq!((count(&conn, "meeting_briefs"), count(&conn, "talking_point_edits")), (0, 0));
+        store::update_workspace(
+            &conn,
+            &a,
+            WorkspacePatch {
+                include_general: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                count(&conn, "meeting_briefs"),
+                count(&conn, "talking_point_edits")
+            ),
+            (0, 0)
+        );
         // Keeping a borrowed workspace separate.
         seed(&conn, "n", &a);
         point(&conn, "b_point", &b);
         set_meeting_scope(&conn, "n", &[b.clone()]).unwrap();
         mark(&conn, "n", "b_point");
-        store::update_workspace(&conn, &b, WorkspacePatch { keep_separate: Some(true), ..Default::default() }).unwrap();
-        assert_eq!((count(&conn, "meeting_briefs"), count(&conn, "talking_point_edits")), (0, 0));
+        store::update_workspace(
+            &conn,
+            &b,
+            WorkspacePatch {
+                keep_separate: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                count(&conn, "meeting_briefs"),
+                count(&conn, "talking_point_edits")
+            ),
+            (0, 0)
+        );
     }
 
     #[test]
@@ -218,8 +286,23 @@ mod tests {
         seed(&conn, "m", &a);
         point(&conn, "own", &a);
         mark(&conn, "m", "own");
-        store::update_workspace(&conn, &a, WorkspacePatch { include_general: Some(false), name: Some("Renamed".into()), ..Default::default() }).unwrap();
-        assert_eq!((count(&conn, "meeting_briefs"), count(&conn, "talking_point_edits")), (1, 1));
+        store::update_workspace(
+            &conn,
+            &a,
+            WorkspacePatch {
+                include_general: Some(false),
+                name: Some("Renamed".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                count(&conn, "meeting_briefs"),
+                count(&conn, "talking_point_edits")
+            ),
+            (1, 1)
+        );
     }
 
     #[test]
@@ -232,7 +315,13 @@ mod tests {
         set_meeting_scope(&conn, "m", &[b.clone()]).unwrap();
         mark(&conn, "m", "b_point");
         store::delete_workspace(&conn, &b, crate::workspace::types::DeleteMode::Move).unwrap();
-        assert_eq!((count(&conn, "meeting_briefs"), count(&conn, "talking_point_edits")), (0, 0));
+        assert_eq!(
+            (
+                count(&conn, "meeting_briefs"),
+                count(&conn, "talking_point_edits")
+            ),
+            (0, 0)
+        );
     }
 
     #[test]
@@ -242,11 +331,29 @@ mod tests {
         conn.execute("INSERT INTO workspace_memory (id, workspace_id, kind, status, created_at, updated_at) VALUES ('mem', 'general', 'fact', 'saved', 0, 0)", []).unwrap();
         conn.execute("INSERT INTO workspace_memory (id, workspace_id, kind, status, created_at, updated_at) VALUES ('sug', 'general', 'fact', 'suggested', 0, 0)", []).unwrap();
         let lost = material_lost(&conn, &["general".to_string()], &[a.clone()]);
-        assert_eq!(lost, vec![("memory".to_string(), "mem".to_string())], "saved only, never a suggestion");
+        assert_eq!(
+            lost,
+            vec![("memory".to_string(), "mem".to_string())],
+            "saved only, never a suggestion"
+        );
         conn.execute("INSERT INTO workspace_chats (id, workspace_id, condensed, condensed_upto, created_at, updated_at) VALUES ('c', ?1, 'quotes CANARY', 5, 0, 0)", params![a]).unwrap();
         // Switching General off for A clears its chats' condensed text.
-        store::update_workspace(&conn, &a, WorkspacePatch { include_general: Some(false), ..Default::default() }).unwrap();
-        let (text, upto): (Option<String>, Option<i64>) = conn.query_row("SELECT condensed, condensed_upto FROM workspace_chats WHERE id = 'c'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        store::update_workspace(
+            &conn,
+            &a,
+            WorkspacePatch {
+                include_general: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (text, upto): (Option<String>, Option<i64>) = conn
+            .query_row(
+                "SELECT condensed, condensed_upto FROM workspace_chats WHERE id = 'c'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
         assert_eq!((text, upto), (None, None));
     }
 
@@ -260,7 +367,11 @@ mod tests {
         // Deleting the brief fails, as a disk error would.
         conn.execute_batch("CREATE TRIGGER no_brief_delete BEFORE DELETE ON meeting_briefs BEGIN SELECT RAISE(ABORT, 'disk'); END;").unwrap();
         assert!(set_meeting_scope(&conn, "m", &[]).is_err());
-        assert_eq!(crate::workspace::store::borrowed_of(&conn, "m").unwrap(), vec![b.clone()], "the borrow was not ended");
+        assert_eq!(
+            crate::workspace::store::borrowed_of(&conn, "m").unwrap(),
+            vec![b.clone()],
+            "the borrow was not ended"
+        );
         assert_eq!(count(&conn, "meeting_briefs"), 1);
         // The same for a workspace switch: General stays on when the cleanup can't run.
         let c = new_ws(&conn, "C", true, false);
@@ -268,9 +379,26 @@ mod tests {
         point(&conn, "gp", "general");
         mark(&conn, "n", "gp");
         conn.execute_batch("DROP TRIGGER no_brief_delete; CREATE TRIGGER no_edit_delete BEFORE DELETE ON talking_point_edits BEGIN SELECT RAISE(ABORT, 'disk'); END;").unwrap();
-        assert!(store::update_workspace(&conn, &c, WorkspacePatch { include_general: Some(false), ..Default::default() }).is_err());
-        assert!(store::get_workspace(&conn, &c).unwrap().include_general, "the switch was rolled back");
-        assert_eq!((count(&conn, "meeting_briefs"), count(&conn, "talking_point_edits")), (2, 1));
+        assert!(store::update_workspace(
+            &conn,
+            &c,
+            WorkspacePatch {
+                include_general: Some(false),
+                ..Default::default()
+            }
+        )
+        .is_err());
+        assert!(
+            store::get_workspace(&conn, &c).unwrap().include_general,
+            "the switch was rolled back"
+        );
+        assert_eq!(
+            (
+                count(&conn, "meeting_briefs"),
+                count(&conn, "talking_point_edits")
+            ),
+            (2, 1)
+        );
     }
 
     #[test]
@@ -282,6 +410,12 @@ mod tests {
         file(&conn, &a, "document", "also_in_a");
         point(&conn, "gp", "general");
         let lost = material_lost(&conn, &["general".to_string()], &[a]);
-        assert_eq!(lost, vec![("document".to_string(), "only_general".to_string()), ("talking_point".to_string(), "gp".to_string())]);
+        assert_eq!(
+            lost,
+            vec![
+                ("document".to_string(), "only_general".to_string()),
+                ("talking_point".to_string(), "gp".to_string())
+            ]
+        );
     }
 }

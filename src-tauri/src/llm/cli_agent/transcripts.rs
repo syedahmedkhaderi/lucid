@@ -43,10 +43,20 @@ fn safe_name(name: &str) -> String {
     let last = name.rsplit(['/', '\\']).next().unwrap_or("");
     let cleaned: String = last
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let cleaned = cleaned.trim_start_matches('.').to_string();
-    if cleaned.is_empty() { "file".to_string() } else { cleaned }
+    if cleaned.is_empty() {
+        "file".to_string()
+    } else {
+        cleaned
+    }
 }
 
 /// The pid in a folder named `<pid>-<uuid>`.
@@ -56,7 +66,10 @@ fn owner_pid(folder_name: &str) -> Option<u32> {
 
 impl TranscriptRoot {
     pub fn new(root: PathBuf) -> Self {
-        Self { root, dirs: Mutex::new(HashMap::new()) }
+        Self {
+            root,
+            dirs: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn root(&self) -> &Path {
@@ -72,13 +85,18 @@ impl TranscriptRoot {
                 let _ = std::fs::remove_dir_all(&dir);
                 dir
             }
-            None => self.root.join(format!("{}-{}", std::process::id(), uuid::Uuid::new_v4())),
+            None => self
+                .root
+                .join(format!("{}-{}", std::process::id(), uuid::Uuid::new_v4())),
         };
         std::fs::create_dir_all(&dir)?;
         for (name, text) in files {
             std::fs::write(dir.join(safe_name(name)), text)?;
         }
-        self.dirs.lock().unwrap().insert(chat_id.to_string(), dir.clone());
+        self.dirs
+            .lock()
+            .unwrap()
+            .insert(chat_id.to_string(), dir.clone());
         Ok(dir)
     }
 
@@ -128,7 +146,9 @@ impl TranscriptRoot {
     /// Folders of this process and of another running Lucid stay. Returns how
     /// many were deleted.
     pub fn cleanup_leftovers(root: &Path) -> usize {
-        let Ok(entries) = std::fs::read_dir(root) else { return 0 };
+        let Ok(entries) = std::fs::read_dir(root) else {
+            return 0;
+        };
         let me = std::process::id();
         let mut removed = 0;
         for entry in entries.flatten() {
@@ -139,7 +159,11 @@ impl TranscriptRoot {
                 }
             }
             let path = entry.path();
-            let gone = if path.is_dir() { std::fs::remove_dir_all(&path) } else { std::fs::remove_file(&path) };
+            let gone = if path.is_dir() {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_file(&path)
+            };
             if gone.is_ok() {
                 removed += 1;
             }
@@ -175,12 +199,17 @@ mod tests {
         ];
         let dir = root.prepare("chat1", &files).unwrap();
         assert!(dir.starts_with(&tmp));
-        assert_eq!(std::fs::read_to_string(dir.join("2026-11-24_standup.txt")).unwrap(), "hello");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("2026-11-24_standup.txt")).unwrap(),
+            "hello"
+        );
         assert!(dir.join("evil.txt").exists());
         assert!(!tmp.join("evil.txt").exists());
 
         // Refilling replaces the content and keeps the folder.
-        let again = root.prepare("chat1", &[("a.txt".to_string(), "new".to_string())]).unwrap();
+        let again = root
+            .prepare("chat1", &[("a.txt".to_string(), "new".to_string())])
+            .unwrap();
         assert_eq!(again, dir);
         assert!(!dir.join("evil.txt").exists() && dir.join("a.txt").exists());
 
@@ -201,7 +230,9 @@ mod tests {
         let tmp = temp("launch");
         let root = TranscriptRoot::new(tmp.clone());
         assert!(root.launch_for("c").is_none());
-        let dir = root.prepare("c", &[("m.txt".to_string(), "t".to_string())]).unwrap();
+        let dir = root
+            .prepare("c", &[("m.txt".to_string(), "t".to_string())])
+            .unwrap();
         root.prepare("d", &[]).unwrap();
         let launch = root.launch_for("c").unwrap();
         assert_eq!(launch.add_dirs, vec![dir]);
@@ -215,7 +246,9 @@ mod tests {
     fn cleanup_deletes_dead_owners_and_strangers_and_keeps_live_ones() {
         let tmp = temp("cleanup");
         let root = TranscriptRoot::new(tmp.clone());
-        let mine = root.prepare("c", &[("a.txt".to_string(), "x".to_string())]).unwrap();
+        let mine = root
+            .prepare("c", &[("a.txt".to_string(), "x".to_string())])
+            .unwrap();
         let dead = tmp.join(format!("{}-abc", u32::MAX));
         std::fs::create_dir_all(&dead).unwrap();
         std::fs::write(dead.join("old.txt"), "stale").unwrap();

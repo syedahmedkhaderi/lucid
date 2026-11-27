@@ -1,8 +1,8 @@
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
 use std::time::Duration;
+use tauri::{AppHandle, Emitter};
 
 /// Ollama embedding HTTP client.
 pub struct OllamaEmbedder {
@@ -170,21 +170,31 @@ impl OllamaEmbedder {
                 let body = response.text().await.unwrap_or_default();
                 if body.contains("input length") || body.contains("context length") {
                     if char_limit <= 64 {
-                        return Err(format!("Ollama embed returned status 400 Bad Request: {}", body));
+                        return Err(format!(
+                            "Ollama embed returned status 400 Bad Request: {}",
+                            body
+                        ));
                     }
                     char_limit /= 2;
                     log::warn!(
                         "Ollama embed 400 context exceeded, retrying at char_limit={}. model={}",
-                        char_limit, model
+                        char_limit,
+                        model
                     );
                     continue;
                 }
-                return Err(format!("Ollama embed returned status 400 Bad Request: {}", body));
+                return Err(format!(
+                    "Ollama embed returned status 400 Bad Request: {}",
+                    body
+                ));
             }
 
             if !response.status().is_success() {
                 let status = response.status();
-                let body = response.text().await.unwrap_or_else(|_| "no body".to_string());
+                let body = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "no body".to_string());
                 return Err(format!("Ollama embed returned status {}: {}", status, body));
             }
 
@@ -198,11 +208,7 @@ impl OllamaEmbedder {
     }
 
     /// Embed a single query text with the "search_query: " prefix.
-    pub async fn embed_query(
-        &self,
-        text: &str,
-        model: &str,
-    ) -> Result<Vec<f32>, String> {
+    pub async fn embed_query(&self, text: &str, model: &str) -> Result<Vec<f32>, String> {
         crate::privacy::ensure_embedder_allowed(&self.base_url)?;
         let prefixed = format!("search_query: {}", text);
         let results = self.embed_texts(vec![prefixed], model).await?;
@@ -239,10 +245,7 @@ impl OllamaEmbedder {
             .map_err(|e| format!("Cannot connect to Ollama at {}: {}", base_url, e))?;
 
         if !response.status().is_success() {
-            return Err(format!(
-                "Ollama returned status {}",
-                response.status()
-            ));
+            return Err(format!("Ollama returned status {}", response.status()));
         }
 
         let tags: TagsResponse = response
@@ -289,10 +292,7 @@ impl OllamaEmbedder {
                 .text()
                 .await
                 .unwrap_or_else(|_| "no body".to_string());
-            return Err(format!(
-                "Ollama pull returned status {}: {}",
-                status, body
-            ));
+            return Err(format!("Ollama pull returned status {}: {}", status, body));
         }
 
         let mut stream = response.bytes_stream();
@@ -301,8 +301,8 @@ impl OllamaEmbedder {
         let mut line_buffer = String::new();
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result
-                .map_err(|e| format!("Stream read error during pull: {}", e))?;
+            let chunk =
+                chunk_result.map_err(|e| format!("Stream read error during pull: {}", e))?;
 
             let text = String::from_utf8_lossy(&chunk);
             line_buffer.push_str(&text);

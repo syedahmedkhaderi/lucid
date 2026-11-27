@@ -116,24 +116,45 @@ impl STTProvider for OrtStreamingSTT {
 
         // Discover model files by pattern (handles epoch-based naming):
         // a transducer (encoder+decoder+joiner) or a single-file CTC encoder.
-        let discovered = discover(&self.model_dir)
-            .map_err(|e| format!("Model discovery failed in {}: {}", self.model_dir.display(), e))?;
+        let discovered = discover(&self.model_dir).map_err(|e| {
+            format!(
+                "Model discovery failed in {}: {}",
+                self.model_dir.display(),
+                e
+            )
+        })?;
 
         match &discovered {
             DiscoveredModel::Transducer(files) => {
                 log::info!(
                     "OrtStreamingSTT: Discovered models in {} — encoder={}, decoder={}, joiner={}",
                     self.model_dir.display(),
-                    files.encoder.file_name().unwrap_or_default().to_string_lossy(),
-                    files.decoder.file_name().unwrap_or_default().to_string_lossy(),
-                    files.joiner.file_name().unwrap_or_default().to_string_lossy(),
+                    files
+                        .encoder
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy(),
+                    files
+                        .decoder
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy(),
+                    files
+                        .joiner
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy(),
                 );
             }
             DiscoveredModel::Ctc(files) => {
                 log::info!(
                     "OrtStreamingSTT: Discovered CTC model in {} — model={}",
                     self.model_dir.display(),
-                    files.model.file_name().unwrap_or_default().to_string_lossy(),
+                    files
+                        .model
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy(),
                 );
             }
         }
@@ -153,13 +174,7 @@ impl STTProvider for OrtStreamingSTT {
             .name("ort-stt-inference".to_string())
             .spawn(move || {
                 inference_thread_main(
-                    discovered,
-                    language,
-                    stop_flag,
-                    audio_rx,
-                    result_tx,
-                    seg_start,
-                    app_handle,
+                    discovered, language, stop_flag, audio_rx, result_tx, seg_start, app_handle,
                 );
             })?;
 
@@ -226,11 +241,7 @@ impl STTProvider for OrtStreamingSTT {
     }
 
     fn set_language(&mut self, language: &str) {
-        self.language = language
-            .split('-')
-            .next()
-            .unwrap_or(language)
-            .to_string();
+        self.language = language.split('-').next().unwrap_or(language).to_string();
         log::info!("OrtStreamingSTT: Language set to {}", self.language);
     }
 }
@@ -240,8 +251,8 @@ impl STTProvider for OrtStreamingSTT {
 fn load_tokens(path: &std::path::Path) -> Result<HashMap<i64, String>, String> {
     use std::io::{BufRead, BufReader};
 
-    let file = std::fs::File::open(path)
-        .map_err(|e| format!("Failed to open tokens file: {}", e))?;
+    let file =
+        std::fs::File::open(path).map_err(|e| format!("Failed to open tokens file: {}", e))?;
     let reader = BufReader::new(file);
 
     let mut tokens = HashMap::new();
@@ -277,9 +288,7 @@ fn detokenize(token_ids: &[i64], vocab: &HashMap<i64, String>) -> String {
             continue;
         }
         if let Some(text) = vocab.get(&id) {
-            let cleaned = text
-                .replace('\u{2581}', " ")
-                .replace("▁", " ");
+            let cleaned = text.replace('\u{2581}', " ").replace("▁", " ");
             result.push_str(&cleaned);
         }
     }
@@ -358,10 +367,15 @@ impl EncoderStateManager {
                         // Dynamic dim (-1): infer from input name convention.
                         // NeMo/Parakeet models use "audio_signal" with 128-dim features.
                         // Most zipformer/conformer models use 80-dim features.
-                        feature_dim = if name.contains("audio_signal") { 128 } else { 80 };
+                        feature_dim = if name.contains("audio_signal") {
+                            128
+                        } else {
+                            80
+                        };
                         log::info!(
                             "OrtStreamingSTT: dynamic feature dim on '{}', inferred feature_dim={}",
-                            name, feature_dim
+                            name,
+                            feature_dim
                         );
                     }
                     // Extract the required time dimension (shape[1])
@@ -369,9 +383,7 @@ impl EncoderStateManager {
                     if time_dim > 0 {
                         required_chunk_frames = time_dim as usize;
                     }
-                } else if shape.len() == 1
-                    && (name.contains("len") || name == "x_lens")
-                {
+                } else if shape.len() == 1 && (name.contains("len") || name == "x_lens") {
                     lens_input_name = Some(name);
                 } else {
                     state_input_names.push(name);
@@ -446,12 +458,24 @@ impl EncoderStateManager {
         // Default to 39 if model has dynamic shape (0 or negative)
         if required_chunk_frames == 0 {
             required_chunk_frames = 39;
-            log::info!("EncoderState: dynamic time dim, defaulting to {} frames", required_chunk_frames);
+            log::info!(
+                "EncoderState: dynamic time dim, defaulting to {} frames",
+                required_chunk_frames
+            );
         }
 
-        let i64_count = states.values().filter(|s| matches!(s, StateTensor::I64(_))).count();
-        let i32_count = states.values().filter(|s| matches!(s, StateTensor::I32(_))).count();
-        let f32_count = states.values().filter(|s| matches!(s, StateTensor::F32(_))).count();
+        let i64_count = states
+            .values()
+            .filter(|s| matches!(s, StateTensor::I64(_)))
+            .count();
+        let i32_count = states
+            .values()
+            .filter(|s| matches!(s, StateTensor::I32(_)))
+            .count();
+        let f32_count = states
+            .values()
+            .filter(|s| matches!(s, StateTensor::F32(_)))
+            .count();
         log::info!(
             "EncoderState: audio='{}', lens={:?}, {} state pairs ({} f32, {} i32, {} i64), {} encoder outputs, chunk={}frames, feature_dim={}",
             audio_input_name,
@@ -661,8 +685,14 @@ fn inference_thread_main(
         DiscoveredModel::Transducer(files) => files,
         DiscoveredModel::Ctc(_) => {
             if let Err(error) = ctc::run(
-                &mut encoder, &tokens, &language,
-                &stop_flag, &audio_rx, &result_tx, segment_counter_start, &debug,
+                &mut encoder,
+                &tokens,
+                &language,
+                &stop_flag,
+                &audio_rx,
+                &result_tx,
+                segment_counter_start,
+                &debug,
             ) {
                 debug("error", &format!("NeMo CTC inference failed: {error}"));
             }
@@ -687,8 +717,16 @@ fn inference_thread_main(
 
     if encoder.inputs().first().map(|input| input.name()) == Some("audio_signal") {
         if let Err(error) = nemo::run(
-            &mut encoder, &mut decoder, &mut joiner, &tokens, &language,
-            &stop_flag, &audio_rx, &result_tx, segment_counter_start, &debug,
+            &mut encoder,
+            &mut decoder,
+            &mut joiner,
+            &tokens,
+            &language,
+            &stop_flag,
+            &audio_rx,
+            &result_tx,
+            segment_counter_start,
+            &debug,
         ) {
             debug("error", &format!("NeMo TDT inference failed: {error}"));
         }
@@ -709,10 +747,7 @@ fn inference_thread_main(
     let mut state_mgr = match EncoderStateManager::discover(&encoder) {
         Ok(s) => s,
         Err(e) => {
-            debug(
-                "error",
-                &format!("Encoder state discovery failed: {}", e),
-            );
+            debug("error", &format!("Encoder state discovery failed: {}", e));
             return;
         }
     };
@@ -721,10 +756,7 @@ fn inference_thread_main(
     let mut decoder_state_mgr = match DecoderStateManager::discover(&decoder) {
         Ok(s) => s,
         Err(e) => {
-            debug(
-                "error",
-                &format!("Decoder state discovery failed: {}", e),
-            );
+            debug("error", &format!("Decoder state discovery failed: {}", e));
             return;
         }
     };
@@ -858,11 +890,13 @@ fn inference_thread_main(
             // Process each encoder output frame through the transducer
             for enc_frame in &encoder_frames {
                 // Run decoder on current context (with LSTM state management)
-                let decoder_out = match decoder_state_mgr.run_decoder(&mut decoder, &emitted_tokens) {
+                let decoder_out = match decoder_state_mgr.run_decoder(&mut decoder, &emitted_tokens)
+                {
                     Ok(out) => out,
                     Err(e) => {
                         let now = std::time::Instant::now();
-                        if last_decoder_error.map_or(true, |t| now.duration_since(t).as_secs() >= 5) {
+                        if last_decoder_error.map_or(true, |t| now.duration_since(t).as_secs() >= 5)
+                        {
                             debug("error", &format!("Decoder error: {}", e));
                             last_decoder_error = Some(now);
                         }
@@ -883,9 +917,7 @@ fn inference_thread_main(
                 let top_token = logits
                     .iter()
                     .enumerate()
-                    .max_by(|(_, a), (_, b)| {
-                        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-                    })
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                     .map(|(idx, _)| idx as i64)
                     .unwrap_or(BLANK_ID);
 
@@ -1176,8 +1208,9 @@ impl DecoderStateManager {
                         .map_err(|e| format!("decoder token tensor: {}", e))?;
                     input_values.push((name.clone().into(), tensor.into()));
                 } else {
-                    let arr = ndarray::Array2::from_shape_vec((1, self.context_len), context.clone())
-                        .map_err(|e| format!("decoder token shape: {}", e))?;
+                    let arr =
+                        ndarray::Array2::from_shape_vec((1, self.context_len), context.clone())
+                            .map_err(|e| format!("decoder token shape: {}", e))?;
                     let tensor = Tensor::from_array(arr)
                         .map_err(|e| format!("decoder token tensor: {}", e))?;
                     input_values.push((name.clone().into(), tensor.into()));
@@ -1228,31 +1261,40 @@ impl DecoderStateManager {
                     let is_i64 = matches!(self.states.get(input_name), Some(StateTensor::I64(_)));
                     let is_i32 = matches!(self.states.get(input_name), Some(StateTensor::I32(_)));
                     let new_state = if is_i64 {
-                        let (shape, data) = outputs[out_idx]
-                            .try_extract_tensor::<i64>()
-                            .map_err(|e| format!("decoder state out '{}' (i64): {}", output_name, e))?;
+                        let (shape, data) =
+                            outputs[out_idx].try_extract_tensor::<i64>().map_err(|e| {
+                                format!("decoder state out '{}' (i64): {}", output_name, e)
+                            })?;
                         let dims: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
                         StateTensor::I64(
                             ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&dims), data.to_vec())
-                                .map_err(|e| format!("decoder state reshape '{}': {}", input_name, e))?,
+                                .map_err(|e| {
+                                format!("decoder state reshape '{}': {}", input_name, e)
+                            })?,
                         )
                     } else if is_i32 {
-                        let (shape, data) = outputs[out_idx]
-                            .try_extract_tensor::<i32>()
-                            .map_err(|e| format!("decoder state out '{}' (i32): {}", output_name, e))?;
+                        let (shape, data) =
+                            outputs[out_idx].try_extract_tensor::<i32>().map_err(|e| {
+                                format!("decoder state out '{}' (i32): {}", output_name, e)
+                            })?;
                         let dims: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
                         StateTensor::I32(
                             ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&dims), data.to_vec())
-                                .map_err(|e| format!("decoder state reshape '{}': {}", input_name, e))?,
+                                .map_err(|e| {
+                                format!("decoder state reshape '{}': {}", input_name, e)
+                            })?,
                         )
                     } else {
-                        let (shape, data) = outputs[out_idx]
-                            .try_extract_tensor::<f32>()
-                            .map_err(|e| format!("decoder state out '{}' (f32): {}", output_name, e))?;
+                        let (shape, data) =
+                            outputs[out_idx].try_extract_tensor::<f32>().map_err(|e| {
+                                format!("decoder state out '{}' (f32): {}", output_name, e)
+                            })?;
                         let dims: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
                         StateTensor::F32(
                             ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&dims), data.to_vec())
-                                .map_err(|e| format!("decoder state reshape '{}': {}", input_name, e))?,
+                                .map_err(|e| {
+                                format!("decoder state reshape '{}': {}", input_name, e)
+                            })?,
                         )
                     };
                     self.states.insert(input_name.clone(), new_state);
@@ -1382,7 +1424,8 @@ mod discovery_tests {
 
     /// A fresh directory holding empty files with the given names.
     fn model_dir(name: &str, files: &[&str]) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("nexq-ort-discover-{}-{}", name, std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("nexq-ort-discover-{}-{}", name, std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         for file in files {
@@ -1393,7 +1436,15 @@ mod discovery_tests {
 
     #[test]
     fn a_transducer_directory_is_discovered_as_a_transducer() {
-        let dir = model_dir("transducer", &["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"]);
+        let dir = model_dir(
+            "transducer",
+            &[
+                "encoder.int8.onnx",
+                "decoder.int8.onnx",
+                "joiner.int8.onnx",
+                "tokens.txt",
+            ],
+        );
         assert!(matches!(discover(&dir), Ok(DiscoveredModel::Transducer(_))));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1408,7 +1459,9 @@ mod discovery_tests {
     #[test]
     fn an_empty_directory_reports_both_layouts() {
         let dir = model_dir("empty", &[]);
-        let error = discover(&dir).err().expect("an empty directory has no model");
+        let error = discover(&dir)
+            .err()
+            .expect("an empty directory has no model");
         assert!(error.contains("encoder"), "{error}");
         assert!(error.contains("model.onnx"), "{error}");
         let _ = std::fs::remove_dir_all(&dir);
@@ -1449,7 +1502,12 @@ mod live_tests {
             let (tx, mut rx) = mpsc::channel(256);
             stt.start_stream(tx).await.expect("start");
             for chunk in samples.chunks(1600) {
-                let chunk = AudioChunk { pcm_data: chunk.to_vec(), source: AudioSource::System, timestamp_ms: 0, is_speech: true };
+                let chunk = AudioChunk {
+                    pcm_data: chunk.to_vec(),
+                    source: AudioSource::System,
+                    timestamp_ms: 0,
+                    is_speech: true,
+                };
                 stt.feed_audio(chunk).await.expect("feed");
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
@@ -1460,7 +1518,10 @@ mod live_tests {
             while let Ok(result) = rx.try_recv() {
                 println!("language tag: {:?}", result.language);
                 if language.as_deref() == Some("auto") {
-                    assert_eq!(result.language, None, "Auto-detect must not tag a line with a language");
+                    assert_eq!(
+                        result.language, None,
+                        "Auto-detect must not tag a line with a language"
+                    );
                 }
                 texts.push(result.text);
             }

@@ -41,8 +41,8 @@ impl ProcessTree {
                 &info as *const _ as *const core::ffi::c_void,
                 std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
             );
-            let assigned = set.is_ok()
-                && AssignProcessToJobObject(job, HANDLE(child.as_raw_handle())).is_ok();
+            let assigned =
+                set.is_ok() && AssignProcessToJobObject(job, HANDLE(child.as_raw_handle())).is_ok();
             if assigned {
                 Self { job: Some(job) }
             } else {

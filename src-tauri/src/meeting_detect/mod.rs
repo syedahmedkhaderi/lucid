@@ -20,7 +20,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use tauri::{command, AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    command, AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
 
 use crate::state::AppState;
 pub use rules::{DetectedMeeting, MeetingDetectionConfig};
@@ -35,7 +37,11 @@ pub struct MeetingPromptInfo {
 
 fn prompt_info(meeting: DetectedMeeting) -> MeetingPromptInfo {
     let config = with_detector(|d| d.config.clone());
-    MeetingPromptInfo { meeting, auto_dismiss_secs: config.auto_dismiss_secs, default_scenario: config.default_scenario }
+    MeetingPromptInfo {
+        meeting,
+        auto_dismiss_secs: config.auto_dismiss_secs,
+        default_scenario: config.default_scenario,
+    }
 }
 use rules::{Tracker, TrackerEvent};
 
@@ -53,42 +59,51 @@ static DETECTOR: Mutex<Option<Detector>> = Mutex::new(None);
 
 fn with_detector<T>(f: impl FnOnce(&mut Detector) -> T) -> T {
     let mut guard = DETECTOR.lock().unwrap_or_else(|e| e.into_inner());
-    let det = guard.get_or_insert_with(|| Detector { config: MeetingDetectionConfig::default(), tracker: Tracker::default() });
+    let det = guard.get_or_insert_with(|| Detector {
+        config: MeetingDetectionConfig::default(),
+        tracker: Tracker::default(),
+    });
     f(det)
 }
 
 /// Start the background detector (once, from setup).
 pub fn start(app: &AppHandle) {
     let app = app.clone();
-    let spawned = std::thread::Builder::new().name("meeting-detect".into()).spawn(move || {
-        #[cfg(target_os = "windows")]
-        unsafe {
-            use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
-            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-        }
-        loop {
-            let interval = with_detector(|d| d.config.check_interval());
-            std::thread::sleep(interval);
-            let config = with_detector(|d| d.config.clone());
-            let meeting_active = app.state::<AppState>().meeting_active.load(Ordering::SeqCst);
-            // Sampling is skipped while off; while Lucid records the tracker still
-            // follows the call so it doesn't prompt for it once Lucid stops.
-            let seen = if config.enabled {
-                let capturing = probe::capturing_processes();
-                if rules::may_be_call(&capturing) {
-                    rules::detect(&capturing, &probe::visible_windows(), &config)
+    let spawned = std::thread::Builder::new()
+        .name("meeting-detect".into())
+        .spawn(move || {
+            #[cfg(target_os = "windows")]
+            unsafe {
+                use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
+                let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            }
+            loop {
+                let interval = with_detector(|d| d.config.check_interval());
+                std::thread::sleep(interval);
+                let config = with_detector(|d| d.config.clone());
+                let meeting_active = app
+                    .state::<AppState>()
+                    .meeting_active
+                    .load(Ordering::SeqCst);
+                // Sampling is skipped while off; while Lucid records the tracker still
+                // follows the call so it doesn't prompt for it once Lucid stops.
+                let seen = if config.enabled {
+                    let capturing = probe::capturing_processes();
+                    if rules::may_be_call(&capturing) {
+                        rules::detect(&capturing, &probe::visible_windows(), &config)
+                    } else {
+                        None
+                    }
                 } else {
                     None
+                };
+                let events =
+                    with_detector(|d| d.tracker.tick(Instant::now(), seen, meeting_active));
+                for event in events {
+                    handle(&app, event);
                 }
-            } else {
-                None
-            };
-            let events = with_detector(|d| d.tracker.tick(Instant::now(), seen, meeting_active));
-            for event in events {
-                handle(&app, event);
             }
-        }
-    });
+        });
     if let Err(e) = spawned {
         log::warn!("Meeting detection unavailable: {e}");
     }
@@ -97,7 +112,11 @@ pub fn start(app: &AppHandle) {
 fn handle(app: &AppHandle, event: TrackerEvent) {
     match event {
         TrackerEvent::Prompt(meeting) => {
-            log::info!("Meeting detected: {} ({:?})", meeting.app_name, meeting.title);
+            log::info!(
+                "Meeting detected: {} ({:?})",
+                meeting.app_name,
+                meeting.title
+            );
             if let Err(e) = show_prompt(app) {
                 log::warn!("Couldn't show the meeting prompt: {e}");
             }
@@ -116,18 +135,22 @@ fn prompt_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let Some(w) = app.get_webview_window(PROMPT_WINDOW) {
         return Ok(w);
     }
-    WebviewWindowBuilder::new(app, PROMPT_WINDOW, WebviewUrl::App("index.html?view=meeting-prompt".into()))
-        .title("Lucid — meeting detected")
-        .inner_size(PROMPT_WIDTH, PROMPT_HEIGHT)
-        .resizable(false)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(false)
-        .visible(false)
-        .build()
+    WebviewWindowBuilder::new(
+        app,
+        PROMPT_WINDOW,
+        WebviewUrl::App("index.html?view=meeting-prompt".into()),
+    )
+    .title("Lucid — meeting detected")
+    .inner_size(PROMPT_WIDTH, PROMPT_HEIGHT)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(false)
+    .visible(false)
+    .build()
 }
 
 /// Show the prompt at the top center of the primary screen, without taking

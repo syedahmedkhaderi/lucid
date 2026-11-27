@@ -51,7 +51,11 @@ pub fn decide(req: &ServerRequest, policy: &CodexPolicy) -> Verdict {
         ServerRequest::CommandApproval { .. } => Verdict::Deny("commands are not allowed"),
         ServerRequest::FileChangeApproval { .. } => Verdict::Deny("file changes are not allowed"),
         ServerRequest::PermissionsApproval => Verdict::Deny("extra permissions are not allowed"),
-        ServerRequest::McpElicitation { server, message, meta } => decide_mcp(server, message, meta, policy),
+        ServerRequest::McpElicitation {
+            server,
+            message,
+            meta,
+        } => decide_mcp(server, message, meta, policy),
         ServerRequest::UserInput => Verdict::Deny("no one to ask"),
         ServerRequest::DynamicToolCall => Verdict::Deny("no client tools"),
         ServerRequest::AuthTokensRefresh => Verdict::Deny("Lucid does not manage Codex sign-in"),
@@ -63,7 +67,8 @@ pub fn decide(req: &ServerRequest, policy: &CodexPolicy) -> Verdict {
 pub fn tool_allowed(allowed: &HashSet<String>, server: &str, tool: &str) -> bool {
     !server.is_empty()
         && !tool.is_empty()
-        && (allowed.contains(&format!("mcp__{server}__{tool}")) || allowed.contains(&format!("mcp__{server}__*")))
+        && (allowed.contains(&format!("mcp__{server}__{tool}"))
+            || allowed.contains(&format!("mcp__{server}__*")))
 }
 
 /// Codex asks before an MCP tool call through an elicitation whose `_meta`
@@ -82,7 +87,10 @@ fn decide_mcp(server: &str, message: &str, meta: &Value, policy: &CodexPolicy) -
         }
     }
     candidates.extend(quoted(message));
-    if candidates.iter().any(|tool| tool_allowed(&policy.allowed_tools, server, tool)) {
+    if candidates
+        .iter()
+        .any(|tool| tool_allowed(&policy.allowed_tools, server, tool))
+    {
         Verdict::Allow
     } else {
         Verdict::Deny("tool not allowed")
@@ -91,7 +99,12 @@ fn decide_mcp(server: &str, message: &str, meta: &Value, policy: &CodexPolicy) -
 
 /// The `"..."` substrings of `text`.
 fn quoted(text: &str) -> Vec<String> {
-    text.split('"').skip(1).step_by(2).map(str::to_string).filter(|s| !s.is_empty()).collect()
+    text.split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 #[cfg(test)]
@@ -101,11 +114,17 @@ mod tests {
     use serde_json::json;
 
     fn elicitation(server: &str, message: &str, meta: Value) -> ServerRequest {
-        ServerRequest::McpElicitation { server: server.into(), message: message.into(), meta }
+        ServerRequest::McpElicitation {
+            server: server.into(),
+            message: message.into(),
+            meta,
+        }
     }
 
     fn policy(tools: &[&str]) -> CodexPolicy {
-        CodexPolicy { allowed_tools: tools.iter().map(|t| t.to_string()).collect() }
+        CodexPolicy {
+            allowed_tools: tools.iter().map(|t| t.to_string()).collect(),
+        }
     }
 
     fn verdict(req: &ServerRequest, p: &CodexPolicy) -> Verdict {
@@ -126,10 +145,29 @@ mod tests {
         let everything = policy(&["mcp__nexq_notes__read_note", "mcp__mira__*"]);
         for legacy in [false, true] {
             for (command, actions) in [
-                ("type D:\\notes\\a.md", vec![CommandAction::Read { path: "D:\\notes\\a.md".into() }]),
-                ("rg falcon D:\\notes", vec![CommandAction::Search { query: Some("falcon".into()), path: None }]),
-                ("dir D:\\notes", vec![CommandAction::ListFiles { path: Some("D:\\notes".into()) }]),
-                ("powershell -Command Remove-Item x", vec![CommandAction::Unknown]),
+                (
+                    "type D:\\notes\\a.md",
+                    vec![CommandAction::Read {
+                        path: "D:\\notes\\a.md".into(),
+                    }],
+                ),
+                (
+                    "rg falcon D:\\notes",
+                    vec![CommandAction::Search {
+                        query: Some("falcon".into()),
+                        path: None,
+                    }],
+                ),
+                (
+                    "dir D:\\notes",
+                    vec![CommandAction::ListFiles {
+                        path: Some("D:\\notes".into()),
+                    }],
+                ),
+                (
+                    "powershell -Command Remove-Item x",
+                    vec![CommandAction::Unknown],
+                ),
                 ("", vec![]),
             ] {
                 let req = ServerRequest::CommandApproval {
@@ -138,7 +176,11 @@ mod tests {
                     cwd: Some("C:\\sandbox".into()),
                     actions,
                 };
-                assert_eq!(verdict(&req, &everything), Verdict::Deny("commands are not allowed"), "{command}");
+                assert_eq!(
+                    verdict(&req, &everything),
+                    Verdict::Deny("commands are not allowed"),
+                    "{command}"
+                );
             }
         }
     }
@@ -162,13 +204,24 @@ mod tests {
     #[test]
     fn an_allowed_mcp_tool_is_approved() {
         let req = tool_approval("mira", "kb_search");
-        assert_eq!(verdict(&req, &policy(&["mcp__mira__kb_search"])), Verdict::Allow);
+        assert_eq!(
+            verdict(&req, &policy(&["mcp__mira__kb_search"])),
+            Verdict::Allow
+        );
         // A whole server.
         assert_eq!(verdict(&req, &policy(&["mcp__mira__*"])), Verdict::Allow);
         // The notes server's tools.
-        let notes = policy(&["mcp__nexq_notes__list_notes", "mcp__nexq_notes__search_notes", "mcp__nexq_notes__read_note"]);
+        let notes = policy(&[
+            "mcp__nexq_notes__list_notes",
+            "mcp__nexq_notes__search_notes",
+            "mcp__nexq_notes__read_note",
+        ]);
         for tool in ["list_notes", "search_notes", "read_note"] {
-            assert_eq!(verdict(&tool_approval("nexq_notes", tool), &notes), Verdict::Allow, "{tool}");
+            assert_eq!(
+                verdict(&tool_approval("nexq_notes", tool), &notes),
+                Verdict::Allow,
+                "{tool}"
+            );
         }
         assert!(!verdict(&tool_approval("nexq_notes", "write_note"), &notes).is_allow());
     }
@@ -189,20 +242,32 @@ mod tests {
         );
         assert!(!verdict(&req, &policy(&["mcp__mira__kb_search"])).is_allow());
         // Nor can a server called like ours borrow our tools.
-        assert!(!verdict(&tool_approval("nexq", "notes__read_note"), &policy(&["mcp__nexq_notes__read_note"])).is_allow());
+        assert!(!verdict(
+            &tool_approval("nexq", "notes__read_note"),
+            &policy(&["mcp__nexq_notes__read_note"])
+        )
+        .is_allow());
     }
 
     #[test]
     fn a_form_from_a_server_is_never_answered() {
         let req = elicitation("mira", "Please enter your password", json!({}));
         assert!(!verdict(&req, &policy(&["mcp__mira__*"])).is_allow());
-        let other_kind = elicitation("mira", "\"kb_search\"", json!({ "codex_approval_kind": "something_else" }));
+        let other_kind = elicitation(
+            "mira",
+            "\"kb_search\"",
+            json!({ "codex_approval_kind": "something_else" }),
+        );
         assert!(!verdict(&other_kind, &policy(&["mcp__mira__*"])).is_allow());
     }
 
     #[test]
     fn no_tool_name_means_no() {
-        let req = elicitation("mira", "Allow it?", json!({ "codex_approval_kind": "mcp_tool_call" }));
+        let req = elicitation(
+            "mira",
+            "Allow it?",
+            json!({ "codex_approval_kind": "mcp_tool_call" }),
+        );
         assert!(!verdict(&req, &policy(&["mcp__mira__*"])).is_allow());
     }
 }

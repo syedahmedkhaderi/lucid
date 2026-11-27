@@ -7,7 +7,10 @@
 //! * `poll()` / `prepare()` / `complete()` let an actor keep feeding lines
 //!   while the call is in flight (lines queue, one run at a time).
 
-use crate::live_common::{fmt_clock, PauseReason, estimate_tokens, speech_units_x2, Clock, LlmCall, LlmError, LlmErrorKind, LlmReply, LlmRequest, RunState};
+use crate::live_common::{
+    estimate_tokens, fmt_clock, speech_units_x2, Clock, LlmCall, LlmError, LlmErrorKind, LlmReply,
+    LlmRequest, PauseReason, RunState,
+};
 use crate::live_notes::doc::NoteDoc;
 use crate::live_notes::ops::{parse_ops, ParseMode};
 use crate::live_notes::prompts::{notes_system, notes_user, transcript_line, NotesPromptOptions};
@@ -155,9 +158,33 @@ pub struct NotesEngine<L: LlmCall, C: Clock> {
 pub const MAX_PENDING_WORDS: usize = 40_000;
 
 impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
-    pub fn new(llm: L, clock: C, cfg: NotesConfig, sink: Arc<dyn NotesSink>, store: Arc<dyn NotesStore>) -> Self {
+    pub fn new(
+        llm: L,
+        clock: C,
+        cfg: NotesConfig,
+        sink: Arc<dyn NotesSink>,
+        store: Arc<dyn NotesStore>,
+    ) -> Self {
         let trigger = NotesTrigger::new(cfg.trigger.clone());
-        Self { llm, clock, cfg, trigger, doc: NoteDoc::new(), pending: Vec::new(), sink, store, last_error: None, last_code: "", last_outcome: None, final_note: None, done: false, dropped_lines: 0, sent_tokens_total: 0, pending_words: 0, nonce: crate::prompt_data::new_nonce() }
+        Self {
+            llm,
+            clock,
+            cfg,
+            trigger,
+            doc: NoteDoc::new(),
+            pending: Vec::new(),
+            sink,
+            store,
+            last_error: None,
+            last_code: "",
+            last_outcome: None,
+            final_note: None,
+            done: false,
+            dropped_lines: 0,
+            sent_tokens_total: 0,
+            pending_words: 0,
+            nonce: crate::prompt_data::new_nonce(),
+        }
     }
 
     /// Continue from saved notes (app restart, resumed meeting).
@@ -215,7 +242,9 @@ impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
             self.pending.push(line);
             while self.pending_words > MAX_PENDING_WORDS && self.pending.len() > 1 {
                 let old = self.pending.remove(0);
-                self.pending_words = self.pending_words.saturating_sub(speech_units_x2(&old.text) as usize / 2);
+                self.pending_words = self
+                    .pending_words
+                    .saturating_sub(speech_units_x2(&old.text) as usize / 2);
                 self.dropped_lines += 1;
             }
         }
@@ -277,18 +306,26 @@ impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
             take += 1;
         }
         let lines: Vec<TranscriptLine> = self.pending.drain(..take).collect();
-        let taken_words: usize = lines.iter().map(|l| speech_units_x2(&l.text) as usize / 2).sum();
+        let taken_words: usize = lines
+            .iter()
+            .map(|l| speech_units_x2(&l.text) as usize / 2)
+            .sum();
         self.pending_words = self.pending_words.saturating_sub(taken_words);
         let leftover_units: u32 = self.pending.iter().map(|l| speech_units_x2(&l.text)).sum();
         if leftover_units > 0 {
             self.trigger.give_back(leftover_units);
         }
-        let taken = Taken { units_x2: total.units_x2.saturating_sub(leftover_units) };
+        let taken = Taken {
+            units_x2: total.units_x2.saturating_sub(leftover_units),
+        };
 
         let from_ms = lines.first().map(|l| l.ms / 1000 * 1000).unwrap_or(0);
         let to_ms = lines.last().map(|l| l.ms).unwrap_or(from_ms).max(from_ms);
         let outline = self.doc.outline(self.cfg.outline_budget);
-        let rendered: Vec<String> = lines.iter().map(|l| transcript_line(l.ms, &l.speaker, &l.text)).collect();
+        let rendered: Vec<String> = lines
+            .iter()
+            .map(|l| transcript_line(l.ms, &l.speaker, &l.text))
+            .collect();
         let system = notes_system(&self.cfg.prompt, &self.nonce);
         let user = notes_user(&self.nonce, &outline, &rendered, from_ms, to_ms);
         let lines_tokens: u32 = rendered.iter().map(|r| estimate_tokens(r)).sum();
@@ -312,20 +349,31 @@ impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
     }
 
     fn counted(&self, reply: &LlmReply, p: &PreparedRun) -> (u64, u64) {
-        let out = reply.output_tokens.unwrap_or_else(|| estimate_tokens(&reply.text)) as u64;
+        let out = reply
+            .output_tokens
+            .unwrap_or_else(|| estimate_tokens(&reply.text)) as u64;
         let counted_in = match reply.input_tokens {
             Some(i) => {
                 let cached = reply.cached_input_tokens.unwrap_or(0);
-                (i.saturating_sub(cached).saturating_sub(p.outline_tokens + p.system_tokens)).max(p.lines_tokens) as u64
+                (i.saturating_sub(cached)
+                    .saturating_sub(p.outline_tokens + p.system_tokens))
+                .max(p.lines_tokens) as u64
             }
             None => p.lines_tokens as u64,
         };
-        let sent = reply.input_tokens.map(|i| i as u64).unwrap_or((p.system_tokens + p.outline_tokens + p.lines_tokens) as u64) + out;
+        let sent = reply
+            .input_tokens
+            .map(|i| i as u64)
+            .unwrap_or((p.system_tokens + p.outline_tokens + p.lines_tokens) as u64)
+            + out;
         (counted_in + out, sent)
     }
 
     fn restore(&mut self, mut lines: Vec<TranscriptLine>) {
-        self.pending_words += lines.iter().map(|l| speech_units_x2(&l.text) as usize / 2).sum::<usize>();
+        self.pending_words += lines
+            .iter()
+            .map(|l| speech_units_x2(&l.text) as usize / 2)
+            .sum::<usize>();
         lines.append(&mut self.pending);
         self.pending = lines;
     }
@@ -349,18 +397,40 @@ impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
                     self.restore(p.lines);
                     let msg = "The model's answer could not be read as notes".to_string();
                     self.last_error = Some(msg.clone());
-                    RunOutcome { reason: p.reason, ok: false, mode: ParseMode::None, report: None, counted_tokens: counted, sent_tokens: sent, error: Some(msg), cap_reached: false }
+                    RunOutcome {
+                        reason: p.reason,
+                        ok: false,
+                        mode: ParseMode::None,
+                        report: None,
+                        counted_tokens: counted,
+                        sent_tokens: sent,
+                        error: Some(msg),
+                        cap_reached: false,
+                    }
                 } else {
-                    let ctx = ReduceCtx { range_start_ms: p.from_ms, range_end_ms: p.to_ms };
+                    let ctx = ReduceCtx {
+                        range_start_ms: p.from_ms,
+                        range_end_ms: p.to_ms,
+                    };
                     let report = apply_ops(&mut self.doc, parsed.ops, ctx, &self.cfg.reduce);
-                    self.doc.covered_to = Some(self.doc.covered_to.map_or(p.to_ms, |c| c.max(p.to_ms)));
+                    self.doc.covered_to =
+                        Some(self.doc.covered_to.map_or(p.to_ms, |c| c.max(p.to_ms)));
                     let cap = self.trigger.end_ok(counted);
                     self.last_error = None;
                     self.sink.doc(&self.doc, &report);
                     if cap {
                         self.sink.cap_reached();
                     }
-                    RunOutcome { reason: p.reason, ok: true, mode: parsed.mode, report: Some(report), counted_tokens: counted, sent_tokens: sent, error: None, cap_reached: cap }
+                    RunOutcome {
+                        reason: p.reason,
+                        ok: true,
+                        mode: parsed.mode,
+                        report: Some(report),
+                        counted_tokens: counted,
+                        sent_tokens: sent,
+                        error: None,
+                        cap_reached: cap,
+                    }
                 }
             }
             Err(e) => {
@@ -424,7 +494,9 @@ impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
 
     /// Poll, run if due, apply. None when nothing was due.
     pub async fn tick(&mut self) -> Option<RunOutcome> {
-        let Decision::Run(reason) = self.poll() else { return None };
+        let Decision::Run(reason) = self.poll() else {
+            return None;
+        };
         let prepared = self.prepare(reason)?;
         let result = self.llm.call(&prepared.request).await;
         Some(self.complete(prepared, result))
@@ -450,13 +522,18 @@ impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
             return ("manual".into(), None);
         }
         if let Some(e) = failed {
-            if !matches!(self.trigger.guard.state, RunState::CapReached | RunState::Paused(PauseReason::PlanLimit)) {
+            if !matches!(
+                self.trigger.guard.state,
+                RunState::CapReached | RunState::Paused(PauseReason::PlanLimit)
+            ) {
                 return ("error".into(), Some(e));
             }
         }
         match self.trigger.guard.state {
             RunState::CapReached => ("limit".into(), None),
-            RunState::Paused(PauseReason::PlanLimit) => ("plan_limit".into(), self.last_error.clone()),
+            RunState::Paused(PauseReason::PlanLimit) => {
+                ("plan_limit".into(), self.last_error.clone())
+            }
             RunState::Paused(PauseReason::Failures) => ("error".into(), self.last_error.clone()),
             RunState::Paused(PauseReason::User) => ("paused".into(), None),
             RunState::Stopped => ("stopped".into(), None),
@@ -528,8 +605,12 @@ impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
         let mut outcome = None;
         while run_final {
             self.trigger.request_final();
-            let Decision::Run(reason) = self.poll() else { break };
-            let Some(prepared) = self.prepare(reason) else { break };
+            let Decision::Run(reason) = self.poll() else {
+                break;
+            };
+            let Some(prepared) = self.prepare(reason) else {
+                break;
+            };
             let left = self.cfg.final_timeout.saturating_sub(started.elapsed());
             if left.is_zero() {
                 self.abort(prepared);
@@ -561,7 +642,9 @@ impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
                 retried = true;
             }
             RunState::Paused(PauseReason::Failures) => {
-                why = Some("Not tried again at the end: the provider needs a key or a sign-in".into());
+                why = Some(
+                    "Not tried again at the end: the provider needs a key or a sign-in".into(),
+                );
             }
             RunState::Paused(PauseReason::PlanLimit) => {
                 why = Some("Not tried again at the end: the plan's usage limit was reached".into());
@@ -584,11 +667,23 @@ impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
     /// After the passes: marks what is not covered, says how the notes ended and saves them as done.
     /// `forced` names an end the passes did not reach by themselves (`kind`, lead of the note):
     /// another meeting started, the person stopped it.
-    pub fn conclude(&mut self, run_final: bool, retried: bool, mut why: Option<String>, outcome: Option<RunOutcome>, forced: Option<(&str, String)>) {
+    pub fn conclude(
+        &mut self,
+        run_final: bool,
+        retried: bool,
+        mut why: Option<String>,
+        outcome: Option<RunOutcome>,
+        forced: Option<(&str, String)>,
+    ) {
         if retried {
             why = Some(match &outcome {
-                Some(o) if o.ok => "Tried once more at the end after earlier errors: it worked".to_string(),
-                Some(o) => format!("Tried once more at the end after earlier errors: {}", o.error.clone().unwrap_or_else(|| "it failed".into())),
+                Some(o) if o.ok => {
+                    "Tried once more at the end after earlier errors: it worked".to_string()
+                }
+                Some(o) => format!(
+                    "Tried once more at the end after earlier errors: {}",
+                    o.error.clone().unwrap_or_else(|| "it failed".into())
+                ),
                 None => "Nothing was left to send at the end".to_string(),
             });
         }
@@ -600,28 +695,49 @@ impl<L: LlmCall, C: Clock> NotesEngine<L, C> {
             } else if !run_final {
                 "Notes were on manual".to_string()
             } else {
-                why.take().unwrap_or_else(|| match self.trigger.guard.state {
-                    RunState::CapReached => "The token limit was reached".to_string(),
-                    RunState::Paused(PauseReason::User) => "The notes were paused".to_string(),
-                    RunState::Stopped => "The notes were stopped".to_string(),
-                    RunState::Paused(PauseReason::Failures) => self.last_error.clone().map(|e| format!("The notes stopped after errors: {e}")).unwrap_or_else(|| "The notes stopped after errors".to_string()),
-                    RunState::Paused(PauseReason::PlanLimit) => "The plan's usage limit was reached".to_string(),
-                    RunState::Running => outcome.as_ref().filter(|o| !o.ok).and_then(|o| o.error.clone()).filter(|e| e != "cancelled").map(|e| format!("The last pass failed: {e}")).unwrap_or_else(|| "The end of the meeting came first".to_string()),
-                })
+                why.take()
+                    .unwrap_or_else(|| match self.trigger.guard.state {
+                        RunState::CapReached => "The token limit was reached".to_string(),
+                        RunState::Paused(PauseReason::User) => "The notes were paused".to_string(),
+                        RunState::Stopped => "The notes were stopped".to_string(),
+                        RunState::Paused(PauseReason::Failures) => self
+                            .last_error
+                            .clone()
+                            .map(|e| format!("The notes stopped after errors: {e}"))
+                            .unwrap_or_else(|| "The notes stopped after errors".to_string()),
+                        RunState::Paused(PauseReason::PlanLimit) => {
+                            "The plan's usage limit was reached".to_string()
+                        }
+                        RunState::Running => outcome
+                            .as_ref()
+                            .filter(|o| !o.ok)
+                            .and_then(|o| o.error.clone())
+                            .filter(|e| e != "cancelled")
+                            .map(|e| format!("The last pass failed: {e}"))
+                            .unwrap_or_else(|| "The end of the meeting came first".to_string()),
+                    })
             };
             why = Some(format!("{lead}. Not covered: {range}"));
         }
         if why.is_some() {
             self.final_note = why;
         }
-        let failed = outcome.as_ref().filter(|o| !o.ok).and_then(|o| o.error.clone()).filter(|e| e != "cancelled");
+        let failed = outcome
+            .as_ref()
+            .filter(|o| !o.ok)
+            .and_then(|o| o.error.clone())
+            .filter(|e| e != "cancelled");
         let kind = match forced {
-            Some((kind, lead)) if self.doc.uncovered.is_some() => (kind.to_string(), Some(lead).filter(|l| !l.is_empty())),
+            Some((kind, lead)) if self.doc.uncovered.is_some() => {
+                (kind.to_string(), Some(lead).filter(|l| !l.is_empty()))
+            }
             _ => self.ended_kind(run_final, failed),
         };
         // "covered" with nothing written says so honestly: the runs found nothing to note, or nothing was said
         self.doc.ended = if kind.0 == "covered" && self.doc.blocks.is_empty() {
-            self.doc.covered_to.map(|_| ("nothing_to_note".to_string(), None))
+            self.doc
+                .covered_to
+                .map(|_| ("nothing_to_note".to_string(), None))
         } else {
             Some(kind)
         };
@@ -647,12 +763,19 @@ pub(crate) mod test_support {
 
     impl MockLlm {
         pub fn new(replies: Vec<Result<LlmReply, LlmError>>) -> Self {
-            Self { replies: Mutex::new(replies.into()), requests: Mutex::new(vec![]), delay: Duration::ZERO }
+            Self {
+                replies: Mutex::new(replies.into()),
+                requests: Mutex::new(vec![]),
+                delay: Duration::ZERO,
+            }
         }
     }
 
     pub fn reply(text: &str) -> Result<LlmReply, LlmError> {
-        Ok(LlmReply { text: text.into(), ..Default::default() })
+        Ok(LlmReply {
+            text: text.into(),
+            ..Default::default()
+        })
     }
 
     #[async_trait]
@@ -662,7 +785,12 @@ pub(crate) mod test_support {
             if !self.delay.is_zero() {
                 tokio::time::sleep(self.delay).await;
             }
-            self.replies.lock().unwrap().pop_front().unwrap_or_else(|| Ok(LlmReply { text: "{\"ops\":[]}".into(), ..Default::default() }))
+            self.replies.lock().unwrap().pop_front().unwrap_or_else(|| {
+                Ok(LlmReply {
+                    text: "{\"ops\":[]}".into(),
+                    ..Default::default()
+                })
+            })
         }
     }
 
@@ -696,7 +824,11 @@ pub(crate) mod test_support {
     }
 
     pub fn line(ms: u64, text: &str) -> TranscriptLine {
-        TranscriptLine { ms, speaker: "Them".into(), text: text.into() }
+        TranscriptLine {
+            ms,
+            speaker: "Them".into(),
+            text: text.into(),
+        }
     }
 }
 
@@ -708,14 +840,30 @@ mod tests {
     use crate::live_notes::doc::BlockKind;
 
     fn words(n: usize) -> String {
-        (0..n).map(|i| format!("w{i}")).collect::<Vec<_>>().join(" ")
+        (0..n)
+            .map(|i| format!("w{i}"))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
-    fn engine(replies: Vec<Result<LlmReply, LlmError>>) -> (NotesEngine<MockLlm, FakeClock>, FakeClock, Arc<RecSink>, Arc<RecStore>) {
+    fn engine(
+        replies: Vec<Result<LlmReply, LlmError>>,
+    ) -> (
+        NotesEngine<MockLlm, FakeClock>,
+        FakeClock,
+        Arc<RecSink>,
+        Arc<RecStore>,
+    ) {
         let clock = FakeClock::new(0);
         let sink = Arc::new(RecSink::default());
         let store = Arc::new(RecStore::default());
-        let e = NotesEngine::new(MockLlm::new(replies), clock.clone(), NotesConfig::default(), sink.clone(), store.clone());
+        let e = NotesEngine::new(
+            MockLlm::new(replies),
+            clock.clone(),
+            NotesConfig::default(),
+            sink.clone(),
+            store.clone(),
+        );
         (e, clock, sink, store)
     }
 
@@ -762,7 +910,9 @@ mod tests {
     async fn user_edits_survive_the_next_run() {
         let (mut e, clock, _s, _st) = engine(vec![
             reply(OPS1),
-            reply(r#"{"ops":[{"op":"update","id":"b2","text":"Model rewrite of the decision"},{"op":"update","id":"b1","text":"Model title"}]}"#),
+            reply(
+                r#"{"ops":[{"op":"update","id":"b2","text":"Model rewrite of the decision"},{"op":"update","id":"b1","text":"Model title"}]}"#,
+            ),
         ]);
         e.feed(line(0, &words(120)));
         clock.set(5_000);
@@ -794,7 +944,11 @@ mod tests {
 
     #[tokio::test]
     async fn unreadable_output_counts_as_failure_and_lines_return() {
-        let (mut e, clock, sink, _st) = engine(vec![reply("I'm sorry, I can't do that."), reply("Sorry again"), reply("Nothing here")]);
+        let (mut e, clock, sink, _st) = engine(vec![
+            reply("I'm sorry, I can't do that."),
+            reply("Sorry again"),
+            reply("Nothing here"),
+        ]);
         e.feed(line(0, &words(120)));
         for i in 0..3 {
             clock.set(5_000 + i * 25_000);
@@ -802,10 +956,20 @@ mod tests {
             assert!(!out.ok, "i={i}");
             assert!(e.status().pending_words >= 120);
         }
-        assert!(matches!(e.state(), RunState::Paused(crate::live_common::PauseReason::Failures)));
+        assert!(matches!(
+            e.state(),
+            RunState::Paused(crate::live_common::PauseReason::Failures)
+        ));
         clock.set(200_000);
         assert!(e.tick().await.is_none());
-        assert!(sink.statuses.lock().unwrap().last().unwrap().last_error.is_some());
+        assert!(sink
+            .statuses
+            .lock()
+            .unwrap()
+            .last()
+            .unwrap()
+            .last_error
+            .is_some());
         e.resume();
         assert!(matches!(e.state(), RunState::Running));
     }
@@ -822,12 +986,25 @@ mod tests {
 
     #[tokio::test]
     async fn plan_limit_pauses_and_error_is_kept() {
-        let (mut e, clock, sink, _st) = engine(vec![Err(LlmError::plan_limit("Usage limit reached"))]);
+        let (mut e, clock, sink, _st) =
+            engine(vec![Err(LlmError::plan_limit("Usage limit reached"))]);
         e.feed(line(0, &words(120)));
         clock.set(5_000);
         e.tick().await.unwrap();
-        assert!(matches!(e.state(), RunState::Paused(crate::live_common::PauseReason::PlanLimit)));
-        assert_eq!(sink.statuses.lock().unwrap().last().unwrap().last_error.as_deref(), Some("Usage limit reached"));
+        assert!(matches!(
+            e.state(),
+            RunState::Paused(crate::live_common::PauseReason::PlanLimit)
+        ));
+        assert_eq!(
+            sink.statuses
+                .lock()
+                .unwrap()
+                .last()
+                .unwrap()
+                .last_error
+                .as_deref(),
+            Some("Usage limit reached")
+        );
         assert_eq!(e.status().pending_words, 120);
     }
 
@@ -837,7 +1014,12 @@ mod tests {
         let sink = Arc::new(RecSink::default());
         let mut cfg = NotesConfig::default();
         cfg.trigger.cap_tokens = 50;
-        let llm = MockLlm::new(vec![Ok(LlmReply { text: OPS1.into(), input_tokens: Some(2000), output_tokens: Some(100), cached_input_tokens: Some(1000) })]);
+        let llm = MockLlm::new(vec![Ok(LlmReply {
+            text: OPS1.into(),
+            input_tokens: Some(2000),
+            output_tokens: Some(100),
+            cached_input_tokens: Some(1000),
+        })]);
         let mut e = NotesEngine::new(llm, clock.clone(), cfg, sink.clone(), Arc::new(NullStore));
         e.feed(line(0, &words(150)));
         clock.set(5_000);
@@ -856,12 +1038,21 @@ mod tests {
     #[tokio::test]
     async fn counted_tokens_exclude_cached_and_outline() {
         let (mut e, clock, _s, _st) = engine(vec![]);
-        e.llm.replies.lock().unwrap().push_back(Ok(LlmReply { text: OPS1.into(), input_tokens: Some(1500), output_tokens: Some(80), cached_input_tokens: Some(1200) }));
+        e.llm.replies.lock().unwrap().push_back(Ok(LlmReply {
+            text: OPS1.into(),
+            input_tokens: Some(1500),
+            output_tokens: Some(80),
+            cached_input_tokens: Some(1200),
+        }));
         e.feed(line(0, &words(120)));
         clock.set(5_000);
         let out = e.tick().await.unwrap();
         // 1500 - 1200 cached = 300 minus system+outline (~300) -> floored at the new lines
-        assert!(out.counted_tokens >= 80 && out.counted_tokens < 600, "{}", out.counted_tokens);
+        assert!(
+            out.counted_tokens >= 80 && out.counted_tokens < 600,
+            "{}",
+            out.counted_tokens
+        );
         assert_eq!(out.sent_tokens, 1580);
     }
 
@@ -876,7 +1067,11 @@ mod tests {
             Decision::Run(r) => e.prepare(r).unwrap(),
             _ => panic!(),
         };
-        assert!(estimate_tokens(&p.request.user) < 3_800, "{}", estimate_tokens(&p.request.user));
+        assert!(
+            estimate_tokens(&p.request.user) < 3_800,
+            "{}",
+            estimate_tokens(&p.request.user)
+        );
         assert!(e.status().pending_words > 0, "rest stays queued");
         e.complete(p, reply("{\"ops\":[]}"));
     }
@@ -894,7 +1089,10 @@ mod tests {
         let clock2 = FakeClock::new(0);
         let mut llm = MockLlm::new(vec![reply(OPS1)]);
         llm.delay = Duration::from_millis(300);
-        let cfg = NotesConfig { final_timeout: Duration::from_millis(20), ..Default::default() };
+        let cfg = NotesConfig {
+            final_timeout: Duration::from_millis(20),
+            ..Default::default()
+        };
         let mut e2 = NotesEngine::new(llm, clock2, cfg, Arc::new(NullSink), Arc::new(NullStore));
         e2.feed(line(0, &words(10)));
         let t0 = std::time::Instant::now();
@@ -911,9 +1109,16 @@ mod tests {
         }
         let out = e.finish().await.expect("final pass");
         assert!(out.ok);
-        assert!(e.llm.requests.lock().unwrap().len() > 1, "a backlog bigger than one piece needs more than one run");
+        assert!(
+            e.llm.requests.lock().unwrap().len() > 1,
+            "a backlog bigger than one piece needs more than one run"
+        );
         assert_eq!(e.status().pending_words, 0, "everything was sent");
-        assert!(e.final_note.is_none(), "{:?}: nothing is left uncovered", e.final_note);
+        assert!(
+            e.final_note.is_none(),
+            "{:?}: nothing is left uncovered",
+            e.final_note
+        );
     }
 
     #[tokio::test]
@@ -942,15 +1147,32 @@ mod tests {
             clock.set(5_000 + i * 25_000);
             e.tick().await.unwrap();
         }
-        assert!(matches!(e.state(), RunState::Paused(crate::live_common::PauseReason::Failures)));
+        assert!(matches!(
+            e.state(),
+            RunState::Paused(crate::live_common::PauseReason::Failures)
+        ));
         let out = e.finish().await.expect("one last try");
         assert!(out.ok && out.reason == RunReason::Final);
-        assert!(e.final_note.as_deref().unwrap().contains("it worked"), "{:?}", e.final_note);
+        assert!(
+            e.final_note.as_deref().unwrap().contains("it worked"),
+            "{:?}",
+            e.final_note
+        );
         assert_eq!(e.llm.requests.lock().unwrap().len(), 4);
         // no key: not tried again, and it says why
         let (mut k, clock, _s, _st) = engine(vec![]);
-        let no_key = || Err(LlmError { kind: LlmErrorKind::Failed, message: "no key".into(), code: "no_key" });
-        k.llm.replies.lock().unwrap().extend([no_key(), no_key(), no_key()]);
+        let no_key = || {
+            Err(LlmError {
+                kind: LlmErrorKind::Failed,
+                message: "no key".into(),
+                code: "no_key",
+            })
+        };
+        k.llm
+            .replies
+            .lock()
+            .unwrap()
+            .extend([no_key(), no_key(), no_key()]);
         k.feed(line(0, &words(120)));
         for i in 0..3 {
             clock.set(5_000 + i * 25_000);
@@ -973,18 +1195,38 @@ mod tests {
         let clock = FakeClock::new(0);
         let mut cfg = NotesConfig::default();
         cfg.trigger.cap_tokens = 50;
-        let bad = |_: u8| Ok(LlmReply { text: "I cannot help".into(), input_tokens: Some(5_000), output_tokens: Some(100), cached_input_tokens: Some(0) });
+        let bad = |_: u8| {
+            Ok(LlmReply {
+                text: "I cannot help".into(),
+                input_tokens: Some(5_000),
+                output_tokens: Some(100),
+                cached_input_tokens: Some(0),
+            })
+        };
         let llm = MockLlm::new(vec![bad(0), bad(1), bad(2), reply(OPS1)]);
-        let mut e = NotesEngine::new(llm, clock.clone(), cfg, Arc::new(NullSink), Arc::new(NullStore));
+        let mut e = NotesEngine::new(
+            llm,
+            clock.clone(),
+            cfg,
+            Arc::new(NullSink),
+            Arc::new(NullStore),
+        );
         e.feed(line(0, &words(120)));
         clock.set(5_000);
         let out = e.tick().await.unwrap();
         assert!(!out.ok);
-        assert_eq!(e.state(), RunState::CapReached, "an unreadable answer that used tokens passed the cap");
+        assert_eq!(
+            e.state(),
+            RunState::CapReached,
+            "an unreadable answer that used tokens passed the cap"
+        );
         e.request_manual();
         clock.set(60_000);
         assert!(e.tick().await.is_none());
-        assert!(e.finish().await.is_none(), "not even the end-of-meeting pass");
+        assert!(
+            e.finish().await.is_none(),
+            "not even the end-of-meeting pass"
+        );
         assert_eq!(e.llm.requests.lock().unwrap().len(), 1);
     }
 }

@@ -392,7 +392,9 @@ mod contract {
     use serde_json::Value;
 
     fn keys<T: Serialize>(value: &T) -> Vec<String> {
-        let Value::Object(map) = serde_json::to_value(value).unwrap() else { panic!("not an object") };
+        let Value::Object(map) = serde_json::to_value(value).unwrap() else {
+            panic!("not an object")
+        };
         let mut keys: Vec<String> = map.keys().cloned().collect();
         keys.sort();
         keys
@@ -445,9 +447,24 @@ mod contract {
     #[test]
     fn summary_detail_and_item_match_types_ts() {
         let base = [
-            "id", "name", "icon", "color", "description", "include_general", "keep_separate", "default_scenario",
-            "is_default", "pinned", "archived", "sort", "meeting_count", "chat_count", "item_count", "last_activity",
-            "created_at", "updated_at",
+            "id",
+            "name",
+            "icon",
+            "color",
+            "description",
+            "include_general",
+            "keep_separate",
+            "default_scenario",
+            "is_default",
+            "pinned",
+            "archived",
+            "sort",
+            "meeting_count",
+            "chat_count",
+            "item_count",
+            "last_activity",
+            "created_at",
+            "updated_at",
         ];
         assert_eq!(keys(&summary()), expect(&base));
         let detail = WorkspaceDetail {
@@ -459,9 +476,26 @@ mod contract {
             items: vec![],
         };
         let mut with_detail = base.to_vec();
-        with_detail.extend(["instructions", "recaps_with_ai", "suggest_memory", "brief_enabled", "items"]);
+        with_detail.extend([
+            "instructions",
+            "recaps_with_ai",
+            "suggest_memory",
+            "brief_enabled",
+            "items",
+        ]);
         assert_eq!(keys(&detail), expect(&with_detail));
-        let item_keys = ["workspace_id", "kind", "ref_id", "label", "name", "pinned", "status", "detail", "tokens", "added_at"];
+        let item_keys = [
+            "workspace_id",
+            "kind",
+            "ref_id",
+            "label",
+            "name",
+            "pinned",
+            "status",
+            "detail",
+            "tokens",
+            "added_at",
+        ];
         assert_eq!(keys(&item(ItemKind::Document)), expect(&item_keys));
         assert_eq!(keys(&item(ItemKind::Folder)), expect(&item_keys));
     }
@@ -478,10 +512,33 @@ mod contract {
             workspace_ids: vec![],
             unfiled: true,
         };
-        assert_eq!(keys(&lib), expect(&["kind", "ref_id", "name", "status", "detail", "tokens", "workspace_ids", "unfiled"]));
-        let scope = MeetingScope { meeting_id: "m".into(), home: "h".into(), borrowed: vec![], effective: vec![] };
-        assert_eq!(keys(&scope), expect(&["meeting_id", "home", "borrowed", "effective"]));
-        let page = WorkspaceMeetingPage { meetings: vec![], total: 0 };
+        assert_eq!(
+            keys(&lib),
+            expect(&[
+                "kind",
+                "ref_id",
+                "name",
+                "status",
+                "detail",
+                "tokens",
+                "workspace_ids",
+                "unfiled"
+            ])
+        );
+        let scope = MeetingScope {
+            meeting_id: "m".into(),
+            home: "h".into(),
+            borrowed: vec![],
+            effective: vec![],
+        };
+        assert_eq!(
+            keys(&scope),
+            expect(&["meeting_id", "home", "borrowed", "effective"])
+        );
+        let page = WorkspaceMeetingPage {
+            meetings: vec![],
+            total: 0,
+        };
         assert_eq!(keys(&page), expect(&["meetings", "total"]));
         let point = TalkingPoint {
             id: "p".into(),
@@ -497,11 +554,30 @@ mod contract {
         };
         assert_eq!(
             keys(&point),
-            expect(&["id", "workspace_id", "title", "doc_json", "markdown", "plain_text", "in_context", "sort", "created_at", "updated_at"])
+            expect(&[
+                "id",
+                "workspace_id",
+                "title",
+                "doc_json",
+                "markdown",
+                "plain_text",
+                "in_context",
+                "sort",
+                "created_at",
+                "updated_at"
+            ])
         );
-        let said = PointSaid { block_id: "b".into(), by: "voice".into(), ticked: true };
+        let said = PointSaid {
+            block_id: "b".into(),
+            by: "voice".into(),
+            ticked: true,
+        };
         assert_eq!(keys(&said), expect(&["block_id", "by", "ticked"]));
-        let progress = PointProgress { meeting_id: "m".into(), point_id: "p".into(), said: vec![said] };
+        let progress = PointProgress {
+            meeting_id: "m".into(),
+            point_id: "p".into(),
+            said: vec![said],
+        };
         assert_eq!(keys(&progress), expect(&["meeting_id", "point_id", "said"]));
         let memory = MemoryItem {
             id: "i".into(),
@@ -518,16 +594,31 @@ mod contract {
         };
         assert_eq!(
             keys(&memory),
-            expect(&["id", "workspace_id", "kind", "title", "text", "source_meeting", "source_ms", "status", "created_at", "updated_at", "unsupported"])
+            expect(&[
+                "id",
+                "workspace_id",
+                "kind",
+                "title",
+                "text",
+                "source_meeting",
+                "source_ms",
+                "status",
+                "created_at",
+                "updated_at",
+                "unsupported"
+            ])
         );
     }
 
     #[test]
     fn inputs_accept_what_types_ts_sends() {
-        let input: CreateWorkspaceInput = serde_json::from_str(r#"{"name":"A","icon":null,"color":"teal"}"#).unwrap();
+        let input: CreateWorkspaceInput =
+            serde_json::from_str(r#"{"name":"A","icon":null,"color":"teal"}"#).unwrap();
         assert!(!input.include_general && !input.keep_separate);
-        let patch: WorkspacePatch =
-            serde_json::from_str(r#"{"recaps_with_ai":true,"suggest_memory":false,"default_scenario":null}"#).unwrap();
+        let patch: WorkspacePatch = serde_json::from_str(
+            r#"{"recaps_with_ai":true,"suggest_memory":false,"default_scenario":null}"#,
+        )
+        .unwrap();
         assert_eq!(patch.recaps_with_ai, Some(true));
         assert_eq!(patch.default_scenario, Some(None));
         let item: ItemPatch = serde_json::from_str(r#"{"label":null,"pinned":true}"#).unwrap();

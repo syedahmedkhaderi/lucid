@@ -168,7 +168,11 @@ pub fn test_device(device_id: &str) -> Result<bool, String> {
     if let Ok(device) = find_output_device(device_id) {
         match device.default_output_config() {
             Ok(config) => {
-                log::info!("Output device '{}' supports config: {:?}", device_id, config);
+                log::info!(
+                    "Output device '{}' supports config: {:?}",
+                    device_id,
+                    config
+                );
                 return Ok(true);
             }
             Err(e) => {

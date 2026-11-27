@@ -13,22 +13,86 @@ use super::test_support::{add_meeting, mem_db};
 use super::{PassageKind, SearchScope};
 
 const ENTITIES: [&str; 32] = [
-    "Kestrel", "Halvorsen", "Bluefin", "Orchid", "Tamarack", "Zephyr", "Marigold", "Obsidian", "Quasar",
-    "Saffron", "Juniper", "Lodestar", "Mercury", "Nimbus", "Paragon", "Redwood", "Sapphire", "Tundra",
-    "Umbra", "Vesper", "Wisteria", "Xylem", "Yarrow", "Zenith", "Aurora", "Basalt", "Cinder", "Drumlin",
-    "Ember", "Fathom", "Garnet", "Harbor",
+    "Kestrel",
+    "Halvorsen",
+    "Bluefin",
+    "Orchid",
+    "Tamarack",
+    "Zephyr",
+    "Marigold",
+    "Obsidian",
+    "Quasar",
+    "Saffron",
+    "Juniper",
+    "Lodestar",
+    "Mercury",
+    "Nimbus",
+    "Paragon",
+    "Redwood",
+    "Sapphire",
+    "Tundra",
+    "Umbra",
+    "Vesper",
+    "Wisteria",
+    "Xylem",
+    "Yarrow",
+    "Zenith",
+    "Aurora",
+    "Basalt",
+    "Cinder",
+    "Drumlin",
+    "Ember",
+    "Fathom",
+    "Garnet",
+    "Harbor",
 ];
 const TOPICS: [&str; 32] = [
-    "freight contract", "security audit", "pilot cohort", "tender deadline", "onboarding flow",
-    "data retention", "pricing tier", "office lease", "vendor invoice", "launch checklist",
-    "training budget", "support rota", "warehouse migration", "partner webinar", "compliance review",
-    "mobile release", "hiring plan", "demo environment", "cloud spend", "brand refresh",
-    "outage postmortem", "loyalty program", "sales kickoff", "legal hold", "patch window",
-    "customer survey", "api deprecation", "budget forecast", "design sprint", "insurance renewal",
-    "reseller agreement", "capacity plan",
+    "freight contract",
+    "security audit",
+    "pilot cohort",
+    "tender deadline",
+    "onboarding flow",
+    "data retention",
+    "pricing tier",
+    "office lease",
+    "vendor invoice",
+    "launch checklist",
+    "training budget",
+    "support rota",
+    "warehouse migration",
+    "partner webinar",
+    "compliance review",
+    "mobile release",
+    "hiring plan",
+    "demo environment",
+    "cloud spend",
+    "brand refresh",
+    "outage postmortem",
+    "loyalty program",
+    "sales kickoff",
+    "legal hold",
+    "patch window",
+    "customer survey",
+    "api deprecation",
+    "budget forecast",
+    "design sprint",
+    "insurance renewal",
+    "reseller agreement",
+    "capacity plan",
 ];
-const OWNERS: [&str; 8] = ["Dana", "Ravi", "Mei", "Tomas", "Aisha", "Lars", "Priya", "Jonas"];
-const MONTHS: [&str; 8] = ["January", "March", "April", "June", "August", "September", "October", "December"];
+const OWNERS: [&str; 8] = [
+    "Dana", "Ravi", "Mei", "Tomas", "Aisha", "Lars", "Priya", "Jonas",
+];
+const MONTHS: [&str; 8] = [
+    "January",
+    "March",
+    "April",
+    "June",
+    "August",
+    "September",
+    "October",
+    "December",
+];
 
 const FILLER: [&str; 24] = [
     "Let us go through the agenda and make sure everyone has the latest numbers.",
@@ -79,24 +143,63 @@ const ZH_FILLER: [&str; 6] = [
 
 /// (fact sentences, question) per CJK meeting.
 const JP: [(&str, &str, &str); 6] = [
-    ("来月のゴールドマン案件の契約更新は三月十日までに完了する予定です。", "", "ゴールドマン案件の契約更新はいつまでですか？"),
-    ("新しい物流倉庫の移転は第四四半期に延期され、予算は八百万円です。", "", "物流倉庫の移転はいつに延期されましたか？"),
-    ("セキュリティ監査の担当者は田中さんで、報告書は五月末が期限です。", "", "セキュリティ監査の担当は誰ですか？"),
-    ("採用面接の日程は来週の火曜日と木曜日に調整しました。", "", "採用面接はいつ行いますか？"),
-    ("顧客満足度調査の結果は平均四点二でした。", "", "顧客満足度調査の結果はどうでしたか？"),
-    ("新製品のベータ版リリースは七月十五日に決まりました。", "", "ベータ版のリリース日はいつですか？"),
+    (
+        "来月のゴールドマン案件の契約更新は三月十日までに完了する予定です。",
+        "",
+        "ゴールドマン案件の契約更新はいつまでですか？",
+    ),
+    (
+        "新しい物流倉庫の移転は第四四半期に延期され、予算は八百万円です。",
+        "",
+        "物流倉庫の移転はいつに延期されましたか？",
+    ),
+    (
+        "セキュリティ監査の担当者は田中さんで、報告書は五月末が期限です。",
+        "",
+        "セキュリティ監査の担当は誰ですか？",
+    ),
+    (
+        "採用面接の日程は来週の火曜日と木曜日に調整しました。",
+        "",
+        "採用面接はいつ行いますか？",
+    ),
+    (
+        "顧客満足度調査の結果は平均四点二でした。",
+        "",
+        "顧客満足度調査の結果はどうでしたか？",
+    ),
+    (
+        "新製品のベータ版リリースは七月十五日に決まりました。",
+        "",
+        "ベータ版のリリース日はいつですか？",
+    ),
 ];
 const ZH: [(&str, &str); 4] = [
-    ("供应商审核将在四月完成，预算上限是二十万元。", "供应商审核什么时候完成？"),
-    ("新产品的发布日期推迟到六月十二日。", "新产品发布日期是什么时候？"),
-    ("客户培训计划由王芳负责，下个月开始。", "客户培训计划谁负责？"),
-    ("服务器迁移需要在周末停机四个小时。", "服务器迁移要停机多久？"),
+    (
+        "供应商审核将在四月完成，预算上限是二十万元。",
+        "供应商审核什么时候完成？",
+    ),
+    (
+        "新产品的发布日期推迟到六月十二日。",
+        "新产品发布日期是什么时候？",
+    ),
+    (
+        "客户培训计划由王芳负责，下个月开始。",
+        "客户培训计划谁负责？",
+    ),
+    (
+        "服务器迁移需要在周末停机四个小时。",
+        "服务器迁移要停机多久？",
+    ),
 ];
 
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 33
     }
     fn pick(&mut self, n: usize) -> usize {
@@ -123,9 +226,14 @@ pub fn build_fixture() -> Fixture {
         let owner = OWNERS[i % OWNERS.len()];
         let month = MONTHS[(i * 3) % MONTHS.len()];
         let amount = 12 + (i * 7) % 90;
-        let f1 = format!("{owner} will own the {entity} {topic} and the deadline is {month} {}.", 3 + i % 25);
+        let f1 = format!(
+            "{owner} will own the {entity} {topic} and the deadline is {month} {}.",
+            3 + i % 25
+        );
         let f2 = format!("We agreed the {entity} {topic} budget is {amount}000 dollars.");
-        let mut lines: Vec<String> = (0..60).map(|_| FILLER[rng.pick(FILLER.len())].to_string()).collect();
+        let mut lines: Vec<String> = (0..60)
+            .map(|_| FILLER[rng.pick(FILLER.len())].to_string())
+            .collect();
         // decoy: another meeting's topic phrase without its entity
         let decoy_topic = TOPICS[(i + 5) % 32];
         lines[7] = format!("Someone should look at the {decoy_topic} at some point.");
@@ -134,11 +242,27 @@ pub fn build_fixture() -> Fixture {
         let rows: Vec<(String, String, i64)> = lines
             .into_iter()
             .enumerate()
-            .map(|(n, t)| ((if n % 2 == 0 { "You" } else { "Them" }).to_string(), t, n as i64 * 6000))
+            .map(|(n, t)| {
+                (
+                    (if n % 2 == 0 { "You" } else { "Them" }).to_string(),
+                    t,
+                    n as i64 * 6000,
+                )
+            })
             .collect();
-        let refs: Vec<(&str, &str, i64)> = rows.iter().map(|(s, t, ms)| (s.as_str(), t.as_str(), *ms)).collect();
+        let refs: Vec<(&str, &str, i64)> = rows
+            .iter()
+            .map(|(s, t, ms)| (s.as_str(), t.as_str(), *ms))
+            .collect();
         let day = 1 + (i * 11) % 28;
-        add_meeting(&conn, &id, &format!("Sync {i}"), &format!("2026-0{}-{day:02}T10:00:00Z", 1 + i % 9), None, &refs);
+        add_meeting(
+            &conn,
+            &id,
+            &format!("Sync {i}"),
+            &format!("2026-0{}-{day:02}T10:00:00Z", 1 + i % 9),
+            None,
+            &refs,
+        );
         // question styles rotate: entity+topic, topic only, entity only paraphrase
         if i < 16 {
             let q = match i % 4 {
@@ -153,40 +277,83 @@ pub fn build_fixture() -> Fixture {
     }
     for (i, (fact, _, q)) in JP.iter().enumerate() {
         let id = format!("jp{i}");
-        let mut lines: Vec<String> = (0..40).map(|_| JP_FILLER[rng.pick(JP_FILLER.len())].to_string()).collect();
+        let mut lines: Vec<String> = (0..40)
+            .map(|_| JP_FILLER[rng.pick(JP_FILLER.len())].to_string())
+            .collect();
         lines[15] = fact.to_string();
         let rows: Vec<(String, String, i64)> = lines
             .into_iter()
             .enumerate()
-            .map(|(n, t)| ((if n % 2 == 0 { "You" } else { "Them" }).to_string(), t, n as i64 * 6000))
+            .map(|(n, t)| {
+                (
+                    (if n % 2 == 0 { "You" } else { "Them" }).to_string(),
+                    t,
+                    n as i64 * 6000,
+                )
+            })
             .collect();
-        let refs: Vec<(&str, &str, i64)> = rows.iter().map(|(s, t, ms)| (s.as_str(), t.as_str(), *ms)).collect();
-        add_meeting(&conn, &id, &format!("会議{i}"), &format!("2026-0{}-15T10:00:00Z", 1 + i), None, &refs);
+        let refs: Vec<(&str, &str, i64)> = rows
+            .iter()
+            .map(|(s, t, ms)| (s.as_str(), t.as_str(), *ms))
+            .collect();
+        add_meeting(
+            &conn,
+            &id,
+            &format!("会議{i}"),
+            &format!("2026-0{}-15T10:00:00Z", 1 + i),
+            None,
+            &refs,
+        );
         questions.push((q.to_string(), id.clone()));
         meetings.push(id);
     }
     for (i, (fact, q)) in ZH.iter().enumerate() {
         let id = format!("zh{i}");
-        let mut lines: Vec<String> = (0..40).map(|_| ZH_FILLER[rng.pick(ZH_FILLER.len())].to_string()).collect();
+        let mut lines: Vec<String> = (0..40)
+            .map(|_| ZH_FILLER[rng.pick(ZH_FILLER.len())].to_string())
+            .collect();
         lines[22] = fact.to_string();
         let rows: Vec<(String, String, i64)> = lines
             .into_iter()
             .enumerate()
-            .map(|(n, t)| ((if n % 2 == 0 { "You" } else { "Them" }).to_string(), t, n as i64 * 6000))
+            .map(|(n, t)| {
+                (
+                    (if n % 2 == 0 { "You" } else { "Them" }).to_string(),
+                    t,
+                    n as i64 * 6000,
+                )
+            })
             .collect();
-        let refs: Vec<(&str, &str, i64)> = rows.iter().map(|(s, t, ms)| (s.as_str(), t.as_str(), *ms)).collect();
-        add_meeting(&conn, &id, &format!("会议{i}"), &format!("2026-0{}-20T10:00:00Z", 1 + i), None, &refs);
+        let refs: Vec<(&str, &str, i64)> = rows
+            .iter()
+            .map(|(s, t, ms)| (s.as_str(), t.as_str(), *ms))
+            .collect();
+        add_meeting(
+            &conn,
+            &id,
+            &format!("会议{i}"),
+            &format!("2026-0{}-20T10:00:00Z", 1 + i),
+            None,
+            &refs,
+        );
         questions.push((q.to_string(), id.clone()));
         meetings.push(id);
     }
     // more English questions to reach 20 (second-fact phrasing for the last ones)
     for i in 20..24 {
         let (entity, topic) = (ENTITIES[i], TOPICS[i]);
-        questions.push((format!("what was the budget for {entity} {topic}?"), format!("en{i:02}")));
+        questions.push((
+            format!("what was the budget for {entity} {topic}?"),
+            format!("en{i:02}"),
+        ));
     }
     let r = run_pass(&mut conn, &MeetingsOnly, &RunControl::idle(), &|_| {});
     assert!(r.errors.is_empty(), "{:?}", r.errors);
-    Fixture { conn, meetings, questions }
+    Fixture {
+        conn,
+        meetings,
+        questions,
+    }
 }
 
 pub fn evaluate(f: &Fixture, k: usize) -> (f64, f64, Vec<String>) {
@@ -198,7 +365,10 @@ pub fn evaluate(f: &Fixture, k: usize) -> (f64, f64, Vec<String>) {
         if r.iter().any(|p| &p.ref_id == gold) {
             hit_k += 1;
         } else {
-            misses.push(format!("{q} (gold {gold}; got {:?})", r.iter().map(|p| p.ref_id.clone()).collect::<Vec<_>>()));
+            misses.push(format!(
+                "{q} (gold {gold}; got {:?})",
+                r.iter().map(|p| p.ref_id.clone()).collect::<Vec<_>>()
+            ));
         }
         if r.first().map_or(false, |p| &p.ref_id == gold) {
             hit_1 += 1;
@@ -214,7 +384,13 @@ fn retrieval_eval_hit_at_8_is_at_least_90_percent() {
     assert_eq!(f.meetings.len(), 42);
     assert_eq!(f.questions.len(), 30);
     let (h8, h1, misses) = evaluate(&f, 8);
-    eprintln!("retrieval eval: {} meetings, {} questions, hit@1 = {:.3}, hit@8 = {:.3}", f.meetings.len(), f.questions.len(), h1, h8);
+    eprintln!(
+        "retrieval eval: {} meetings, {} questions, hit@1 = {:.3}, hit@8 = {:.3}",
+        f.meetings.len(),
+        f.questions.len(),
+        h1,
+        h8
+    );
     for m in &misses {
         eprintln!("  miss: {m}");
     }
@@ -227,8 +403,26 @@ fn eval_scope_filter_still_holds_inside_the_corpus() {
     let f = build_fixture();
     // restrict to Japanese meetings only: English questions find nothing, Japanese ones are found
     let scope = SearchScope::with_meetings(["jp0", "jp1", "jp2"]);
-    let r = search(&f.conn, &scope, "Who owns the Kestrel freight contract?", &[], 8).unwrap();
-    assert!(r.is_empty(), "{:?}", r.iter().map(|p| &p.ref_id).collect::<Vec<_>>());
-    let r = search(&f.conn, &scope, "ゴールドマン案件の契約更新はいつまですか", &[], 8).unwrap();
+    let r = search(
+        &f.conn,
+        &scope,
+        "Who owns the Kestrel freight contract?",
+        &[],
+        8,
+    )
+    .unwrap();
+    assert!(
+        r.is_empty(),
+        "{:?}",
+        r.iter().map(|p| &p.ref_id).collect::<Vec<_>>()
+    );
+    let r = search(
+        &f.conn,
+        &scope,
+        "ゴールドマン案件の契約更新はいつまですか",
+        &[],
+        8,
+    )
+    .unwrap();
     assert_eq!(r[0].ref_id, "jp0");
 }

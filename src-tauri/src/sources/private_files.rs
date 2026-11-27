@@ -31,8 +31,14 @@ pub fn write_private_file(dir: &Path, content: &str) -> std::io::Result<PathBuf>
         std::process::id(),
         uuid::Uuid::new_v4()
     ));
-    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&path)?;
-    if let Err(e) = file.write_all(content.as_bytes()).and_then(|_| file.flush()) {
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)?;
+    if let Err(e) = file
+        .write_all(content.as_bytes())
+        .and_then(|_| file.flush())
+    {
         drop(file);
         let _ = std::fs::remove_file(&path);
         return Err(e);
@@ -53,12 +59,16 @@ pub fn remove_private_file(path: &Path) {
 /// kill left them). Files of this process and of another running Lucid stay.
 /// Returns how many were deleted.
 pub fn cleanup_leftovers(dir: &Path) -> usize {
-    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
     let me = std::process::id();
     let mut removed = 0;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        let Some(pid) = owner_pid(&name) else { continue };
+        let Some(pid) = owner_pid(&name) else {
+            continue;
+        };
         if pid == me || pid_alive(pid) {
             continue;
         }
@@ -111,7 +121,10 @@ mod tests {
     fn private_dir_is_beside_the_sandbox_not_inside_it() {
         let private = private_dir();
         let sandbox = crate::llm::cli_agent::command::sandbox_dir();
-        assert!(!private.starts_with(&sandbox), "{private:?} is readable by the model");
+        assert!(
+            !private.starts_with(&sandbox),
+            "{private:?} is readable by the model"
+        );
     }
 
     #[test]

@@ -4,9 +4,9 @@
 //! A card is rebuilt only when its source hash changes.
 
 use super::cjk::{estimate_tokens, is_cjk, split_sentences, unit_count};
+use super::now_ms;
 use super::passages::SegmentInput;
 use super::store::sha_hex;
-use super::now_ms;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -59,7 +59,13 @@ pub struct CardInput<'a> {
 }
 
 /// Cheap fingerprint of everything a card depends on (no transcript load).
-pub fn card_key(title: &str, summary: Option<&str>, segment_count: i64, text_len: i64, duration_s: Option<i64>) -> String {
+pub fn card_key(
+    title: &str,
+    summary: Option<&str>,
+    segment_count: i64,
+    text_len: i64,
+    duration_s: Option<i64>,
+) -> String {
     sha_hex(
         format!(
             "{}\u{1}{}\u{1}{}\u{1}{}\u{1}{}",
@@ -74,25 +80,173 @@ pub fn card_key(title: &str, summary: Option<&str>, segment_count: i64, text_len
 }
 
 const COMMON: &[&str] = &[
-    "that", "this", "with", "have", "from", "they", "what", "about", "would", "there", "their",
-    "will", "just", "like", "think", "know", "going", "really", "right", "okay", "yeah", "because",
-    "could", "should", "other", "some", "then", "than", "also", "into", "more", "been", "were",
-    "when", "your", "them", "these", "those", "which", "thing", "things", "something", "want",
-    "need", "make", "well", "here", "actually", "maybe", "little", "still", "very", "much", "even",
-    "back", "over", "only", "come", "take", "look", "good", "time", "people", "said", "does",
-    "doing", "done", "kind", "sure", "great", "first", "next", "week", "today", "yes", "thanks",
-    "thank", "need", "needs", "let", "lets", "said", "says", "say", "talk", "meeting", "call",
-    "work", "working", "different", "another", "everyone", "anything", "anyone", "where", "while",
-    "being", "many", "most", "such", "each", "same", "after", "before", "again", "going", "gonna",
-    "wanna", "mean", "means", "point", "part", "sort", "stuff", "lot", "bit", "try", "trying",
-    "give", "gave", "tell", "told", "ask", "asked", "see", "seen", "get", "got", "getting",
+    "that",
+    "this",
+    "with",
+    "have",
+    "from",
+    "they",
+    "what",
+    "about",
+    "would",
+    "there",
+    "their",
+    "will",
+    "just",
+    "like",
+    "think",
+    "know",
+    "going",
+    "really",
+    "right",
+    "okay",
+    "yeah",
+    "because",
+    "could",
+    "should",
+    "other",
+    "some",
+    "then",
+    "than",
+    "also",
+    "into",
+    "more",
+    "been",
+    "were",
+    "when",
+    "your",
+    "them",
+    "these",
+    "those",
+    "which",
+    "thing",
+    "things",
+    "something",
+    "want",
+    "need",
+    "make",
+    "well",
+    "here",
+    "actually",
+    "maybe",
+    "little",
+    "still",
+    "very",
+    "much",
+    "even",
+    "back",
+    "over",
+    "only",
+    "come",
+    "take",
+    "look",
+    "good",
+    "time",
+    "people",
+    "said",
+    "does",
+    "doing",
+    "done",
+    "kind",
+    "sure",
+    "great",
+    "first",
+    "next",
+    "week",
+    "today",
+    "yes",
+    "thanks",
+    "thank",
+    "need",
+    "needs",
+    "let",
+    "lets",
+    "said",
+    "says",
+    "say",
+    "talk",
+    "meeting",
+    "call",
+    "work",
+    "working",
+    "different",
+    "another",
+    "everyone",
+    "anything",
+    "anyone",
+    "where",
+    "while",
+    "being",
+    "many",
+    "most",
+    "such",
+    "each",
+    "same",
+    "after",
+    "before",
+    "again",
+    "going",
+    "gonna",
+    "wanna",
+    "mean",
+    "means",
+    "point",
+    "part",
+    "sort",
+    "stuff",
+    "lot",
+    "bit",
+    "try",
+    "trying",
+    "give",
+    "gave",
+    "tell",
+    "told",
+    "ask",
+    "asked",
+    "see",
+    "seen",
+    "get",
+    "got",
+    "getting",
 ];
 
 const SIGNAL_WORDS: &[&str] = &[
-    "decided", "agreed", "deadline", "budget", "launch", "approve", "approved", "must", "risk",
-    "blocked", "owner", "deliver", "release", "contract", "price", "pricing", "priority",
-    "milestone", "action", "follow", "schedule", "due", "決定", "期限", "予算", "承認", "合意",
-    "確認", "契約", "确定", "截止", "预算", "批准", "合同", "决定",
+    "decided",
+    "agreed",
+    "deadline",
+    "budget",
+    "launch",
+    "approve",
+    "approved",
+    "must",
+    "risk",
+    "blocked",
+    "owner",
+    "deliver",
+    "release",
+    "contract",
+    "price",
+    "pricing",
+    "priority",
+    "milestone",
+    "action",
+    "follow",
+    "schedule",
+    "due",
+    "決定",
+    "期限",
+    "予算",
+    "承認",
+    "合意",
+    "確認",
+    "契約",
+    "确定",
+    "截止",
+    "预算",
+    "批准",
+    "合同",
+    "决定",
 ];
 
 fn is_katakana(c: char) -> bool {
@@ -121,7 +275,8 @@ fn distinctive_terms(lines: &[SegmentInput], limit: usize) -> Vec<String> {
                 if tok.chars().count() >= 4 {
                     let lower = tok.to_lowercase();
                     if !COMMON.contains(&lower.as_str()) && !super::search::is_stopword(&lower) {
-                        let proper = tok.chars().next().map_or(false, |c| c.is_uppercase()) && !was_first;
+                        let proper =
+                            tok.chars().next().map_or(false, |c| c.is_uppercase()) && !was_first;
                         let e = counts.entry(lower).or_insert((0, false));
                         e.0 += 1;
                         e.1 |= proper;
@@ -140,13 +295,19 @@ fn distinctive_terms(lines: &[SegmentInput], limit: usize) -> Vec<String> {
     }
     let mut scored: Vec<(String, f64)> = counts
         .into_iter()
-        .filter(|(w, (n, proper))| *n >= 2 || (*proper && w.len() >= 4) || w.chars().any(|c| c.is_ascii_digit()))
+        .filter(|(w, (n, proper))| {
+            *n >= 2 || (*proper && w.len() >= 4) || w.chars().any(|c| c.is_ascii_digit())
+        })
         .map(|(w, (n, proper))| {
             let s = n as f64 * if proper { 2.0 } else { 1.0 } + (w.len().min(12) as f64) * 0.05;
             (w, s)
         })
         .collect();
-    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
+    scored.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.0.cmp(&b.0))
+    });
     let mut out: Vec<String> = scored.into_iter().take(limit).map(|x| x.0).collect();
 
     // CJK: katakana words and Han compounds that repeat
@@ -163,7 +324,13 @@ fn distinctive_terms(lines: &[SegmentInput], limit: usize) -> Vec<String> {
             }
         };
         for c in l.text.chars() {
-            let k = if is_katakana(c) { 1 } else if is_han(c) { 2 } else { 0 };
+            let k = if is_katakana(c) {
+                1
+            } else if is_han(c) {
+                2
+            } else {
+                0
+            };
             if k != kind {
                 flush(&mut cur, kind, &mut cjk_counts);
                 kind = k;
@@ -196,10 +363,17 @@ fn salient_lines(lines: &[SegmentInput], n: usize) -> Vec<String> {
             }
             let lower = s.to_lowercase();
             let mut score = 0.0;
-            if s.chars().any(|c| c.is_ascii_digit() || ('０'..='９').contains(&c)) {
+            if s.chars()
+                .any(|c| c.is_ascii_digit() || ('０'..='９').contains(&c))
+            {
                 score += 2.0;
             }
-            score += 2.0 * SIGNAL_WORDS.iter().filter(|w| lower.contains(*w)).count().min(2) as f64;
+            score += 2.0
+                * SIGNAL_WORDS
+                    .iter()
+                    .filter(|w| lower.contains(*w))
+                    .count()
+                    .min(2) as f64;
             let units = unit_count(s) as f64;
             score += (units / 30.0).min(1.0);
             for filler in ["yeah", "okay", "ok ", "so ", "um", "uh", "right,"] {
@@ -210,13 +384,28 @@ fn salient_lines(lines: &[SegmentInput], n: usize) -> Vec<String> {
             scored.push((idx, score, s.to_string()));
         }
     }
-    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
-    let mut top: Vec<(usize, String)> = scored.into_iter().filter(|x| x.1 > 0.0).take(n).map(|x| (x.0, x.2)).collect();
+    scored.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.0.cmp(&b.0))
+    });
+    let mut top: Vec<(usize, String)> = scored
+        .into_iter()
+        .filter(|x| x.1 > 0.0)
+        .take(n)
+        .map(|x| (x.0, x.2))
+        .collect();
     top.sort_by_key(|x| x.0);
     top.into_iter()
         .map(|(_, s)| {
             if s.chars().count() > LINE_CAP_CHARS {
-                format!("{}…", s.chars().take(LINE_CAP_CHARS).collect::<String>().trim_end())
+                format!(
+                    "{}…",
+                    s.chars()
+                        .take(LINE_CAP_CHARS)
+                        .collect::<String>()
+                        .trim_end()
+                )
             } else {
                 s
             }
@@ -227,7 +416,12 @@ fn salient_lines(lines: &[SegmentInput], n: usize) -> Vec<String> {
 fn clean_summary(summary: &str) -> String {
     let mut out = String::new();
     for line in summary.lines() {
-        let t = line.trim().trim_start_matches('#').trim().trim_start_matches(['-', '*', '•']).trim();
+        let t = line
+            .trim()
+            .trim_start_matches('#')
+            .trim()
+            .trim_start_matches(['-', '*', '•'])
+            .trim();
         let t = t.replace("**", "").replace('`', "");
         if t.is_empty() {
             continue;
@@ -283,7 +477,14 @@ pub fn build_card(input: &CardInput, key: &str) -> Card {
                 r.push_str(&format!(" Key terms: {}.", terms.join(", ")));
             }
             if !lines.is_empty() {
-                r.push_str(&format!(" Highlights: {}", lines.iter().map(|l| format!("\"{l}\"")).collect::<Vec<_>>().join(" ")));
+                r.push_str(&format!(
+                    " Highlights: {}",
+                    lines
+                        .iter()
+                        .map(|l| format!("\"{l}\""))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ));
             }
             (r, CardOrigin::Extract)
         }
@@ -318,14 +519,25 @@ pub fn get_card(conn: &Connection, meeting_id: &str) -> rusqlite::Result<Option<
 
 /// Meetings whose AI recap the user deleted: no new one is written for them.
 pub fn recap_declined(conn: &Connection, meeting_id: &str) -> bool {
-    conn.query_row("SELECT 1 FROM meeting_recap_off WHERE meeting_id = ?1", params![meeting_id], |_| Ok(())).is_ok()
+    conn.query_row(
+        "SELECT 1 FROM meeting_recap_off WHERE meeting_id = ?1",
+        params![meeting_id],
+        |_| Ok(()),
+    )
+    .is_ok()
 }
 
 /// Delete the AI recap of a meeting and remember not to write another. The card goes
 /// back to the plain extract the next indexing pass builds.
 pub fn decline_recap(conn: &Connection, meeting_id: &str) -> rusqlite::Result<()> {
-    conn.execute("INSERT OR IGNORE INTO meeting_recap_off(meeting_id) VALUES (?1)", params![meeting_id])?;
-    conn.execute("DELETE FROM meeting_cards WHERE meeting_id = ?1 AND origin = 'ai'", params![meeting_id])?;
+    conn.execute(
+        "INSERT OR IGNORE INTO meeting_recap_off(meeting_id) VALUES (?1)",
+        params![meeting_id],
+    )?;
+    conn.execute(
+        "DELETE FROM meeting_cards WHERE meeting_id = ?1 AND origin = 'ai'",
+        params![meeting_id],
+    )?;
     Ok(())
 }
 
@@ -349,7 +561,10 @@ pub fn recap_failed(conn: &Connection, meeting_id: &str, source_hash: &str) -> b
 }
 
 pub fn clear_recap_failure(conn: &Connection, meeting_id: &str) {
-    let _ = conn.execute("DELETE FROM meeting_recap_failed WHERE meeting_id = ?1", params![meeting_id]);
+    let _ = conn.execute(
+        "DELETE FROM meeting_recap_failed WHERE meeting_id = ?1",
+        params![meeting_id],
+    );
 }
 
 /// Forget the failures of a workspace's meetings (an explicit rescan tries them again).
@@ -403,16 +618,32 @@ mod tests {
     use crate::workspace_search::test_support::mem_db;
 
     fn line(speaker: &str, text: &str, ms: i64) -> SegmentInput {
-        SegmentInput { speaker: speaker.into(), text: text.into(), start_ms: ms }
+        SegmentInput {
+            speaker: speaker.into(),
+            text: text.into(),
+            start_ms: ms,
+        }
     }
 
     #[test]
     fn summary_wins_and_is_cleaned_and_capped() {
-        let summary = format!("## Overview\n**We agreed** to ship the `v2` release on 3 March.\n- Budget is 40k.\n{}", "More detail here. ".repeat(100));
-        let input = CardInput { meeting_id: "m", title: "Launch sync", started_at_ms: Some(1_700_000_000_000), duration_s: Some(1830), summary: Some(&summary), lines: &[] };
+        let summary = format!(
+            "## Overview\n**We agreed** to ship the `v2` release on 3 March.\n- Budget is 40k.\n{}",
+            "More detail here. ".repeat(100)
+        );
+        let input = CardInput {
+            meeting_id: "m",
+            title: "Launch sync",
+            started_at_ms: Some(1_700_000_000_000),
+            duration_s: Some(1830),
+            summary: Some(&summary),
+            lines: &[],
+        };
         let c = build_card(&input, "k");
         assert_eq!(c.origin, CardOrigin::Summary);
-        assert!(c.recap.starts_with("Launch sync (2023-11-14, 31 min). Overview We agreed to ship the v2 release"));
+        assert!(c.recap.starts_with(
+            "Launch sync (2023-11-14, 31 min). Overview We agreed to ship the v2 release"
+        ));
         assert!(!c.recap.contains("**") && !c.recap.contains('`'));
         assert!(c.recap.chars().count() < 1000);
         assert_eq!(c.tokens, estimate_tokens(&c.recap));
@@ -427,10 +658,19 @@ mod tests {
             line("Them", "The freight contract owner is Dana and she will confirm the renewal.", 15000),
             line("You", "Thanks everyone.", 20000),
         ];
-        let input = CardInput { meeting_id: "m", title: "Warehouse planning", started_at_ms: Some(1_700_000_000_000), duration_s: Some(600), summary: None, lines: &lines };
+        let input = CardInput {
+            meeting_id: "m",
+            title: "Warehouse planning",
+            started_at_ms: Some(1_700_000_000_000),
+            duration_s: Some(600),
+            summary: None,
+            lines: &lines,
+        };
         let c = build_card(&input, "k");
         assert_eq!(c.origin, CardOrigin::Extract);
-        assert!(c.recap.starts_with("Warehouse planning (2023-11-14, 10 min)."));
+        assert!(c
+            .recap
+            .starts_with("Warehouse planning (2023-11-14, 10 min)."));
         assert!(c.recap.contains("Key terms:"));
         assert!(c.recap.contains("kestrel"), "{}", c.recap);
         assert!(c.recap.contains("freight"));
@@ -442,10 +682,25 @@ mod tests {
     #[test]
     fn japanese_extract_finds_katakana_terms_and_lines() {
         let lines = vec![
-            line("You", "来月のゴールドマン案件の契約更新は三月十日までに完了する予定です。", 0),
-            line("Them", "ゴールドマンの担当者に確認してから、予算の承認を取ります。", 5000),
+            line(
+                "You",
+                "来月のゴールドマン案件の契約更新は三月十日までに完了する予定です。",
+                0,
+            ),
+            line(
+                "Them",
+                "ゴールドマンの担当者に確認してから、予算の承認を取ります。",
+                5000,
+            ),
         ];
-        let input = CardInput { meeting_id: "m", title: "契約会議", started_at_ms: None, duration_s: None, summary: None, lines: &lines };
+        let input = CardInput {
+            meeting_id: "m",
+            title: "契約会議",
+            started_at_ms: None,
+            duration_s: None,
+            summary: None,
+            lines: &lines,
+        };
         let c = build_card(&input, "k");
         assert!(c.recap.contains("ゴールドマン"), "{}", c.recap);
         assert!(c.recap.contains("契約更新"));
@@ -453,7 +708,14 @@ mod tests {
 
     #[test]
     fn empty_meeting_still_gets_a_card() {
-        let input = CardInput { meeting_id: "m", title: "Empty", started_at_ms: None, duration_s: None, summary: None, lines: &[] };
+        let input = CardInput {
+            meeting_id: "m",
+            title: "Empty",
+            started_at_ms: None,
+            duration_s: None,
+            summary: None,
+            lines: &[],
+        };
         let c = build_card(&input, "k");
         assert_eq!(c.recap, "Empty.");
     }
@@ -466,13 +728,33 @@ mod tests {
         assert_ne!(k1, k2);
         assert_ne!(k1, card_key("T2", None, 3, 100, Some(60)));
         assert_ne!(k1, card_key("T", None, 4, 100, Some(60)));
-        let input = CardInput { meeting_id: "m", title: "T", started_at_ms: None, duration_s: None, summary: None, lines: &[] };
+        let input = CardInput {
+            meeting_id: "m",
+            title: "T",
+            started_at_ms: None,
+            duration_s: None,
+            summary: None,
+            lines: &[],
+        };
         put_card(&conn, &build_card(&input, &k1)).unwrap();
         assert!(card_is_current(&conn, "m", &k1).unwrap());
         assert!(!card_is_current(&conn, "m", &k2).unwrap());
         let stored = get_card(&conn, "m").unwrap().unwrap();
         assert_eq!(stored.origin, CardOrigin::Extract);
-        put_card(&conn, &build_card(&CardInput { summary: Some("S"), ..input }, &k2)).unwrap();
-        assert_eq!(get_card(&conn, "m").unwrap().unwrap().origin, CardOrigin::Summary);
+        put_card(
+            &conn,
+            &build_card(
+                &CardInput {
+                    summary: Some("S"),
+                    ..input
+                },
+                &k2,
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            get_card(&conn, "m").unwrap().unwrap().origin,
+            CardOrigin::Summary
+        );
     }
 }

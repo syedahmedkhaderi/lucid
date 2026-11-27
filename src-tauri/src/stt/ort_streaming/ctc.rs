@@ -20,7 +20,12 @@ use tokio::sync::mpsc;
 /// the blank, collapse a token repeated on consecutive frames into one.
 /// Mirrors sherpa-onnx's own offline-ctc-greedy-search-decoder.cc.
 /// `num_classes` is the per-frame width: real tokens plus the blank class.
-fn greedy_decode(log_probs: &[f32], valid_frames: usize, num_classes: usize, blank: usize) -> Vec<i64> {
+fn greedy_decode(
+    log_probs: &[f32],
+    valid_frames: usize,
+    num_classes: usize,
+    blank: usize,
+) -> Vec<i64> {
     let mut tokens = Vec::new();
     let mut prev: i64 = -1;
     for t in 0..valid_frames {
@@ -39,11 +44,19 @@ fn greedy_decode(log_probs: &[f32], valid_frames: usize, num_classes: usize, bla
 /// that order, see offline-recognizer-ctc-impl.h); the last class is the
 /// fallback, since NeMo appends the blank after the vocabulary.
 fn blank_id(vocab: &HashMap<i64, String>, num_classes: usize) -> Result<usize, String> {
-    let blank = ["<blk>", "<eps>", "<blank>"].iter()
-        .find_map(|name| vocab.iter().find(|(_, piece)| piece.as_str() == *name).map(|(id, _)| *id))
+    let blank = ["<blk>", "<eps>", "<blank>"]
+        .iter()
+        .find_map(|name| {
+            vocab
+                .iter()
+                .find(|(_, piece)| piece.as_str() == *name)
+                .map(|(id, _)| *id)
+        })
         .unwrap_or(num_classes as i64 - 1);
     if blank < 0 || blank as usize >= num_classes {
-        return Err(format!("NeMo CTC blank id {blank} is outside the model's {num_classes} output classes"));
+        return Err(format!(
+            "NeMo CTC blank id {blank} is outside the model's {num_classes} output classes"
+        ));
     }
     Ok(blank as usize)
 }
@@ -59,18 +72,32 @@ struct CtcHead {
 }
 
 fn recognize(
-    encoder: &mut Session, features: &Features, samples: &[f32],
-    vocab: &HashMap<i64, String>, head: &CtcHead,
+    encoder: &mut Session,
+    features: &Features,
+    samples: &[f32],
+    vocab: &HashMap<i64, String>,
+    head: &CtcHead,
 ) -> Result<String, String> {
     let (frames, mel) = features.extract(samples, head.normalize);
-    if frames == 0 { return Ok(String::new()); }
+    if frames == 0 {
+        return Ok(String::new());
+    }
     let lengths = [frames as i64];
-    let feature_tensor = TensorRef::from_array_view(([1, mel.len() / frames, frames], &mel[..])).map_err(|e| e.to_string())?;
-    let length_tensor = TensorRef::from_array_view(([1], &lengths[..])).map_err(|e| e.to_string())?;
-    let outputs = encoder.run(ort::inputs![feature_tensor, length_tensor]).map_err(|e| format!("NeMo CTC encoder: {e}"))?;
-    let (shape, data) = outputs[0].try_extract_tensor::<f32>().map_err(|e| e.to_string())?;
+    let feature_tensor = TensorRef::from_array_view(([1, mel.len() / frames, frames], &mel[..]))
+        .map_err(|e| e.to_string())?;
+    let length_tensor =
+        TensorRef::from_array_view(([1], &lengths[..])).map_err(|e| e.to_string())?;
+    let outputs = encoder
+        .run(ort::inputs![feature_tensor, length_tensor])
+        .map_err(|e| format!("NeMo CTC encoder: {e}"))?;
+    let (shape, data) = outputs[0]
+        .try_extract_tensor::<f32>()
+        .map_err(|e| e.to_string())?;
     if shape.len() != 3 || shape[0] != 1 || shape[2] as usize != head.num_classes {
-        return Err(format!("Unexpected NeMo CTC output shape {shape:?}, expected [1, frames, {}]", head.num_classes));
+        return Err(format!(
+            "Unexpected NeMo CTC output shape {shape:?}, expected [1, frames, {}]",
+            head.num_classes
+        ));
     }
     let num_frames = shape[1] as usize;
     let valid = (frames / head.subsampling_factor.max(1)).min(num_frames);
@@ -81,7 +108,11 @@ fn recognize(
 /// Static size of dimension `index` of a tensor type, when the graph fixes it.
 fn static_dim(dtype: &ValueType, index: usize) -> Option<usize> {
     match dtype {
-        ValueType::Tensor { shape, .. } => shape.get(index).copied().filter(|&d| d > 0).map(|d| d as usize),
+        ValueType::Tensor { shape, .. } => shape
+            .get(index)
+            .copied()
+            .filter(|&d| d > 0)
+            .map(|d| d as usize),
         _ => None,
     }
 }
@@ -90,28 +121,39 @@ fn static_dim(dtype: &ValueType, index: usize) -> Option<usize> {
 /// head, from facts read off the model: the first input's name and mel size,
 /// the output's static class count (when the graph fixes it) and the metadata.
 fn check_contract(
-    first_input: Option<&str>, mels: Option<usize>, static_classes: Option<usize>,
-    subsampling_factor: Option<&str>, normalize_type: Option<&str>, vocab: &HashMap<i64, String>,
+    first_input: Option<&str>,
+    mels: Option<usize>,
+    static_classes: Option<usize>,
+    subsampling_factor: Option<&str>,
+    normalize_type: Option<&str>,
+    vocab: &HashMap<i64, String>,
 ) -> Result<CtcHead, String> {
     // The input contract is NeMo's `audio_signal` [batch, mels, time] plus `length`.
     let first_input = first_input.ok_or("NeMo CTC encoder has no inputs")?;
     if first_input != "audio_signal" {
-        return Err(format!("Unsupported NeMo CTC encoder input {first_input:?}, expected audio_signal"));
+        return Err(format!(
+            "Unsupported NeMo CTC encoder input {first_input:?}, expected audio_signal"
+        ));
     }
     if let Some(mels) = mels {
         if mels != 80 {
-            return Err(format!("Unsupported NeMo CTC encoder: {mels} mel bins, expected 80"));
+            return Err(format!(
+                "Unsupported NeMo CTC encoder: {mels} mel bins, expected 80"
+            ));
         }
     }
     let subsampling_factor: usize = subsampling_factor
         .ok_or("NeMo CTC encoder missing subsampling_factor")?
-        .parse().map_err(|e| format!("NeMo CTC subsampling_factor: {e}"))?;
+        .parse()
+        .map_err(|e| format!("NeMo CTC subsampling_factor: {e}"))?;
     // "per_feature" is the normalization every published Parakeet CTC export
     // uses. An empty or "NA" value means unnormalized log-mel; other front ends
     // (e.g. GigaAM's 64-bin features) are not supported.
     let normalize_type = normalize_type.unwrap_or_default();
     if !matches!(normalize_type, "per_feature" | "" | "NA") {
-        return Err(format!("Unsupported NeMo CTC normalize_type {normalize_type:?}"));
+        return Err(format!(
+            "Unsupported NeMo CTC normalize_type {normalize_type:?}"
+        ));
     }
     // The class count is the output's last dimension (the metadata vocab_size
     // can leave out the blank) and the blank follows from the token table.
@@ -127,13 +169,20 @@ fn check_contract(
 }
 
 pub(super) fn run(
-    encoder: &mut Session, vocab: &HashMap<i64, String>, language: &str, stop: &AtomicBool,
+    encoder: &mut Session,
+    vocab: &HashMap<i64, String>,
+    language: &str,
+    stop: &AtomicBool,
     audio_rx: &std::sync::mpsc::Receiver<AudioMessage>,
-    result_tx: &mpsc::Sender<TranscriptResult>, segment: u64,
+    result_tx: &mpsc::Sender<TranscriptResult>,
+    segment: u64,
     debug: &impl Fn(&str, &str),
 ) -> Result<(), String> {
     let input = encoder.inputs().first();
-    let static_classes = encoder.outputs().first().and_then(|output| static_dim(output.dtype(), 2));
+    let static_classes = encoder
+        .outputs()
+        .first()
+        .and_then(|output| static_dim(output.dtype(), 2));
     let metadata = encoder.metadata().map_err(|e| e.to_string())?;
     let head = check_contract(
         input.map(|input| input.name()),
@@ -144,11 +193,20 @@ pub(super) fn run(
         vocab,
     )?;
     drop(metadata);
-    debug("info", &format!(
-        "NeMo CTC: offline 80-bin Slaney mel encoder, subsampling {}, normalize={}",
-        head.subsampling_factor, head.normalize
-    ));
-    debug("info", &format!("NeMo CTC: {} classes, blank {}", head.num_classes, head.blank));
+    debug(
+        "info",
+        &format!(
+            "NeMo CTC: offline 80-bin Slaney mel encoder, subsampling {}, normalize={}",
+            head.subsampling_factor, head.normalize
+        ),
+    );
+    debug(
+        "info",
+        &format!(
+            "NeMo CTC: {} classes, blank {}",
+            head.num_classes, head.blank
+        ),
+    );
     let features = Features::new(80);
     segment_loop(stop, audio_rx, result_tx, segment, language, |samples| {
         recognize(encoder, &features, samples, vocab, &head)
@@ -170,7 +228,10 @@ mod tests {
             frame[id] = 10.0;
             log_probs.extend(frame);
         }
-        assert_eq!(greedy_decode(&log_probs, 7, vocab_size + 1, blank), vec![1, 2, 1]);
+        assert_eq!(
+            greedy_decode(&log_probs, 7, vocab_size + 1, blank),
+            vec![1, 2, 1]
+        );
     }
 
     #[test]
@@ -185,7 +246,10 @@ mod tests {
             frame[id] = 10.0;
             log_probs.extend(frame);
         }
-        assert_eq!(greedy_decode(&log_probs, 3, vocab_size + 1, blank), vec![0, 0]);
+        assert_eq!(
+            greedy_decode(&log_probs, 3, vocab_size + 1, blank),
+            vec![0, 0]
+        );
     }
 
     #[test]
@@ -214,28 +278,80 @@ mod tests {
 
     /// A vocabulary of `n` tokens with `<blk>` last.
     fn vocab_with_blk(n: usize) -> HashMap<i64, String> {
-        let mut vocab: HashMap<i64, String> = (0..n as i64 - 1).map(|i| (i, format!("t{i}"))).collect();
+        let mut vocab: HashMap<i64, String> =
+            (0..n as i64 - 1).map(|i| (i, format!("t{i}"))).collect();
         vocab.insert(n as i64 - 1, "<blk>".into());
         vocab
     }
 
     #[test]
     fn the_110m_contract_resolves_to_a_1025_class_head() {
-        let head = check_contract(Some("audio_signal"), Some(80), Some(1025), Some("8"), Some("per_feature"), &vocab_with_blk(1025)).unwrap();
-        assert_eq!((head.num_classes, head.blank, head.subsampling_factor, head.normalize), (1025, 1024, 8, true));
+        let head = check_contract(
+            Some("audio_signal"),
+            Some(80),
+            Some(1025),
+            Some("8"),
+            Some("per_feature"),
+            &vocab_with_blk(1025),
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                head.num_classes,
+                head.blank,
+                head.subsampling_factor,
+                head.normalize
+            ),
+            (1025, 1024, 8, true)
+        );
         // A dynamic graph falls back to the token count; "NA" and "" are unnormalized.
-        let head = check_contract(Some("audio_signal"), None, None, Some("4"), Some("NA"), &vocab_with_blk(129)).unwrap();
-        assert_eq!((head.num_classes, head.blank, head.subsampling_factor, head.normalize), (129, 128, 4, false));
-        assert!(!check_contract(Some("audio_signal"), None, None, Some("4"), None, &vocab_with_blk(5)).unwrap().normalize);
+        let head = check_contract(
+            Some("audio_signal"),
+            None,
+            None,
+            Some("4"),
+            Some("NA"),
+            &vocab_with_blk(129),
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                head.num_classes,
+                head.blank,
+                head.subsampling_factor,
+                head.normalize
+            ),
+            (129, 128, 4, false)
+        );
+        assert!(
+            !check_contract(
+                Some("audio_signal"),
+                None,
+                None,
+                Some("4"),
+                None,
+                &vocab_with_blk(5)
+            )
+            .unwrap()
+            .normalize
+        );
     }
 
     #[test]
     fn unsupported_encoders_are_rejected_with_a_reason() {
         let vocab = vocab_with_blk(5);
         let rejected = |first_input, mels, classes, subsampling, normalize| {
-            check_contract(first_input, mels, classes, subsampling, normalize, &vocab).err().expect("should be rejected")
+            check_contract(first_input, mels, classes, subsampling, normalize, &vocab)
+                .err()
+                .expect("should be rejected")
         };
-        let ok = (Some("audio_signal"), Some(80), Some(5), Some("8"), Some("per_feature"));
+        let ok = (
+            Some("audio_signal"),
+            Some(80),
+            Some(5),
+            Some("8"),
+            Some("per_feature"),
+        );
         assert!(rejected(None, ok.1, ok.2, ok.3, ok.4).contains("no inputs"));
         assert!(rejected(Some("features"), ok.1, ok.2, ok.3, ok.4).contains("audio_signal"));
         assert!(rejected(ok.0, Some(128), ok.2, ok.3, ok.4).contains("128 mel bins"));

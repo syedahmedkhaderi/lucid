@@ -32,20 +32,28 @@ pub struct OutputOpener {
 impl CaptureOpener for OutputOpener {
     type Stream = cpal::Stream;
 
-    fn open(&mut self, choice: &DeviceChoice, generation: u64) -> Result<Opened<cpal::Stream>, String> {
+    fn open(
+        &mut self,
+        choice: &DeviceChoice,
+        generation: u64,
+    ) -> Result<Opened<cpal::Stream>, String> {
         let device_id = match choice {
             DeviceChoice::Chosen(name) => name.as_str(),
             DeviceChoice::Default => "default",
         };
         let device = super::device_manager::find_output_device(device_id)?;
-        let device_name = super::device_manager::device_name(&device).unwrap_or_else(|_| "unknown".into());
+        let device_name =
+            super::device_manager::device_name(&device).unwrap_or_else(|_| "unknown".into());
         let err_fn = super::capture_supervisor::error_callback(
             self.errors.clone(),
             super::capture_supervisor::CaptureSide::Them,
             generation,
         );
         let stream = open_loopback_stream(&device, &device_name, self.tx.clone(), err_fn)?;
-        Ok(Opened { stream, device: device_name })
+        Ok(Opened {
+            stream,
+            device: device_name,
+        })
     }
 }
 
@@ -70,7 +78,11 @@ impl Drop for TapStream {
 impl CaptureOpener for OutputOpener {
     type Stream = TapStream;
 
-    fn open(&mut self, choice: &DeviceChoice, generation: u64) -> Result<Opened<TapStream>, String> {
+    fn open(
+        &mut self,
+        choice: &DeviceChoice,
+        generation: u64,
+    ) -> Result<Opened<TapStream>, String> {
         let name = match choice {
             DeviceChoice::Chosen(name) => Some(name.clone()),
             DeviceChoice::Default => None,
@@ -88,11 +100,17 @@ impl CaptureOpener for OutputOpener {
             Arc::clone(&stop),
             name.clone(),
             Box::new(move |error| {
-                on_failure(cpal::Error::with_message(cpal::ErrorKind::StreamInvalidated, error))
+                on_failure(cpal::Error::with_message(
+                    cpal::ErrorKind::StreamInvalidated,
+                    error,
+                ))
             }),
         )?;
         Ok(Opened {
-            stream: TapStream { stop, thread: Some(thread) },
+            stream: TapStream {
+                stop,
+                thread: Some(thread),
+            },
             device: name.unwrap_or_else(|| "default output".to_string()),
         })
     }
@@ -131,14 +149,17 @@ pub fn start_system_capture_device(
     let handle = std::thread::Builder::new()
         .name("system-audio-test".into())
         .spawn(move || {
-            let opened = super::device_manager::find_output_device(device_name.as_deref().unwrap_or("default"))
-                .and_then(|device| {
-                    let name = super::device_manager::device_name(&device).unwrap_or_else(|_| "unknown".into());
-                    let err_fn = |err: cpal::Error| {
-                        super::capture_common::log_stream_error("System capture error", &err);
-                    };
-                    open_loopback_stream(&device, &name, tx, err_fn)
-                });
+            let opened = super::device_manager::find_output_device(
+                device_name.as_deref().unwrap_or("default"),
+            )
+            .and_then(|device| {
+                let name = super::device_manager::device_name(&device)
+                    .unwrap_or_else(|_| "unknown".into());
+                let err_fn = |err: cpal::Error| {
+                    super::capture_common::log_stream_error("System capture error", &err);
+                };
+                open_loopback_stream(&device, &name, tx, err_fn)
+            });
             let stream = match opened {
                 Ok(stream) => stream,
                 Err(e) => {
@@ -188,7 +209,12 @@ fn open_loopback_stream(
     let sample_rate = config.sample_rate();
     let channels = config.channels();
     let sample_format = config.sample_format();
-    log::info!("System capture: {}Hz, {}ch, {:?}", sample_rate, channels, sample_format);
+    log::info!(
+        "System capture: {}Hz, {}ch, {:?}",
+        sample_rate,
+        channels,
+        sample_format
+    );
 
     // Lives in the stream callback: keeps its place across chunks.
     let mut resampler = StreamResampler::new(sample_rate, TARGET_SAMPLE_RATE, channels);
@@ -201,9 +227,16 @@ fn open_loopback_stream(
         move |pcm| send_system_chunk(pcm, &mut resampler, &tx),
         err_fn,
     )
-    .map_err(|e| format!("Failed to build loopback stream on '{}': {}", device_name, e))?;
+    .map_err(|e| {
+        format!(
+            "Failed to build loopback stream on '{}': {}",
+            device_name, e
+        )
+    })?;
 
-    stream.play().map_err(|e| format!("Failed to play loopback stream: {}", e))?;
+    stream
+        .play()
+        .map_err(|e| format!("Failed to play loopback stream: {}", e))?;
     log::info!("System audio loopback ACTIVE on '{}'", device_name);
     Ok(stream)
 }

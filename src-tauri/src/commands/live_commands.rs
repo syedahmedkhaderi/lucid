@@ -54,7 +54,9 @@ pub async fn get_brief_state(meeting_id: String) -> Result<Value, String> {
 
 /// What "Automatic" means (the cheapest good-enough model) for a provider, or for the active one.
 #[command]
-pub async fn get_automatic_model(provider: Option<String>) -> Result<Option<crate::live_runtime::cheapest::CheapestChoice>, String> {
+pub async fn get_automatic_model(
+    provider: Option<String>,
+) -> Result<Option<crate::live_runtime::cheapest::CheapestChoice>, String> {
     Ok(rt()?.automatic_model(provider.as_deref()))
 }
 
@@ -156,6 +158,9 @@ pub async fn set_memory_settings(patch: Value) -> Result<Value, String> {
 
 /// One AI call per chunk of the finished meeting; proposals come back as `suggested`.
 #[command]
-pub async fn suggest_memory(workspace_id: String, meeting_id: String) -> Result<Vec<MemoryItem>, String> {
+pub async fn suggest_memory(
+    workspace_id: String,
+    meeting_id: String,
+) -> Result<Vec<MemoryItem>, String> {
     rt()?.suggest_memory(&workspace_id, &meeting_id).await
 }

@@ -92,10 +92,20 @@ pub fn add_meeting(
 }
 
 /// Index passages for a transcript directly (no meetings table needed).
-pub fn index_lines(conn: &Connection, id: &str, title: &str, occurred_at: i64, lines: &[(&str, &str, i64)]) {
+pub fn index_lines(
+    conn: &Connection,
+    id: &str,
+    title: &str,
+    occurred_at: i64,
+    lines: &[(&str, &str, i64)],
+) {
     let segs: Vec<SegmentInput> = lines
         .iter()
-        .map(|(s, t, ms)| SegmentInput { speaker: s.to_string(), text: t.to_string(), start_ms: *ms })
+        .map(|(s, t, ms)| SegmentInput {
+            speaker: s.to_string(),
+            text: t.to_string(),
+            start_ms: *ms,
+        })
         .collect();
     let p: Vec<NewPassage> = build_transcript_passages(id, title, Some(occurred_at), &segs, None);
     store::replace_source(conn, PassageKind::Transcript, id, None, &p, "h", 0, 0).unwrap();

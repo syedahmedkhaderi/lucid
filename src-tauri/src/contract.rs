@@ -574,7 +574,7 @@ Ship it."
 
     #[test]
     fn the_signature_reader_sees_camel_case_and_optional_arguments() {
-        let args = command_args("#[command]\npub async fn start_meeting(title: Option<String>, workspace_id: Option<String>, borrowed_workspace_ids: Option<Vec<String>>, document_ids: Option<Vec<String>>, state: State<'_, AppState>, app: AppHandle) -> Result<String, String> { }");
+        let args = command_args("#[command]\npub async fn start_meeting(title: Option<String>, workspace_id: Option<String>, borrowed_workspace_ids: Option<Vec<String>>, document_ids: Option<Vec<String>>, meeting_context: Option<String>, state: State<'_, AppState>, app: AppHandle) -> Result<String, String> { }");
         assert_eq!(
             args["start_meeting"],
             vec![
@@ -582,6 +582,7 @@ Ship it."
                 ("workspaceId".to_string(), true),
                 ("borrowedWorkspaceIds".to_string(), true),
                 ("documentIds".to_string(), true),
+                ("meetingContext".to_string(), true),
             ]
         );
     }

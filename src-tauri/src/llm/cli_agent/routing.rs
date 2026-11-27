@@ -20,14 +20,14 @@ use super::context::{
     build_delta_prompt, build_document_preload, pack_messages, transcript_lines, DeltaCursor, Seg,
     SentLine,
 };
-use super::status::probe_kind;
-use super::CliAgentKind;
 use super::manager::{
-    tier_for, AgentSessionManager, ClaudeCliConfig, OnDelta, SessionInit, SessionKey,
-    SessionScope, Tier,
+    tier_for, AgentSessionManager, ClaudeCliConfig, OnDelta, SessionInit, SessionKey, SessionScope,
+    Tier,
 };
 use super::protocol::{AgentErrorKind, ImageAttachment, TurnResult};
 use super::session::AgentError;
+use super::status::probe_kind;
+use super::CliAgentKind;
 use crate::context::token_counter::count_tokens;
 use crate::llm::provider::{CancelToken, LLMProvider};
 use crate::llm::{ProviderConfig, ProviderType};
@@ -96,7 +96,16 @@ pub fn choose_route(
     cfg: &ClaudeCliConfig,
     with_sources: bool,
 ) -> Route {
-    choose_route_locked(active, claude_health, scope, mode, cfg, with_sources, false, false)
+    choose_route_locked(
+        active,
+        claude_health,
+        scope,
+        mode,
+        cfg,
+        with_sources,
+        false,
+        false,
+    )
 }
 
 /// [`choose_route`] for a request whose pills lock something out: the session
@@ -173,7 +182,11 @@ impl Default for SourcesCooldown {
 
 impl SourcesCooldown {
     pub fn with_duration(cooldown: Duration) -> Self {
-        Self { cooldown, failures: Mutex::new(HashMap::new()), generation: Default::default() }
+        Self {
+            cooldown,
+            failures: Mutex::new(HashMap::new()),
+            generation: Default::default(),
+        }
     }
 
     pub fn duration(&self) -> Duration {
@@ -184,10 +197,14 @@ impl SourcesCooldown {
     /// for the retry timer ([`begin_retry`](Self::begin_retry)).
     pub fn fail(&self, key: &SessionKey, reason: &str, now: Instant) -> u64 {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        self.failures
-            .lock()
-            .unwrap()
-            .insert(key.clone(), SourcesFailure { at: now, reason: reason.to_string(), generation });
+        self.failures.lock().unwrap().insert(
+            key.clone(),
+            SourcesFailure {
+                at: now,
+                reason: reason.to_string(),
+                generation,
+            },
+        );
         generation
     }
 
@@ -236,7 +253,11 @@ impl SourcesCooldown {
     /// that key's current failure (not cleared or replaced since), meaning the
     /// caller runs the background retry.
     pub fn begin_retry(&self, key: &SessionKey, generation: u64) -> bool {
-        self.failures.lock().unwrap().get(key).is_some_and(|f| f.generation == generation)
+        self.failures
+            .lock()
+            .unwrap()
+            .get(key)
+            .is_some_and(|f| f.generation == generation)
     }
 
     pub fn is_failed(&self, key: &SessionKey) -> bool {
@@ -246,7 +267,11 @@ impl SourcesCooldown {
 
 /// Modes that run by themselves, never because the user asked: they never use
 /// sources, whatever the pills say.
-pub const BACKGROUND_MODES: [&str; 3] = ["MeetingSummary", "ActionItemsExtraction", "BookmarkSuggestions"];
+pub const BACKGROUND_MODES: [&str; 3] = [
+    "MeetingSummary",
+    "ActionItemsExtraction",
+    "BookmarkSuggestions",
+];
 
 /// First line of the per-request sources note.
 pub const SOURCES_NOTE_HEADER: &str = "## Sources for this answer";
@@ -261,7 +286,11 @@ pub const SOURCES_NOTE_HEADER: &str = "## Sources for this answer";
 ///
 /// (`workspace::assist::plan` decides what is actually launched, from this
 /// rule and what the meeting's workspace holds; this is the pills-only half.)
-pub fn wants_sources(mode: &str, toggles: Option<SourceToggles>, last_answer_with_sources: bool) -> bool {
+pub fn wants_sources(
+    mode: &str,
+    toggles: Option<SourceToggles>,
+    last_answer_with_sources: bool,
+) -> bool {
     if BACKGROUND_MODES.contains(&mode) {
         return false;
     }
@@ -461,7 +490,12 @@ pub struct MeetingSessions {
 impl MeetingSessions {
     /// How many times the sources of `scope` were cleared.
     pub fn sources_epoch(&self, scope: &SessionScope) -> u64 {
-        self.sources_epochs.lock().unwrap().get(scope).copied().unwrap_or(0)
+        self.sources_epochs
+            .lock()
+            .unwrap()
+            .get(scope)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// The generation `key`'s record was built under.
@@ -505,7 +539,13 @@ impl MeetingSessions {
     /// [`MeetingSessions::insert_if_current`] that also refuses a record built
     /// under another generation than `current` (its scope restarted since), and
     /// a with-sources record built before the sources were last cleared.
-    pub fn insert_checked(&self, key: SessionKey, record: SessionRecord, epoch: u64, current: Option<u64>) -> bool {
+    pub fn insert_checked(
+        &self,
+        key: SessionKey,
+        record: SessionRecord,
+        epoch: u64,
+        current: Option<u64>,
+    ) -> bool {
         let epochs = self.epochs.lock().unwrap();
         if epochs.get(&key.scope).copied().unwrap_or(0) != epoch {
             return false;
@@ -580,7 +620,10 @@ impl MeetingSessions {
     pub fn remove_scope(&self, scope: &SessionScope) {
         let mut epochs = self.epochs.lock().unwrap();
         *epochs.entry(scope.clone()).or_insert(0) += 1;
-        self.records.lock().unwrap().retain(|key, _| key.scope != *scope);
+        self.records
+            .lock()
+            .unwrap()
+            .retain(|key, _| key.scope != *scope);
         self.last_answer_sources.lock().unwrap().remove(scope);
     }
 
@@ -588,7 +631,12 @@ impl MeetingSessions {
     /// settings): the next request builds them again from the new settings.
     /// Plain records and the scope's epoch stay.
     pub fn clear_sources(&self, scope: &SessionScope) {
-        *self.sources_epochs.lock().unwrap().entry(scope.clone()).or_insert(0) += 1;
+        *self
+            .sources_epochs
+            .lock()
+            .unwrap()
+            .entry(scope.clone())
+            .or_insert(0) += 1;
         self.records
             .lock()
             .unwrap()
@@ -597,7 +645,13 @@ impl MeetingSessions {
 
     /// Every scope that has a record (a session may not be running for it).
     pub fn scopes(&self) -> Vec<SessionScope> {
-        let mut scopes: Vec<SessionScope> = self.records.lock().unwrap().keys().map(|k| k.scope.clone()).collect();
+        let mut scopes: Vec<SessionScope> = self
+            .records
+            .lock()
+            .unwrap()
+            .keys()
+            .map(|k| k.scope.clone())
+            .collect();
         scopes.sort();
         scopes.dedup();
         scopes
@@ -620,7 +674,10 @@ impl MeetingSessions {
 
     /// Note whether the latest answer of `scope` used sources.
     pub fn set_last_answer(&self, scope: &SessionScope, with_sources: bool) {
-        self.last_answer_sources.lock().unwrap().insert(scope.clone(), with_sources);
+        self.last_answer_sources
+            .lock()
+            .unwrap()
+            .insert(scope.clone(), with_sources);
     }
 
     /// [`set_last_answer`](Self::set_last_answer) for the answer of `mode`. A
@@ -634,7 +691,12 @@ impl MeetingSessions {
 
     /// Whether the latest answer of `scope` came from a with-sources session.
     pub fn last_answer_with_sources(&self, scope: &SessionScope) -> bool {
-        self.last_answer_sources.lock().unwrap().get(scope).copied().unwrap_or(false)
+        self.last_answer_sources
+            .lock()
+            .unwrap()
+            .get(scope)
+            .copied()
+            .unwrap_or(false)
     }
 
     /// Put `message` (an answer the sibling session gave) on `key`'s replay,
@@ -651,7 +713,11 @@ impl MeetingSessions {
     }
 
     fn restart_init(&self, key: &SessionKey) -> Option<SessionInit> {
-        self.records.lock().unwrap().get(key).map(SessionRecord::restart_init)
+        self.records
+            .lock()
+            .unwrap()
+            .get(key)
+            .map(SessionRecord::restart_init)
     }
 
     fn sent_lines(&self, key: &SessionKey) -> HashMap<String, SentLine> {
@@ -671,7 +737,12 @@ impl MeetingSessions {
             return;
         }
         if let Some(record) = self.records.lock().unwrap().get_mut(key) {
-            if let Some(entry) = record.replay.iter_mut().rev().find(|delta| delta.as_str() == prompt) {
+            if let Some(entry) = record
+                .replay
+                .iter_mut()
+                .rev()
+                .find(|delta| delta.as_str() == prompt)
+            {
                 *entry = answered_turn(prompt, reply);
             }
         }
@@ -706,10 +777,18 @@ impl MeetingSessions {
             if drop == 0 {
                 record.stateless_only = true;
             }
-            let SessionRecord { preload, replay, sent, .. } = record;
+            let SessionRecord {
+                preload,
+                replay,
+                sent,
+                ..
+            } = record;
             for (id, line) in sent.iter_mut() {
                 let tag = format!("[{id}]");
-                line.held = preload.iter().chain(replay.iter()).any(|m| m.contains(&tag));
+                line.held = preload
+                    .iter()
+                    .chain(replay.iter())
+                    .any(|m| m.contains(&tag));
             }
         }
     }
@@ -788,7 +867,8 @@ fn delivered(result: &Result<TurnResult, AgentError>) -> bool {
 /// result: a hint about the image when the error mentions one, else Claude's text.
 fn image_refusal(raw: &str) -> String {
     if raw.to_lowercase().contains("image") {
-        "Claude couldn't use the attached image. Remove it or paste a smaller one, then send again.".to_string()
+        "Claude couldn't use the attached image. Remove it or paste a smaller one, then send again."
+            .to_string()
     } else {
         raw.to_string()
     }
@@ -932,7 +1012,10 @@ pub async fn ask_meeting_session(
         if let (false, AgentError::Cli(AgentErrorKind::Other, raw)) = (images.is_empty(), &err) {
             log::warn!("Claude refused a request with images: {raw}");
             retire(manager, key);
-            return Err(AskFailure::Error(AgentError::Cli(AgentErrorKind::Other, image_refusal(raw))));
+            return Err(AskFailure::Error(AgentError::Cli(
+                AgentErrorKind::Other,
+                image_refusal(raw),
+            )));
         }
         if matches!(err, AgentError::Cli(AgentErrorKind::ContextOverflow, _)) {
             log::warn!("Claude session {key:?} is full ({err}); resetting it to a short replay");
@@ -956,7 +1039,12 @@ pub async fn ask_meeting_session(
 /// Session system prompt for a live meeting: the scenario prompt, the
 /// speaker context, the global custom instructions and how the session's
 /// messages are laid out.
-pub fn live_system_prompt(scenario_prompt: &str, speaker_context: &str, custom_instructions: &str, data_rules: &str) -> String {
+pub fn live_system_prompt(
+    scenario_prompt: &str,
+    speaker_context: &str,
+    custom_instructions: &str,
+    data_rules: &str,
+) -> String {
     let base = if scenario_prompt.trim().is_empty() {
         "You are Lucid, a real-time AI meeting assistant. Help the user follow the \
          meeting and respond well: accurate, concise, actionable."
@@ -968,7 +1056,10 @@ pub fn live_system_prompt(scenario_prompt: &str, speaker_context: &str, custom_i
         parts.push(speaker_context.trim().to_string());
     }
     if !custom_instructions.trim().is_empty() {
-        parts.push(format!("Additional Instructions: {}", custom_instructions.trim()));
+        parts.push(format!(
+            "Additional Instructions: {}",
+            custom_instructions.trim()
+        ));
     }
     if !data_rules.trim().is_empty() {
         parts.push(data_rules.trim().to_string());
@@ -981,7 +1072,10 @@ pub fn live_system_prompt(scenario_prompt: &str, speaker_context: &str, custom_i
 pub fn past_system_prompt(custom_instructions: &str) -> String {
     let mut parts = vec![PAST_SESSION_PROMPT.to_string()];
     if !custom_instructions.trim().is_empty() {
-        parts.push(format!("Additional Instructions: {}", custom_instructions.trim()));
+        parts.push(format!(
+            "Additional Instructions: {}",
+            custom_instructions.trim()
+        ));
     }
     parts.join("\n\n")
 }
@@ -1015,7 +1109,10 @@ pub async fn share_answer(
     message: String,
 ) {
     if let Err(e) = manager.append_if_running(target, &message).await {
-        log::warn!("could not share an answer with {}: {e}", session_key_label(target));
+        log::warn!(
+            "could not share an answer with {}: {e}",
+            session_key_label(target)
+        );
     }
     sessions.record_shared(target, &message);
 }
@@ -1083,7 +1180,10 @@ pub fn document_preload(documents: &str) -> (Vec<String>, bool) {
     if count_tokens(documents) > DOC_PRELOAD_TOKEN_CAP {
         return (Vec::new(), true);
     }
-    (build_document_preload(documents, PRELOAD_MESSAGE_CHARS), false)
+    (
+        build_document_preload(documents, PRELOAD_MESSAGE_CHARS),
+        false,
+    )
 }
 
 /// The user message of one request: the new transcript lines, optional
@@ -1108,7 +1208,12 @@ pub fn compose_delta(
             parts.push(format!("{header}\n{}", body.trim()));
         }
     }
-    parts.push(build_delta_prompt(&[], task_instructions, question, detected_question));
+    parts.push(build_delta_prompt(
+        &[],
+        task_instructions,
+        question,
+        detected_question,
+    ));
     parts.retain(|p| !p.is_empty());
     parts.join("\n\n")
 }
@@ -1166,7 +1271,9 @@ pub const INTERIM_SUFFIX: &str = " (interim)";
 /// Interim text may still change, so it rides along with one request and is
 /// never recorded as sent (nor preloaded) in a session.
 pub fn split_interim(segments: Vec<Seg>) -> (Vec<Seg>, Vec<Seg>) {
-    segments.into_iter().partition(|s| !s.speaker.ends_with(INTERIM_SUFFIX))
+    segments
+        .into_iter()
+        .partition(|s| !s.speaker.ends_with(INTERIM_SUFFIX))
 }
 
 /// Segments from `generate_assist`'s `transcript_segments` JSON, with
@@ -1218,9 +1325,14 @@ pub async fn run_health_probe(app: tauri::AppHandle) {
         if !state.claude_health.probe_due(Instant::now()) {
             continue;
         }
-        let Some(kind) = active_cli_kind(&state) else { continue };
+        let Some(kind) = active_cli_kind(&state) else {
+            continue;
+        };
         if probe_kind(kind).await.is_ok() && state.claude_health.mark_healthy() {
-            log::info!("{} CLI looks available again; requests try it again", kind.short_name());
+            log::info!(
+                "{} CLI looks available again; requests try it again",
+                kind.short_name()
+            );
         }
     }
 }
@@ -1231,7 +1343,11 @@ pub fn active_cli_kind(state: &crate::state::AppState) -> Option<CliAgentKind> {
         .llm
         .as_ref()
         .and_then(|llm| llm.lock().ok())
-        .and_then(|router| router.active_provider_type().and_then(ProviderType::cli_agent_kind))
+        .and_then(|router| {
+            router
+                .active_provider_type()
+                .and_then(ProviderType::cli_agent_kind)
+        })
 }
 
 /// True when the active LLM provider is a CLI agent (Claude, Antigravity or Codex).
@@ -1244,9 +1360,9 @@ mod tests {
     use super::*;
     use crate::llm::cli_agent::command::SessionConfig;
     use crate::llm::cli_agent::manager::{NoopStatusSink, SessionHandle, SessionSpawner};
+    use crate::llm::cli_agent::settings::CliSettings;
     use async_trait::async_trait;
     use std::sync::atomic::AtomicUsize;
-    use crate::llm::cli_agent::settings::CliSettings;
 
     fn live() -> SessionScope {
         SessionScope::Live("m1".into())
@@ -1255,32 +1371,74 @@ mod tests {
     #[test]
     fn every_cli_agent_gets_sessions_and_other_providers_do_not() {
         let cfg = ClaudeCliConfig::default();
-        for active in [ProviderType::ClaudeCli, ProviderType::AntigravityCli, ProviderType::CodexCli] {
-            match choose_route(&active, ClaudeHealth::Healthy, &live(), "Assist", &cfg, false) {
+        for active in [
+            ProviderType::ClaudeCli,
+            ProviderType::AntigravityCli,
+            ProviderType::CodexCli,
+        ] {
+            match choose_route(
+                &active,
+                ClaudeHealth::Healthy,
+                &live(),
+                "Assist",
+                &cfg,
+                false,
+            ) {
                 Route::ClaudeSession(key) => assert_eq!(key.scope, live()),
                 other => panic!("{active:?}: {other:?}"),
             }
             // With sources: the with-sources session.
-            match choose_route(&active, ClaudeHealth::Healthy, &live(), "Assist", &cfg, true) {
+            match choose_route(
+                &active,
+                ClaudeHealth::Healthy,
+                &live(),
+                "Assist",
+                &cfg,
+                true,
+            ) {
                 Route::ClaudeSession(key) => assert!(key.with_sources),
                 other => panic!("{active:?}: {other:?}"),
             }
             // Unavailable with a fallback: the fallback, whatever the CLI.
-            let with_fallback = ClaudeCliConfig { fallback_provider: Some("ollama".into()), ..Default::default() };
+            let with_fallback = ClaudeCliConfig {
+                fallback_provider: Some("ollama".into()),
+                ..Default::default()
+            };
             let down = ClaudeHealth::Unavailable(AgentErrorKind::NotLoggedIn);
             match choose_route(&active, down, &live(), "Assist", &with_fallback, false) {
                 Route::Fallback(c) => assert_eq!(c.provider_type, "ollama"),
                 other => panic!("{active:?}: {other:?}"),
             }
-            assert!(matches!(choose_route(&active, down, &live(), "Assist", &cfg, false), Route::Stateless));
             assert!(matches!(
-                choose_route(&active, ClaudeHealth::Healthy, &SessionScope::Utility, "Assist", &cfg, false),
+                choose_route(&active, down, &live(), "Assist", &cfg, false),
+                Route::Stateless
+            ));
+            assert!(matches!(
+                choose_route(
+                    &active,
+                    ClaudeHealth::Healthy,
+                    &SessionScope::Utility,
+                    "Assist",
+                    &cfg,
+                    false
+                ),
                 Route::Stateless
             ));
         }
-        for other in [ProviderType::Ollama, ProviderType::Openai, ProviderType::Custom] {
+        for other in [
+            ProviderType::Ollama,
+            ProviderType::Openai,
+            ProviderType::Custom,
+        ] {
             assert!(matches!(
-                choose_route(&other, ClaudeHealth::Healthy, &live(), "Assist", &cfg, false),
+                choose_route(
+                    &other,
+                    ClaudeHealth::Healthy,
+                    &live(),
+                    "Assist",
+                    &cfg,
+                    false
+                ),
                 Route::Stateless
             ));
         }
@@ -1356,14 +1514,22 @@ mod tests {
     #[test]
     fn routing_recap_deep_past_deep_utility_stateless() {
         let cfg = ClaudeCliConfig::default();
-        let key = |scope: &SessionScope, mode: &str| {
-            match choose_route(&ProviderType::ClaudeCli, ClaudeHealth::Healthy, scope, mode, &cfg, false) {
-                Route::ClaudeSession(k) => Some(k.tier),
-                _ => None,
-            }
+        let key = |scope: &SessionScope, mode: &str| match choose_route(
+            &ProviderType::ClaudeCli,
+            ClaudeHealth::Healthy,
+            scope,
+            mode,
+            &cfg,
+            false,
+        ) {
+            Route::ClaudeSession(k) => Some(k.tier),
+            _ => None,
         };
         assert_eq!(key(&live(), "Recap"), Some(Tier::Deep));
-        assert_eq!(key(&SessionScope::Past("p".into()), "MeetingSummary"), Some(Tier::Deep));
+        assert_eq!(
+            key(&SessionScope::Past("p".into()), "MeetingSummary"),
+            Some(Tier::Deep)
+        );
         assert_eq!(key(&SessionScope::Utility, "Assist"), None);
     }
 
@@ -1373,17 +1539,26 @@ mod tests {
         assert_eq!(health.get(), ClaudeHealth::Healthy);
         assert!(!health.mark_healthy());
         health.mark_unavailable(AgentErrorKind::NotLoggedIn);
-        assert_eq!(health.get(), ClaudeHealth::Unavailable(AgentErrorKind::NotLoggedIn));
+        assert_eq!(
+            health.get(),
+            ClaudeHealth::Unavailable(AgentErrorKind::NotLoggedIn)
+        );
         assert!(health.take_fallback_notice());
         assert!(!health.take_fallback_notice());
         // The probe flips it back, but only a successful turn re-arms the toast.
         assert!(health.mark_healthy());
         health.mark_unavailable(AgentErrorKind::NotLoggedIn);
-        assert!(!health.take_fallback_notice(), "a flapping outage toasts once");
+        assert!(
+            !health.take_fallback_notice(),
+            "a flapping outage toasts once"
+        );
         health.record_success();
         assert_eq!(health.get(), ClaudeHealth::Healthy);
         health.mark_unavailable(AgentErrorKind::RateLimited);
-        assert!(health.take_fallback_notice(), "a new outage after a success toasts again");
+        assert!(
+            health.take_fallback_notice(),
+            "a new outage after a success toasts again"
+        );
     }
 
     #[test]
@@ -1396,7 +1571,10 @@ mod tests {
         // Too old clears the way NotInstalled does: probed every tick until updated.
         health.mark_unavailable_at(AgentErrorKind::Outdated, t0);
         assert!(health.probe_due(t0), "too old: probe every tick");
-        assert!(health.mark_healthy(), "an updated Claude passes the probe and clears it");
+        assert!(
+            health.mark_healthy(),
+            "an updated Claude passes the probe and clears it"
+        );
         assert_eq!(health.get(), ClaudeHealth::Healthy);
         health.mark_unavailable_at(AgentErrorKind::RateLimited, t0);
         assert!(!health.probe_due(t0 + Duration::from_secs(60)));
@@ -1408,18 +1586,36 @@ mod tests {
     fn routing_error_classes() {
         assert!(is_restartable(&AgentError::Crashed("x".into())));
         assert!(is_restartable(&AgentError::Timeout));
-        assert!(is_restartable(&AgentError::Cli(AgentErrorKind::NotLoggedIn, "x".into())));
-        assert!(is_restartable(&AgentError::Cli(AgentErrorKind::RateLimited, "x".into())));
-        assert!(!is_restartable(&AgentError::Cli(AgentErrorKind::Other, "refused".into())));
-        assert!(!is_restartable(&AgentError::Cli(AgentErrorKind::ContextOverflow, "x".into())));
+        assert!(is_restartable(&AgentError::Cli(
+            AgentErrorKind::NotLoggedIn,
+            "x".into()
+        )));
+        assert!(is_restartable(&AgentError::Cli(
+            AgentErrorKind::RateLimited,
+            "x".into()
+        )));
+        assert!(!is_restartable(&AgentError::Cli(
+            AgentErrorKind::Other,
+            "refused".into()
+        )));
+        assert!(!is_restartable(&AgentError::Cli(
+            AgentErrorKind::ContextOverflow,
+            "x".into()
+        )));
         assert!(!is_restartable(&AgentError::Spawn("not installed".into())));
         assert!(!is_restartable(&AgentError::Cancelled));
 
         assert_eq!(unavailable_kind(&AgentError::Cancelled), None);
         assert_eq!(unavailable_kind(&AgentError::CancelledBeforeSend), None);
-        assert_eq!(unavailable_kind(&AgentError::Cli(AgentErrorKind::Other, "x".into())), None);
         assert_eq!(
-            unavailable_kind(&AgentError::Cli(AgentErrorKind::ContextOverflow, "x".into())),
+            unavailable_kind(&AgentError::Cli(AgentErrorKind::Other, "x".into())),
+            None
+        );
+        assert_eq!(
+            unavailable_kind(&AgentError::Cli(
+                AgentErrorKind::ContextOverflow,
+                "x".into()
+            )),
             None
         );
         assert_eq!(
@@ -1427,7 +1623,9 @@ mod tests {
             Some(AgentErrorKind::NotInstalled)
         );
         // Too old: a real outage, never restarted (it would fail the same way).
-        let too_old = AgentError::Spawn("Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer.".into());
+        let too_old = AgentError::Spawn(
+            "Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer.".into(),
+        );
         assert!(!is_restartable(&too_old));
         assert_eq!(unavailable_kind(&too_old), Some(AgentErrorKind::Outdated));
         assert_eq!(
@@ -1435,7 +1633,10 @@ mod tests {
             Some(AgentErrorKind::Outdated)
         );
         assert_eq!(reason_label(AgentErrorKind::Outdated), "too old");
-        assert_eq!(unavailable_kind(&AgentError::Timeout), Some(AgentErrorKind::Crashed));
+        assert_eq!(
+            unavailable_kind(&AgentError::Timeout),
+            Some(AgentErrorKind::Crashed)
+        );
         assert_eq!(
             unavailable_kind(&AgentError::Crashed("exit code 1".into())),
             Some(AgentErrorKind::Crashed)
@@ -1462,7 +1663,10 @@ mod tests {
         };
         let p = compose_delta(
             &[seg],
-            &[("## Relevant document excerpts", "chunk 1"), ("## Empty", " ")],
+            &[
+                ("## Relevant document excerpts", "chunk 1"),
+                ("## Empty", " "),
+            ],
             "Suggest a reply.",
             None,
             Some("When?"),
@@ -1474,7 +1678,10 @@ mod tests {
              ## Task instructions\nSuggest a reply.\n\n\
              ## Detected question\nWhen?"
         );
-        assert_eq!(compose_delta(&[], &[], "Do it.", Some("Q"), None), "## Task instructions\nDo it.\n\n## Question\nQ");
+        assert_eq!(
+            compose_delta(&[], &[], "Do it.", Some("Q"), None),
+            "## Task instructions\nDo it.\n\n## Question\nQ"
+        );
     }
 
     #[test]
@@ -1484,11 +1691,29 @@ mod tests {
                        {"text":"Yo","speaker":"Them","timestamp_ms":1700000070000}]"#;
         let segs = segments_from_json(json, 1_700_000_000_000);
         assert_eq!(segs.len(), 2);
-        assert_eq!((segs[0].id.as_str(), segs[0].speaker.as_str(), segs[0].timestamp_ms), ("a", "You", 65_000));
-        assert_eq!((segs[1].speaker.as_str(), segs[1].timestamp_ms), ("Them", 70_000));
-        assert_eq!(segs[1].id, fallback_segment_id(1_700_000_070_000, "Them", "Yo"), "id-less segments get a stable id");
+        assert_eq!(
+            (
+                segs[0].id.as_str(),
+                segs[0].speaker.as_str(),
+                segs[0].timestamp_ms
+            ),
+            ("a", "You", 65_000)
+        );
+        assert_eq!(
+            (segs[1].speaker.as_str(), segs[1].timestamp_ms),
+            ("Them", 70_000)
+        );
+        assert_eq!(
+            segs[1].id,
+            fallback_segment_id(1_700_000_070_000, "Them", "Yo"),
+            "id-less segments get a stable id"
+        );
         assert!(segments_from_json("not json", 0).is_empty());
-        assert_eq!(relative_ms(5_000, 1_700_000_000_000), 5_000, "already relative");
+        assert_eq!(
+            relative_ms(5_000, 1_700_000_000_000),
+            5_000,
+            "already relative"
+        );
     }
 
     /// Interim text goes with one request but never into the session's record:
@@ -1498,12 +1723,23 @@ mod tests {
         let json = r#"[{"id":"a","text":"Hi","speaker":"User","timestamp_ms":1000},
                        {"id":"b","text":"What about the bud","speaker":"Them (interim)","timestamp_ms":2000}]"#;
         let (finals, interim) = split_interim(segments_from_json(json, 0));
-        assert_eq!(finals.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), ["a"]);
+        assert_eq!(
+            finals.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
+            ["a"]
+        );
         assert_eq!(interim[0].speaker, "Them (interim)");
         let mut cursor = DeltaCursor::default();
         cursor.take_new(&finals);
-        let final_b = Seg { text: "What about the budget?".into(), speaker: "Them".into(), ..interim[0].clone() };
-        assert_eq!(cursor.take_new(&[final_b.clone()]), vec![final_b], "whole line, unmarked");
+        let final_b = Seg {
+            text: "What about the budget?".into(),
+            speaker: "Them".into(),
+            ..interim[0].clone()
+        };
+        assert_eq!(
+            cursor.take_new(&[final_b.clone()]),
+            vec![final_b],
+            "whole line, unmarked"
+        );
     }
 
     #[test]
@@ -1536,7 +1772,10 @@ mod tests {
             },
         );
         sessions.truncate_replay(&key, 120);
-        assert_eq!(sessions.get(&key).unwrap().replay, vec!["b".repeat(50), "c".repeat(50)]);
+        assert_eq!(
+            sessions.get(&key).unwrap().replay,
+            vec!["b".repeat(50), "c".repeat(50)]
+        );
         assert!(!sessions.insert_if_absent(key.clone(), SessionRecord::default()));
     }
 
@@ -1655,15 +1894,31 @@ mod tests {
             }
             let index = self.0.spawns.fetch_add(1, Ordering::SeqCst);
             self.0.appended.lock().unwrap().push(Vec::new());
-            Ok(Arc::new(FakeSession { script: self.0.clone(), index, alive: AtomicBool::new(true) }))
+            Ok(Arc::new(FakeSession {
+                script: self.0.clone(),
+                index,
+                alive: AtomicBool::new(true),
+            }))
         }
     }
 
     fn seg(id: &str, ts: u64) -> Seg {
-        Seg { id: id.into(), text: id.into(), speaker: "Them".into(), timestamp_ms: ts }
+        Seg {
+            id: id.into(),
+            text: id.into(),
+            speaker: "Them".into(),
+            timestamp_ms: ts,
+        }
     }
 
-    fn setup(preload: &[&str]) -> (AgentSessionManager, Arc<MeetingSessions>, Arc<Script>, SessionKey) {
+    fn setup(
+        preload: &[&str],
+    ) -> (
+        AgentSessionManager,
+        Arc<MeetingSessions>,
+        Arc<Script>,
+        SessionKey,
+    ) {
         let script = Arc::new(Script::default());
         let manager = AgentSessionManager::new(
             Arc::new(FakeSpawner(script.clone())),
@@ -1713,17 +1968,33 @@ mod tests {
         key: &SessionKey,
         finals: &[Seg],
     ) -> Result<TurnResult, AskFailure> {
-        ask_with(manager, sessions, key, finals, &Arc::new(Mutex::new(String::new()))).await
+        ask_with(
+            manager,
+            sessions,
+            key,
+            finals,
+            &Arc::new(Mutex::new(String::new())),
+        )
+        .await
     }
 
     fn last_prompt(script: &Script) -> String {
-        script.prompts.lock().unwrap().last().cloned().unwrap_or_default()
+        script
+            .prompts
+            .lock()
+            .unwrap()
+            .last()
+            .cloned()
+            .unwrap_or_default()
     }
 
     #[tokio::test]
     async fn routing_session_sends_the_images_with_the_question() {
         let (manager, sessions, script, key) = setup(&[]);
-        let images = [ImageAttachment { media_type: "image/png".into(), data: "AAAA".into() }];
+        let images = [ImageAttachment {
+            media_type: "image/png".into(),
+            data: "AAAA".into(),
+        }];
         ask_meeting_session(
             &manager,
             &sessions,
@@ -1737,8 +2008,14 @@ mod tests {
         )
         .await
         .unwrap();
-        ask(&manager, &sessions, &key, &[seg("a", 0), seg("b", 1)]).await.unwrap();
-        assert_eq!(*script.image_counts.lock().unwrap(), vec![1, 0], "only the question that had images");
+        ask(&manager, &sessions, &key, &[seg("a", 0), seg("b", 1)])
+            .await
+            .unwrap();
+        assert_eq!(
+            *script.image_counts.lock().unwrap(),
+            vec![1, 0],
+            "only the question that had images"
+        );
     }
 
     #[tokio::test]
@@ -1752,54 +2029,108 @@ mod tests {
 
         let prompts = script.prompts.lock().unwrap().clone();
         assert_eq!(prompts.len(), 3);
-        assert!(prompts[0].contains("[a] Them: a\n[00:00] [b] Them: b"), "{}", prompts[0]);
+        assert!(
+            prompts[0].contains("[a] Them: a\n[00:00] [b] Them: b"),
+            "{}",
+            prompts[0]
+        );
         assert!(prompts[1].contains("Them: c") && !prompts[1].contains("Them: a"));
-        assert!(!prompts[2].contains("## New transcript"), "nothing new: {}", prompts[2]);
+        assert!(
+            !prompts[2].contains("## New transcript"),
+            "nothing new: {}",
+            prompts[2]
+        );
         assert_eq!(script.spawns.load(Ordering::SeqCst), 1);
         assert_eq!(script.appended.lock().unwrap()[0], vec!["docs"]);
         let record = sessions.get(&key).unwrap();
         assert_eq!(record.sent.len(), 3);
         assert_eq!(record.replay.len(), 3);
-        assert_eq!(manager.usage(&live()).input_tokens, 21, "usage counted per turn");
+        assert_eq!(
+            manager.usage(&live()).input_tokens,
+            21,
+            "usage counted per turn"
+        );
     }
 
     #[tokio::test]
     async fn routing_late_finalized_line_goes_once_through_the_session() {
         let (manager, sessions, script, key) = setup(&[]);
-        ask(&manager, &sessions, &key, &[seg("you1", 5_000), seg("you2", 7_000)]).await.unwrap();
+        ask(
+            &manager,
+            &sessions,
+            &key,
+            &[seg("you1", 5_000), seg("you2", 7_000)],
+        )
+        .await
+        .unwrap();
         // The interviewer's question finalizes in place, before the sent lines.
-        let finals = vec![seg("question", 4_000), seg("you1", 5_000), seg("you2", 7_000)];
+        let finals = vec![
+            seg("question", 4_000),
+            seg("you1", 5_000),
+            seg("you2", 7_000),
+        ];
         ask(&manager, &sessions, &key, &finals).await.unwrap();
         let p = last_prompt(&script);
         assert!(p.contains("Them: question"), "{p}");
-        assert!(!p.contains("Them: you1") && !p.contains("Them: you2"), "nothing resent: {p}");
+        assert!(
+            !p.contains("Them: you1") && !p.contains("Them: you2"),
+            "nothing resent: {p}"
+        );
         // A shorter, different copy of the same meeting resends nothing.
-        ask(&manager, &sessions, &key, &[seg("you1", 5_000)]).await.unwrap();
+        ask(&manager, &sessions, &key, &[seg("you1", 5_000)])
+            .await
+            .unwrap();
         assert!(!last_prompt(&script).contains("## New transcript"));
     }
 
     fn grown(id: &str, text: &str, ts: u64) -> Seg {
-        Seg { text: text.into(), ..seg(id, ts) }
+        Seg {
+            text: text.into(),
+            ..seg(id, ts)
+        }
     }
 
     #[tokio::test]
     async fn routing_grown_line_sends_only_its_new_words() {
         let (manager, sessions, script, key) = setup(&[]);
-        ask(&manager, &sessions, &key, &[grown("p1", "We ship", 0)]).await.unwrap();
-        ask(&manager, &sessions, &key, &[grown("p1", "We ship on Friday", 0)]).await.unwrap();
+        ask(&manager, &sessions, &key, &[grown("p1", "We ship", 0)])
+            .await
+            .unwrap();
+        ask(
+            &manager,
+            &sessions,
+            &key,
+            &[grown("p1", "We ship on Friday", 0)],
+        )
+        .await
+        .unwrap();
         let p = last_prompt(&script);
         assert!(p.contains("[00:00] [p1] Them: …on Friday"), "{p}");
         assert!(!p.contains("We ship"), "the sent part is not repeated: {p}");
-        ask(&manager, &sessions, &key, &[grown("p1", "We ship on Friday", 0)]).await.unwrap();
+        ask(
+            &manager,
+            &sessions,
+            &key,
+            &[grown("p1", "We ship on Friday", 0)],
+        )
+        .await
+        .unwrap();
         assert!(!last_prompt(&script).contains("## New transcript"));
-        assert_eq!(sessions.get(&key).unwrap().sent["p1"], SentLine::held("We ship on Friday"));
+        assert_eq!(
+            sessions.get(&key).unwrap().sent["p1"],
+            SentLine::held("We ship on Friday")
+        );
     }
 
     #[tokio::test]
     async fn routing_restart_after_growth_replays_consistently() {
         let (manager, sessions, script, key) = setup(&["docs"]);
-        ask(&manager, &sessions, &key, &[grown("p1", "Hello", 0)]).await.unwrap();
-        ask(&manager, &sessions, &key, &[grown("p1", "Hello there", 0)]).await.unwrap();
+        ask(&manager, &sessions, &key, &[grown("p1", "Hello", 0)])
+            .await
+            .unwrap();
+        ask(&manager, &sessions, &key, &[grown("p1", "Hello there", 0)])
+            .await
+            .unwrap();
         let (first, second) = {
             let prompts = script.prompts.lock().unwrap();
             (prompts[0].clone(), prompts[1].clone())
@@ -1807,37 +2138,82 @@ mod tests {
         // The session crashes on the next request; the restart replays both
         // deltas and the cursor resumes from the record (no resend of p1).
         script.fail_next(AgentError::Crashed("exit code 1".into()));
-        ask(&manager, &sessions, &key, &[grown("p1", "Hello there friend", 0), seg("b", 1)]).await.unwrap();
-        assert_eq!(script.appended.lock().unwrap()[1], vec!["docs".to_string(), pack_messages(&[first, second], PRELOAD_MESSAGE_CHARS)[0].clone()]);
+        ask(
+            &manager,
+            &sessions,
+            &key,
+            &[grown("p1", "Hello there friend", 0), seg("b", 1)],
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            script.appended.lock().unwrap()[1],
+            vec![
+                "docs".to_string(),
+                pack_messages(&[first, second], PRELOAD_MESSAGE_CHARS)[0].clone()
+            ]
+        );
         let p = last_prompt(&script);
-        assert!(p.contains("[p1] Them: …friend") && p.contains("[b] Them: b"), "{p}");
+        assert!(
+            p.contains("[p1] Them: …friend") && p.contains("[b] Them: b"),
+            "{p}"
+        );
         assert!(!p.contains("Hello"), "{p}");
     }
 
     #[tokio::test]
     async fn routing_overflow_marks_dropped_lines_not_held() {
         let (manager, sessions, script, key) = setup(&["docs"]);
-        let big = |id: &str| Seg { id: id.into(), text: "x".repeat(REPLAY_TAIL_CHARS / 2 + 10), speaker: "Them".into(), timestamp_ms: 0 };
-        ask(&manager, &sessions, &key, &[grown("p1", "Old words", 0), big("old")]).await.unwrap();
-        ask(&manager, &sessions, &key, &[big("recent")]).await.unwrap();
-        script.fail_next(AgentError::Cli(AgentErrorKind::ContextOverflow, "Prompt is too long".into()));
-        ask(&manager, &sessions, &key, &[seg("new", 1)]).await.unwrap_err();
+        let big = |id: &str| Seg {
+            id: id.into(),
+            text: "x".repeat(REPLAY_TAIL_CHARS / 2 + 10),
+            speaker: "Them".into(),
+            timestamp_ms: 0,
+        };
+        ask(
+            &manager,
+            &sessions,
+            &key,
+            &[grown("p1", "Old words", 0), big("old")],
+        )
+        .await
+        .unwrap();
+        ask(&manager, &sessions, &key, &[big("recent")])
+            .await
+            .unwrap();
+        script.fail_next(AgentError::Cli(
+            AgentErrorKind::ContextOverflow,
+            "Prompt is too long".into(),
+        ));
+        ask(&manager, &sessions, &key, &[seg("new", 1)])
+            .await
+            .unwrap_err();
         let record = sessions.get(&key).unwrap();
         assert!(!record.sent["p1"].held && !record.sent["old"].held);
         assert!(record.sent["recent"].held);
         // p1 kept growing: it goes whole (the session lost its start); the
         // dropped unchanged line is not resent.
-        let finals = [grown("p1", "Old words and more", 0), big("old"), big("recent"), seg("new", 1)];
+        let finals = [
+            grown("p1", "Old words and more", 0),
+            big("old"),
+            big("recent"),
+            seg("new", 1),
+        ];
         ask(&manager, &sessions, &key, &finals).await.unwrap();
         let p = last_prompt(&script);
-        assert!(p.contains("[p1] Them: Old words and more") && p.contains("Them: new"), "{p}");
+        assert!(
+            p.contains("[p1] Them: Old words and more") && p.contains("Them: new"),
+            "{p}"
+        );
         assert!(!p.contains("xxxx"), "dropped context is not resent");
     }
 
     #[tokio::test]
     async fn routing_crash_restarts_once_with_replay() {
         let (manager, sessions, script, key) = setup(&["docs"]);
-        ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap();
+        ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap();
 
         let finals = vec![seg("a", 0), seg("b", 1)];
         script.fail_next(AgentError::Crashed("exit code 1".into()));
@@ -1859,13 +2235,25 @@ mod tests {
         let (manager, sessions, script, key) = setup(&[]);
         let finals = vec![seg("a", 0)];
         for _ in 0..2 {
-            script.fail_next(AgentError::Cli(AgentErrorKind::NotLoggedIn, "Not logged in".into()));
+            script.fail_next(AgentError::Cli(
+                AgentErrorKind::NotLoggedIn,
+                "Not logged in".into(),
+            ));
         }
         let failure = ask(&manager, &sessions, &key, &finals).await.unwrap_err();
-        assert!(matches!(failure, AskFailure::Unavailable(AgentErrorKind::NotLoggedIn, _)), "{failure:?}");
+        assert!(
+            matches!(
+                failure,
+                AskFailure::Unavailable(AgentErrorKind::NotLoggedIn, _)
+            ),
+            "{failure:?}"
+        );
         assert_eq!(script.spawns.load(Ordering::SeqCst), 2, "one restart only");
         let record = sessions.get(&key).unwrap();
-        assert!(record.sent.is_empty(), "undelivered segments are rolled back");
+        assert!(
+            record.sent.is_empty(),
+            "undelivered segments are rolled back"
+        );
         assert!(record.replay.is_empty());
 
         // Healthy again: the next request carries the rolled-back segment.
@@ -1881,14 +2269,29 @@ mod tests {
         for _ in 0..2 {
             script.fail_next(AgentError::Crashed("exit code 1".into()));
         }
-        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap_err();
+        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap_err();
         let AskFailure::Unavailable(kind, _) = failure else {
             panic!("expected an outage, got {failure:?}");
         };
         assert_eq!(kind, AgentErrorKind::Crashed);
-        let cfg = ClaudeCliConfig { fallback_provider: Some("ollama".into()), ..Default::default() };
-        let route = choose_route(&ProviderType::ClaudeCli, ClaudeHealth::Unavailable(kind), &key.scope, "Assist", &cfg, false);
-        assert!(matches!(&route, Route::Fallback(p) if p.provider_type == "ollama"), "{route:?}");
+        let cfg = ClaudeCliConfig {
+            fallback_provider: Some("ollama".into()),
+            ..Default::default()
+        };
+        let route = choose_route(
+            &ProviderType::ClaudeCli,
+            ClaudeHealth::Unavailable(kind),
+            &key.scope,
+            "Assist",
+            &cfg,
+            false,
+        );
+        assert!(
+            matches!(&route, Route::Fallback(p) if p.provider_type == "ollama"),
+            "{route:?}"
+        );
     }
 
     #[tokio::test]
@@ -1898,75 +2301,141 @@ mod tests {
             .steps
             .lock()
             .unwrap()
-            .push(Step::StreamThenFail(AgentError::Crashed("exit code 1".into())));
+            .push(Step::StreamThenFail(AgentError::Crashed(
+                "exit code 1".into(),
+            )));
         let streamed = Arc::new(Mutex::new(String::new()));
-        let failure = ask_with(&manager, &sessions, &key, &[seg("a", 0)], &streamed).await.unwrap_err();
-        assert!(matches!(failure, AskFailure::AfterOutput(AgentError::Crashed(_))), "{failure:?}");
-        assert_eq!(script.spawns.load(Ordering::SeqCst), 1, "no restart once text streamed");
-        assert_eq!(script.prompts.lock().unwrap().len(), 1, "nothing re-streamed");
+        let failure = ask_with(&manager, &sessions, &key, &[seg("a", 0)], &streamed)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(failure, AskFailure::AfterOutput(AgentError::Crashed(_))),
+            "{failure:?}"
+        );
+        assert_eq!(
+            script.spawns.load(Ordering::SeqCst),
+            1,
+            "no restart once text streamed"
+        );
+        assert_eq!(
+            script.prompts.lock().unwrap().len(),
+            1,
+            "nothing re-streamed"
+        );
         assert_eq!(*streamed.lock().unwrap(), "partial ");
         // The dead session comes back from its record on the next request.
-        ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap();
+        ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap();
         assert_eq!(script.spawns.load(Ordering::SeqCst), 2);
-        assert!(last_prompt(&script).contains("Them: a"), "rolled-back segment resent");
+        assert!(
+            last_prompt(&script).contains("Them: a"),
+            "rolled-back segment resent"
+        );
     }
 
     #[tokio::test]
     async fn routing_closed_scope_mid_turn_is_benign() {
         let (manager, sessions, script, key) = setup(&[]);
         *script.close_on_ask.lock().unwrap() = Some(sessions.clone());
-        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap_err();
+        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap_err();
         assert_eq!(failure, AskFailure::Closed);
-        assert_eq!(script.spawns.load(Ordering::SeqCst), 1, "no restart after a deliberate close");
+        assert_eq!(
+            script.spawns.load(Ordering::SeqCst),
+            1,
+            "no restart after a deliberate close"
+        );
         // A request after the scope is gone is benign too.
-        assert_eq!(ask(&manager, &sessions, &key, &[]).await.unwrap_err(), AskFailure::Closed);
+        assert_eq!(
+            ask(&manager, &sessions, &key, &[]).await.unwrap_err(),
+            AskFailure::Closed
+        );
     }
 
     #[tokio::test]
     async fn routing_context_overflow_resets_to_recent_replay() {
         let (manager, sessions, script, key) = setup(&["docs"]);
         // Two old deltas, each larger than half the replay tail budget.
-        let big = |id: &str| Seg { id: id.into(), text: "x".repeat(REPLAY_TAIL_CHARS / 2 + 10), speaker: "Them".into(), timestamp_ms: 0 };
+        let big = |id: &str| Seg {
+            id: id.into(),
+            text: "x".repeat(REPLAY_TAIL_CHARS / 2 + 10),
+            speaker: "Them".into(),
+            timestamp_ms: 0,
+        };
         ask(&manager, &sessions, &key, &[big("old")]).await.unwrap();
-        ask(&manager, &sessions, &key, &[big("old"), big("recent")]).await.unwrap();
+        ask(&manager, &sessions, &key, &[big("old"), big("recent")])
+            .await
+            .unwrap();
         let recent_delta = last_prompt(&script);
 
-        script.fail_next(AgentError::Cli(AgentErrorKind::ContextOverflow, "Prompt is too long".into()));
+        script.fail_next(AgentError::Cli(
+            AgentErrorKind::ContextOverflow,
+            "Prompt is too long".into(),
+        ));
         let finals = vec![big("old"), big("recent"), seg("new", 1)];
         let failure = ask(&manager, &sessions, &key, &finals).await.unwrap_err();
         assert!(matches!(failure, AskFailure::ContextFull(_)), "{failure:?}");
-        assert_eq!(sessions.get(&key).unwrap().replay, vec![recent_delta.clone()], "only the recent tail is kept");
+        assert_eq!(
+            sessions.get(&key).unwrap().replay,
+            vec![recent_delta.clone()],
+            "only the recent tail is kept"
+        );
 
         // The next request starts a fresh session from preload + tail and
         // carries the segment the full session never took.
         ask(&manager, &sessions, &key, &finals).await.unwrap();
         assert_eq!(script.spawns.load(Ordering::SeqCst), 2);
-        assert_eq!(script.appended.lock().unwrap()[1], vec!["docs".to_string(), recent_delta]);
+        assert_eq!(
+            script.appended.lock().unwrap()[1],
+            vec!["docs".to_string(), recent_delta]
+        );
         assert!(last_prompt(&script).contains("Them: new"));
     }
 
     #[tokio::test]
     async fn routing_overflow_after_output_is_not_re_answered() {
         let (manager, sessions, script, key) = setup(&[]);
-        script.steps.lock().unwrap().push(Step::StreamThenFail(AgentError::Cli(
-            AgentErrorKind::ContextOverflow,
-            "Prompt is too long".into(),
-        )));
-        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap_err();
+        script
+            .steps
+            .lock()
+            .unwrap()
+            .push(Step::StreamThenFail(AgentError::Cli(
+                AgentErrorKind::ContextOverflow,
+                "Prompt is too long".into(),
+            )));
+        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap_err();
         assert!(matches!(failure, AskFailure::AfterOutput(_)), "{failure:?}");
     }
 
     #[tokio::test]
     async fn routing_preload_only_overflow_goes_stateless_without_spawning() {
         let (manager, sessions, script, key) = setup(&["a huge preload"]);
-        script.fail_next(AgentError::Cli(AgentErrorKind::ContextOverflow, "Prompt is too long".into()));
-        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap_err();
+        script.fail_next(AgentError::Cli(
+            AgentErrorKind::ContextOverflow,
+            "Prompt is too long".into(),
+        ));
+        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap_err();
         assert!(matches!(failure, AskFailure::ContextFull(_)), "{failure:?}");
-        assert!(sessions.get(&key).unwrap().stateless_only, "nothing to truncate: stateless only");
+        assert!(
+            sessions.get(&key).unwrap().stateless_only,
+            "nothing to truncate: stateless only"
+        );
         // Later requests skip the session entirely.
-        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap_err();
+        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap_err();
         assert!(matches!(failure, AskFailure::ContextFull(_)));
-        assert_eq!(script.spawns.load(Ordering::SeqCst), 1, "no respawn per request");
+        assert_eq!(
+            script.spawns.load(Ordering::SeqCst),
+            1,
+            "no respawn per request"
+        );
         assert_eq!(script.prompts.lock().unwrap().len(), 1);
     }
 
@@ -1995,7 +2464,11 @@ mod tests {
             built.set(true);
             Ok(SessionRecord::default())
         });
-        assert_eq!(ready, Ok(false), "closed: the request ends without a session");
+        assert_eq!(
+            ready,
+            Ok(false),
+            "closed: the request ends without a session"
+        );
         assert!(!built.get(), "no record is built for a closed scope");
         assert!(!sessions.contains(&key));
     }
@@ -2018,12 +2491,17 @@ mod tests {
         let sessions = MeetingSessions::default();
         let key = SessionKey::plain(live(), Tier::Fast);
         let epoch = sessions.epoch(&key.scope);
-        assert_eq!(sessions.ensure_current(&key, epoch, || Ok(SessionRecord::default())), Ok(true));
+        assert_eq!(
+            sessions.ensure_current(&key, epoch, || Ok(SessionRecord::default())),
+            Ok(true)
+        );
         assert!(sessions.contains(&key));
         let again = sessions.ensure_current(&key, epoch, || Err("must not rebuild".into()));
         assert_eq!(again, Ok(true));
         assert_eq!(
-            sessions.ensure_current(&SessionKey::plain(live(), Tier::Deep), epoch, || Err("no".into())),
+            sessions.ensure_current(&SessionKey::plain(live(), Tier::Deep), epoch, || Err(
+                "no".into()
+            )),
             Err("no".to_string()),
             "a build error is reported"
         );
@@ -2040,13 +2518,23 @@ mod tests {
     #[tokio::test]
     async fn routing_delivered_error_result_keeps_segments_sent() {
         let (manager, sessions, script, key) = setup(&[]);
-        script.fail_next(AgentError::Cli(AgentErrorKind::Other, "request refused".into()));
-        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap_err();
-        assert!(matches!(failure, AskFailure::Error(AgentError::Cli(AgentErrorKind::Other, _))));
+        script.fail_next(AgentError::Cli(
+            AgentErrorKind::Other,
+            "request refused".into(),
+        ));
+        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            failure,
+            AskFailure::Error(AgentError::Cli(AgentErrorKind::Other, _))
+        ));
         assert_eq!(script.spawns.load(Ordering::SeqCst), 1, "not retried");
         // The prompt is in Claude's history: its segments are not resent.
         assert!(sessions.get(&key).unwrap().sent.contains_key("a"));
-        ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap();
+        ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap();
         assert!(!last_prompt(&script).contains("## New transcript"));
     }
 
@@ -2055,9 +2543,13 @@ mod tests {
         let (manager, sessions, script, key) = setup(&[]);
         script.fail_next(AgentError::Cli(
             AgentErrorKind::Other,
-            "API Error: 400 messages.0.content.0.image.source.base64: image exceeds 5 MB maximum".into(),
+            "API Error: 400 messages.0.content.0.image.source.base64: image exceeds 5 MB maximum"
+                .into(),
         ));
-        let images = [ImageAttachment { media_type: "image/png".into(), data: "AAAA".into() }];
+        let images = [ImageAttachment {
+            media_type: "image/png".into(),
+            data: "AAAA".into(),
+        }];
         let failure = ask_meeting_session(
             &manager,
             &sessions,
@@ -2080,11 +2572,23 @@ mod tests {
             }
             _ => panic!("expected the image refusal"),
         }
-        assert!(!sessions.get(&key).unwrap().sent.contains_key("a"), "nothing recorded");
+        assert!(
+            !sessions.get(&key).unwrap().sent.contains_key("a"),
+            "nothing recorded"
+        );
         // The next text-only request starts a fresh session and carries the segments.
-        ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap();
-        assert_eq!(script.spawns.load(Ordering::SeqCst), 2, "the session was restarted");
-        assert!(last_prompt(&script).contains("## New transcript"), "segments were rolled back");
+        ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap();
+        assert_eq!(
+            script.spawns.load(Ordering::SeqCst),
+            2,
+            "the session was restarted"
+        );
+        assert!(
+            last_prompt(&script).contains("## New transcript"),
+            "segments were rolled back"
+        );
         assert_eq!(*script.image_counts.lock().unwrap(), vec![1, 0]);
     }
 
@@ -2122,12 +2626,19 @@ mod tests {
         // Stopped while waiting for the turn lock: the prompt never reached Claude.
         let (manager, sessions, script, key) = setup(&[]);
         script.fail_next(AgentError::CancelledBeforeSend);
-        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap_err();
+        let failure = ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap_err();
         assert_eq!(failure, AskFailure::Cancelled);
-        assert!(sessions.get(&key).unwrap().sent.is_empty(), "segments stay unsent");
+        assert!(
+            sessions.get(&key).unwrap().sent.is_empty(),
+            "segments stay unsent"
+        );
         // Stopped mid-turn: the prompt is in history.
         script.fail_next(AgentError::Cancelled);
-        ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap_err();
+        ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap_err();
         assert!(sessions.get(&key).unwrap().sent.contains_key("a"));
     }
 
@@ -2140,13 +2651,23 @@ mod tests {
         let question = last_prompt(&script);
         sessions.record_reply(&key, &question, &turn.text);
         sessions.record_reply(&key, "a prompt never sent", "ignored");
-        assert_eq!(sessions.get(&key).unwrap().replay, vec![answered_turn(&question, "ok")]);
+        assert_eq!(
+            sessions.get(&key).unwrap().replay,
+            vec![answered_turn(&question, "ok")]
+        );
 
         script.fail_next(AgentError::Crashed("exit code 1".into()));
         ask(&manager, &sessions, &key, &[]).await.unwrap();
         let replayed = script.appended.lock().unwrap()[1].clone();
-        assert_eq!(replayed, vec!["transcript".to_string(), answered_turn(&question, "ok")]);
-        assert!(replayed[1].ends_with("## Your answer\nok"), "{}", replayed[1]);
+        assert_eq!(
+            replayed,
+            vec!["transcript".to_string(), answered_turn(&question, "ok")]
+        );
+        assert!(
+            replayed[1].ends_with("## Your answer\nok"),
+            "{}",
+            replayed[1]
+        );
     }
 
     #[test]
@@ -2163,7 +2684,11 @@ mod tests {
         let plain = SessionKey::plain(live(), Tier::Fast);
         let with_sources = SessionKey::sources(live(), Tier::Fast);
         let epoch = sessions.epoch(&live());
-        let record = |generation, sources_epoch| SessionRecord { generation, sources_epoch, ..Default::default() };
+        let record = |generation, sources_epoch| SessionRecord {
+            generation,
+            sources_epoch,
+            ..Default::default()
+        };
         // Built under generation 3, but the scope is at 4: refused. At 4: kept.
         assert!(!sessions.insert_checked(plain.clone(), record(3, 0), epoch, Some(4)));
         assert!(sessions.insert_checked(plain.clone(), record(4, 0), epoch, Some(4)));
@@ -2171,7 +2696,12 @@ mod tests {
         let before = sessions.sources_epoch(&live());
         sessions.clear_sources(&live());
         assert!(!sessions.insert_checked(with_sources.clone(), record(0, before), epoch, None));
-        assert!(sessions.insert_checked(with_sources.clone(), record(0, sessions.sources_epoch(&live())), epoch, None));
+        assert!(sessions.insert_checked(
+            with_sources.clone(),
+            record(0, sessions.sources_epoch(&live())),
+            epoch,
+            None
+        ));
         // An attempt removes only its own record.
         assert!(!sessions.remove_if_generation(&plain, 3));
         assert!(sessions.remove_if_generation(&plain, 4));
@@ -2183,17 +2713,38 @@ mod tests {
         let sessions = MeetingSessions::default();
         let key = SessionKey::plain(live(), Tier::Fast);
         let epoch = sessions.epoch(&live());
-        sessions.insert_checked(key.clone(), SessionRecord { generation: 1, system_prompt: "old".into(), ..Default::default() }, epoch, Some(1));
+        sessions.insert_checked(
+            key.clone(),
+            SessionRecord {
+                generation: 1,
+                system_prompt: "old".into(),
+                ..Default::default()
+            },
+            epoch,
+            Some(1),
+        );
         // Same generation: kept, never rebuilt.
-        assert_eq!(sessions.ensure_current_at(&key, epoch, Some(1), || Err("must not rebuild".into())), Ok(true));
+        assert_eq!(
+            sessions.ensure_current_at(&key, epoch, Some(1), || Err("must not rebuild".into())),
+            Ok(true)
+        );
         // The scope moved on: the old record goes and the new one is built.
         let ready = sessions.ensure_current_at(&key, epoch, Some(2), || {
-            Ok(SessionRecord { generation: 2, system_prompt: "new".into(), ..Default::default() })
+            Ok(SessionRecord {
+                generation: 2,
+                system_prompt: "new".into(),
+                ..Default::default()
+            })
         });
         assert_eq!(ready, Ok(true));
         assert_eq!(sessions.get(&key).unwrap().system_prompt, "new");
         // A build that raced a further restart is refused.
-        let raced = sessions.ensure_current_at(&key, epoch, Some(3), || Ok(SessionRecord { generation: 2, ..Default::default() }));
+        let raced = sessions.ensure_current_at(&key, epoch, Some(3), || {
+            Ok(SessionRecord {
+                generation: 2,
+                ..Default::default()
+            })
+        });
         assert_eq!(raced, Ok(false));
         assert!(!sessions.contains(&key));
     }
@@ -2204,7 +2755,11 @@ mod tests {
         manager.detach_scope(&live());
         let result = ask(&manager, &sessions, &key, &[seg("a", 0)]).await;
         assert!(matches!(result, Err(AskFailure::Closed)), "{result:?}");
-        assert_eq!(script.spawns.load(Ordering::SeqCst), 0, "nothing started from the old material");
+        assert_eq!(
+            script.spawns.load(Ordering::SeqCst),
+            0,
+            "nothing started from the old material"
+        );
         assert!(!sessions.contains(&key), "and the stale record is gone");
     }
 
@@ -2213,12 +2768,19 @@ mod tests {
         // A session the reaper closed (or that died between requests) comes
         // back with preload + replay; the cursor follows the record.
         let (manager, sessions, script, key) = setup(&["docs"]);
-        ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap();
+        ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap();
         manager.close_scope(&live()).await;
-        ask(&manager, &sessions, &key, &[seg("a", 0), seg("b", 1)]).await.unwrap();
+        ask(&manager, &sessions, &key, &[seg("a", 0), seg("b", 1)])
+            .await
+            .unwrap();
         assert_eq!(script.spawns.load(Ordering::SeqCst), 2);
         let last = last_prompt(&script);
-        assert!(last.contains("Them: b") && !last.contains("Them: a"), "{last}");
+        assert!(
+            last.contains("Them: b") && !last.contains("Them: a"),
+            "{last}"
+        );
         assert_eq!(script.appended.lock().unwrap()[1].len(), 2);
     }
 
@@ -2226,7 +2788,10 @@ mod tests {
 
     #[test]
     fn wants_sources_table() {
-        let on = Some(SourceToggles { library: true, tools: false });
+        let on = Some(SourceToggles {
+            library: true,
+            tools: false,
+        });
         let off = Some(SourceToggles::default());
         assert!(wants_sources("Assist", on, false));
         assert!(wants_sources("AskQuestion", on, false));
@@ -2256,11 +2821,18 @@ mod tests {
             Route::ClaudeSession(key) => assert_eq!(key, SessionKey::sources(past, Tier::Deep)),
             other => panic!("{other:?}"),
         }
-        let r = route(&ProviderType::ClaudeCli, ClaudeHealth::Healthy, &SessionScope::Utility);
+        let r = route(
+            &ProviderType::ClaudeCli,
+            ClaudeHealth::Healthy,
+            &SessionScope::Utility,
+        );
         assert!(matches!(r, Route::Stateless), "{r:?}");
         let r = route(&ProviderType::Ollama, ClaudeHealth::Healthy, &live());
         assert!(matches!(r, Route::Stateless), "{r:?}");
-        let with_fallback = ClaudeCliConfig { fallback_provider: Some("ollama".into()), ..Default::default() };
+        let with_fallback = ClaudeCliConfig {
+            fallback_provider: Some("ollama".into()),
+            ..Default::default()
+        };
         let r = choose_route(
             &ProviderType::ClaudeCli,
             ClaudeHealth::Unavailable(AgentErrorKind::NotLoggedIn),
@@ -2279,7 +2851,11 @@ mod tests {
             "## Sources for this answer\nKnowledge: on. Tools: off. Use only the sources marked on."
         );
         assert!(sources_note(SourceToggles::default()).contains("Knowledge: off. Tools: off."));
-        assert!(sources_note(SourceToggles { library: false, tools: true }).starts_with(SOURCES_NOTE_HEADER));
+        assert!(sources_note(SourceToggles {
+            library: false,
+            tools: true
+        })
+        .starts_with(SOURCES_NOTE_HEADER));
     }
 
     #[test]
@@ -2307,8 +2883,16 @@ mod tests {
         for mode in BACKGROUND_MODES {
             sessions.note_answer(mode, &live(), false);
             assert!(sessions.last_answer_with_sources(&live()), "{mode}");
-            assert!(wants_sources("Shorten", Some(SourceToggles::default()), sessions.last_answer_with_sources(&live())));
-            assert!(wants_sources("FollowUp", Some(SourceToggles::default()), sessions.last_answer_with_sources(&live())));
+            assert!(wants_sources(
+                "Shorten",
+                Some(SourceToggles::default()),
+                sessions.last_answer_with_sources(&live())
+            ));
+            assert!(wants_sources(
+                "FollowUp",
+                Some(SourceToggles::default()),
+                sessions.last_answer_with_sources(&live())
+            ));
         }
         // A plain answer the user asked for does count.
         sessions.note_answer("Assist", &live(), false);
@@ -2325,11 +2909,20 @@ mod tests {
         assert_eq!(cd.gate(&key, t0), None);
         cd.fail(&key, "Mira didn't start", t0);
         let text = cd.gate(&key, t0 + Duration::from_secs(20)).unwrap();
-        assert!(text.contains("didn't use them") && text.contains("Mira didn't start"), "{text}");
+        assert!(
+            text.contains("didn't use them") && text.contains("Mira didn't start"),
+            "{text}"
+        );
         assert!(text.ends_with("Trying again in 2 min."), "{text}");
         assert!(!text.contains(" s."), "{text}");
-        assert!(cd.gate(&key, t0 + Duration::from_secs(100)).unwrap().ends_with("Trying again in under a minute."));
-        assert!(cd.gate(&key, t0 + Duration::from_secs(130)).unwrap().ends_with("Trying again now."));
+        assert!(cd
+            .gate(&key, t0 + Duration::from_secs(100))
+            .unwrap()
+            .ends_with("Trying again in under a minute."));
+        assert!(cd
+            .gate(&key, t0 + Duration::from_secs(130))
+            .unwrap()
+            .ends_with("Trying again now."));
         cd.clear();
         assert_eq!(cd.gate(&key, t0), None);
     }
@@ -2343,7 +2936,11 @@ mod tests {
         let t0 = Instant::now();
         cd.fail(&past, "Wiki didn't start", t0);
         cd.fail(&live_deep, "Wiki didn't start", t0);
-        assert_eq!(cd.gate(&live_fast, t0), None, "Live Fast still tries its sources");
+        assert_eq!(
+            cd.gate(&live_fast, t0),
+            None,
+            "Live Fast still tries its sources"
+        );
         assert!(cd.gate(&past, t0).is_some() && cd.gate(&live_deep, t0).is_some());
         // A start that works clears only its key.
         cd.clear_key(&past);
@@ -2358,13 +2955,19 @@ mod tests {
         let first = cd.fail(&key, "a", Instant::now());
         assert!(cd.begin_retry(&key, first));
         let elsewhere = cd.fail(&other, "x", Instant::now());
-        assert!(cd.begin_retry(&key, first), "another key's failure doesn't cancel it");
+        assert!(
+            cd.begin_retry(&key, first),
+            "another key's failure doesn't cancel it"
+        );
         assert!(cd.begin_retry(&other, elsewhere));
         let second = cd.fail(&key, "b", Instant::now());
         assert!(!cd.begin_retry(&key, first), "replaced by a newer failure");
         assert!(cd.begin_retry(&key, second));
         cd.clear();
-        assert!(!cd.begin_retry(&key, second), "cleared (config or secrets changed, or a retry)");
+        assert!(
+            !cd.begin_retry(&key, second),
+            "cleared (config or secrets changed, or a retry)"
+        );
         assert!(!cd.is_failed(&key) && !cd.is_failed(&other));
     }
 
@@ -2378,7 +2981,10 @@ mod tests {
         let key = plain.sibling();
         sessions.insert_if_absent(
             key.clone(),
-            SessionRecord { sources: Some(SourcesLaunch::default()), ..Default::default() },
+            SessionRecord {
+                sources: Some(SourcesLaunch::default()),
+                ..Default::default()
+            },
         );
         let cd = SourcesCooldown::default();
         let mut started = 0;
@@ -2393,14 +2999,23 @@ mod tests {
                     started += 1;
                 }
                 Some((instead, notice)) => {
-                    assert_eq!(instead, plain, "the plain session of the same scope and tier answers");
+                    assert_eq!(
+                        instead, plain,
+                        "the plain session of the same scope and tier answers"
+                    );
                     notices.push(notice);
-                    ask(&manager, &sessions, &instead, &[seg("a", 0)]).await.unwrap();
+                    ask(&manager, &sessions, &instead, &[seg("a", 0)])
+                        .await
+                        .unwrap();
                 }
             }
         }
         assert_eq!(notices.len(), 2);
-        assert!(notices[0].contains("Your sources couldn't be loaded") && notices[0].contains("failed"), "{}", notices[0]);
+        assert!(
+            notices[0].contains("Your sources couldn't be loaded") && notices[0].contains("failed"),
+            "{}",
+            notices[0]
+        );
         // A plain key is never held back, failure or not.
         assert!(cd.plain_instead(&plain, Instant::now()).is_none());
         assert_eq!(started, 1, "only the first request tried the sources");
@@ -2413,7 +3028,10 @@ mod tests {
     #[test]
     fn sources_note_body_drops_the_header() {
         assert_eq!(
-            sources_note_body(SourceToggles { library: false, tools: true }),
+            sources_note_body(SourceToggles {
+                library: false,
+                tools: true
+            }),
             "Knowledge: off. Tools: on. Use only the sources marked on."
         );
     }
@@ -2424,7 +3042,13 @@ mod tests {
         let other = SessionScope::Live("m2".into());
         for scope in [live(), other.clone()] {
             for with in [false, true] {
-                let key = SessionKey { scope: scope.clone(), tier: Tier::Fast, with_sources: with, no_library: false, no_tools: false };
+                let key = SessionKey {
+                    scope: scope.clone(),
+                    tier: Tier::Fast,
+                    with_sources: with,
+                    no_library: false,
+                    no_tools: false,
+                };
                 sessions.insert_if_absent(key, SessionRecord::default());
             }
         }
@@ -2452,8 +3076,14 @@ mod tests {
 
     #[test]
     fn restart_init_carries_the_sources_launch() {
-        let launch = SourcesLaunch { add_dirs: vec!["D:/v".into()], ..Default::default() };
-        let record = SessionRecord { sources: Some(launch.clone()), ..Default::default() };
+        let launch = SourcesLaunch {
+            add_dirs: vec!["D:/v".into()],
+            ..Default::default()
+        };
+        let record = SessionRecord {
+            sources: Some(launch.clone()),
+            ..Default::default()
+        };
         assert_eq!(record.restart_init().sources, Some(launch));
         assert_eq!(SessionRecord::default().restart_init().sources, None);
     }
@@ -2461,21 +3091,43 @@ mod tests {
     #[tokio::test]
     async fn share_answer_appends_to_a_running_sibling_and_records_it() {
         let (manager, sessions, script, key) = setup(&[]);
-        ask(&manager, &sessions, &key, &[seg("a", 0)]).await.unwrap();
+        ask(&manager, &sessions, &key, &[seg("a", 0)])
+            .await
+            .unwrap();
         let sibling = key.sibling();
         // The sibling has a record but is not running: nothing is spawned.
-        sessions.insert_if_absent(sibling.clone(), SessionRecord { system_prompt: "sp".into(), ..Default::default() });
+        sessions.insert_if_absent(
+            sibling.clone(),
+            SessionRecord {
+                system_prompt: "sp".into(),
+                ..Default::default()
+            },
+        );
         share_answer(&manager, &sessions, &sibling, "msg-1".into()).await;
-        assert_eq!(script.spawns.load(Ordering::SeqCst), 1, "never starts the sibling");
+        assert_eq!(
+            script.spawns.load(Ordering::SeqCst),
+            1,
+            "never starts the sibling"
+        );
         assert_eq!(sessions.get(&sibling).unwrap().replay, vec!["msg-1"]);
 
         // Running: the live session is told, no query is made.
-        manager.ensure(&sibling, sessions.restart_init(&sibling).unwrap()).await.unwrap();
+        manager
+            .ensure(&sibling, sessions.restart_init(&sibling).unwrap())
+            .await
+            .unwrap();
         let asks = script.prompts.lock().unwrap().len();
         share_answer(&manager, &sessions, &sibling, "msg-2".into()).await;
-        assert_eq!(script.prompts.lock().unwrap().len(), asks, "an append is not a query");
+        assert_eq!(
+            script.prompts.lock().unwrap().len(),
+            asks,
+            "an append is not a query"
+        );
         assert_eq!(script.appended.lock().unwrap()[1].last().unwrap(), "msg-2");
-        assert_eq!(sessions.get(&sibling).unwrap().replay, vec!["msg-1", "msg-2"]);
+        assert_eq!(
+            sessions.get(&sibling).unwrap().replay,
+            vec!["msg-1", "msg-2"]
+        );
     }
 
     #[tokio::test]
@@ -2490,22 +3142,37 @@ mod tests {
     async fn sources_session_gets_catch_up_delta_on_first_answer() {
         let (manager, sessions, script, plain) = setup(&[]);
         let sources = plain.sibling();
-        sessions.insert_if_absent(sources.clone(), SessionRecord { system_prompt: "sp".into(), ..Default::default() });
+        sessions.insert_if_absent(
+            sources.clone(),
+            SessionRecord {
+                system_prompt: "sp".into(),
+                ..Default::default()
+            },
+        );
         let finals = vec![seg("s1", 0), seg("s2", 1), seg("s3", 2)];
         ask(&manager, &sessions, &plain, &finals).await.unwrap();
         // The with-sources session has its own cursor: it gets everything.
         ask(&manager, &sessions, &sources, &finals).await.unwrap();
         let first = last_prompt(&script);
-        assert!(first.contains("Them: s1") && first.contains("Them: s2") && first.contains("Them: s3"), "{first}");
+        assert!(
+            first.contains("Them: s1") && first.contains("Them: s2") && first.contains("Them: s3"),
+            "{first}"
+        );
         // Then only what is new since.
         let finals = vec![seg("s1", 0), seg("s2", 1), seg("s3", 2), seg("s4", 3)];
         ask(&manager, &sessions, &sources, &finals).await.unwrap();
         let second = last_prompt(&script);
-        assert!(second.contains("Them: s4") && !second.contains("Them: s1"), "{second}");
+        assert!(
+            second.contains("Them: s4") && !second.contains("Them: s1"),
+            "{second}"
+        );
         // The plain session was not advanced by the other one.
         ask(&manager, &sessions, &plain, &finals).await.unwrap();
         let plain_prompt = last_prompt(&script);
-        assert!(plain_prompt.contains("Them: s4") && !plain_prompt.contains("Them: s3"), "{plain_prompt}");
+        assert!(
+            plain_prompt.contains("Them: s4") && !plain_prompt.contains("Them: s3"),
+            "{plain_prompt}"
+        );
     }
 
     #[test]
@@ -2516,12 +3183,21 @@ be brief
 CANARY_POINT
 [[END point n]]";
         let (small, rag) = session_preload(head, "short document");
-        assert!(!rag && small.iter().any(|m| m.contains("CANARY_POINT")) && small.iter().any(|m| m.contains("short document")));
+        assert!(
+            !rag && small.iter().any(|m| m.contains("CANARY_POINT"))
+                && small.iter().any(|m| m.contains("short document"))
+        );
         let huge = "word ".repeat(DOC_PRELOAD_TOKEN_CAP);
         let (preload, rag) = session_preload(head, &huge);
         assert!(rag, "the documents are over the cap: retrieval");
-        assert!(preload.iter().any(|m| m.contains("CANARY_POINT")), "the points stay in the session");
-        assert!(!preload.iter().any(|m| m.contains("word word")), "the documents do not");
+        assert!(
+            preload.iter().any(|m| m.contains("CANARY_POINT")),
+            "the points stay in the session"
+        );
+        assert!(
+            !preload.iter().any(|m| m.contains("word word")),
+            "the documents do not"
+        );
         // nothing at all
         assert_eq!(session_preload("", ""), (Vec::new(), false));
     }
@@ -2554,12 +3230,22 @@ CANARY_POINT
             }
         }
         // a plain session has no servers to leave out
-        assert_eq!(key_of(false, false, true), SessionKey::plain(live(), Tier::Fast));
+        assert_eq!(
+            key_of(false, false, true),
+            SessionKey::plain(live(), Tier::Fast)
+        );
         // the plain fallback of a sources session without the library has no library either
         assert!(no_library.sibling().no_library && !no_library.sibling().with_sources);
         assert!(!default.sibling().no_library);
         // the default routing is unchanged
-        match choose_route(&ProviderType::ClaudeCli, ClaudeHealth::Healthy, &live(), "Assist", &cfg, false) {
+        match choose_route(
+            &ProviderType::ClaudeCli,
+            ClaudeHealth::Healthy,
+            &live(),
+            "Assist",
+            &cfg,
+            false,
+        ) {
             Route::ClaudeSession(key) => assert_eq!(key, SessionKey::plain(live(), Tier::Fast)),
             other => panic!("{other:?}"),
         }

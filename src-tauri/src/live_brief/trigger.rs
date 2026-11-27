@@ -75,7 +75,18 @@ pub struct BriefTrigger {
 impl BriefTrigger {
     pub fn new(cfg: BriefTriggerConfig) -> Self {
         let guard = RunGuard::new(cfg.cap_tokens, cfg.max_failures);
-        Self { cfg, guard, speech_ms: 0, total_speech_ms: 0, last_call_ms: None, last_top: vec![], topic_dirty: false, manual: false, prev_top: vec![], prev_dirty: false }
+        Self {
+            cfg,
+            guard,
+            speech_ms: 0,
+            total_speech_ms: 0,
+            last_call_ms: None,
+            last_top: vec![],
+            topic_dirty: false,
+            manual: false,
+            prev_top: vec![],
+            prev_dirty: false,
+        }
     }
 
     /// `ms` of speech just finished (silence never adds to this).
@@ -102,7 +113,9 @@ impl BriefTrigger {
 
     pub fn poll(&mut self, _now: u64) -> BriefAction {
         if self.manual {
-            if self.total_speech_ms == 0 || matches!(self.guard.state, RunState::Stopped | RunState::CapReached) {
+            if self.total_speech_ms == 0
+                || matches!(self.guard.state, RunState::Stopped | RunState::CapReached)
+            {
                 self.manual = false;
                 return BriefAction::Wait;
             }
@@ -126,7 +139,11 @@ impl BriefTrigger {
         if k == 0 {
             return 0.0;
         }
-        let new = top.iter().take(k).filter(|id| !self.last_top.contains(id)).count();
+        let new = top
+            .iter()
+            .take(k)
+            .filter(|id| !self.last_top.contains(id))
+            .count();
         new as f32 / k as f32
     }
 
@@ -232,7 +249,10 @@ mod tests {
         let mut b = t();
         b.on_speech(31_000);
         let top = ids(&["a", "b", "c", "d", "e", "f"]);
-        assert_eq!(b.after_search(31_000, &top), ModelDecision::Call(CallReason::PassagesChanged));
+        assert_eq!(
+            b.after_search(31_000, &top),
+            ModelDecision::Call(CallReason::PassagesChanged)
+        );
     }
 
     #[test]
@@ -243,11 +263,20 @@ mod tests {
         b.end_ok(100);
         b.on_speech(31_000);
         // 2 of 6 new
-        assert_eq!(b.after_search(60_000, &ids(&["a", "b", "c", "d", "x", "y"])), ModelDecision::Skip);
+        assert_eq!(
+            b.after_search(60_000, &ids(&["a", "b", "c", "d", "x", "y"])),
+            ModelDecision::Skip
+        );
         // 3 of 6 new
-        assert_eq!(b.after_search(61_000, &ids(&["a", "b", "c", "x", "y", "z"])), ModelDecision::Call(CallReason::PassagesChanged));
+        assert_eq!(
+            b.after_search(61_000, &ids(&["a", "b", "c", "x", "y", "z"])),
+            ModelDecision::Call(CallReason::PassagesChanged)
+        );
         // order alone does not count
-        assert_eq!(b.after_search(62_000, &ids(&["f", "e", "d", "c", "b", "a"])), ModelDecision::Skip);
+        assert_eq!(
+            b.after_search(62_000, &ids(&["f", "e", "d", "c", "b", "a"])),
+            ModelDecision::Skip
+        );
     }
 
     #[test]
@@ -256,8 +285,14 @@ mod tests {
         b.begin_call(10_000, &ids(&["a"]));
         b.end_ok(10);
         b.on_topic_change();
-        assert_eq!(b.after_search(40_000, &ids(&["x", "y"])), ModelDecision::Skip);
-        assert_eq!(b.after_search(56_000, &ids(&["x", "y"])), ModelDecision::Call(CallReason::TopicChange));
+        assert_eq!(
+            b.after_search(40_000, &ids(&["x", "y"])),
+            ModelDecision::Skip
+        );
+        assert_eq!(
+            b.after_search(56_000, &ids(&["x", "y"])),
+            ModelDecision::Call(CallReason::TopicChange)
+        );
     }
 
     #[test]
@@ -270,9 +305,16 @@ mod tests {
         b.end_ok(1);
         b.request_manual();
         assert_eq!(b.poll(1_000), BriefAction::Search(SearchReason::Manual));
-        assert_eq!(b.after_search(1_000, &ids(&["a"])), ModelDecision::Call(CallReason::Manual));
+        assert_eq!(
+            b.after_search(1_000, &ids(&["a"])),
+            ModelDecision::Call(CallReason::Manual)
+        );
         b.request_manual();
-        assert_eq!(b.after_search(2_000, &[]), ModelDecision::Skip, "nothing found, nothing to call");
+        assert_eq!(
+            b.after_search(2_000, &[]),
+            ModelDecision::Skip,
+            "nothing found, nothing to call"
+        );
     }
 
     #[test]
@@ -280,7 +322,10 @@ mod tests {
         let mut b = t();
         b.on_topic_change();
         let top = ids(&["a", "b"]);
-        assert_eq!(b.after_search(0, &top), ModelDecision::Call(CallReason::TopicChange));
+        assert_eq!(
+            b.after_search(0, &top),
+            ModelDecision::Call(CallReason::TopicChange)
+        );
         b.begin_call(0, &top);
         b.end_ok(1);
         assert_eq!(b.after_search(100_000, &top), ModelDecision::Skip);
@@ -313,7 +358,10 @@ mod tests {
 
     #[test]
     fn cap_then_keep_going() {
-        let mut b = BriefTrigger::new(BriefTriggerConfig { cap_tokens: 1_000, ..Default::default() });
+        let mut b = BriefTrigger::new(BriefTriggerConfig {
+            cap_tokens: 1_000,
+            ..Default::default()
+        });
         b.begin_call(0, &ids(&["a"]));
         assert!(b.end_ok(1_200));
         assert_eq!(b.state(), RunState::CapReached);

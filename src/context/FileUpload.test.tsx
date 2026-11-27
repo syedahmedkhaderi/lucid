@@ -78,11 +78,12 @@ describe("adding files to a workspace", () => {
 
   it("Choose files adds what was picked to the open workspace", async () => {
     const b = mockBackend({ load_context_file: resource("p1"), list_workspaces: [ws(), ws({ id: "acme", name: "Acme" })] });
-    picked.paths = ["/p1.pdf", "/skip.exe"];
+    picked.paths = ["/p1.pdf", "/records.csv", "/skip.exe"];
     render(<FileUpload />);
     await userEvent.click(screen.getByRole("button", { name: /Choose files/ }));
-    await waitFor(() => expect(b.called("load_context_file")).toHaveLength(1));
+    await waitFor(() => expect(b.called("load_context_file")).toHaveLength(2));
     expect(b.called("load_context_file")[0].args).toMatchObject({ workspaceId: useWorkspaceStore.getState().openId });
+    expect(b.called("load_context_file").map((call) => call.args.filePath)).toEqual(["/p1.pdf", "/records.csv"]);
     expect(await screen.findByRole("status")).toHaveTextContent(/isn't a PDF/);
   });
 });

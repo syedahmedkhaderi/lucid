@@ -74,7 +74,12 @@ pub fn ws_url(base: &str, config: &DeepgramConfig, language: &str) -> String {
     // Only the multilingual model takes a hint (others answer 400); a
     // language it can't be hinted is auto-detected.
     if config.model == "flux-general-multi" {
-        let code = language.trim().split('-').next().unwrap_or("").to_lowercase();
+        let code = language
+            .trim()
+            .split('-')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
         if MULTI_LANGUAGES.contains(&code.as_str()) {
             params.push(format!("language_hint={}", code));
         }
@@ -123,8 +128,14 @@ impl FrameBatcher {
 
     /// Whatever is held, once audio has paused for PARTIAL_FRAME_WAIT.
     pub fn take_if_paused(&mut self, now: Instant) -> Option<Vec<u8>> {
-        let paused = self.last_push.is_some_and(|at| now.duration_since(at) >= PARTIAL_FRAME_WAIT);
-        if paused { self.take() } else { None }
+        let paused = self
+            .last_push
+            .is_some_and(|at| now.duration_since(at) >= PARTIAL_FRAME_WAIT);
+        if paused {
+            self.take()
+        } else {
+            None
+        }
     }
 }
 
@@ -142,8 +153,14 @@ pub enum FluxMessage {
     Connected,
     TurnInfo(TurnInfo),
     /// A fatal error; the server closes the connection after it.
-    Error { code: String, description: String },
-    Warning { code: String, description: String },
+    Error {
+        code: String,
+        description: String,
+    },
+    Warning {
+        code: String,
+        description: String,
+    },
     Other,
 }
 
@@ -172,15 +189,27 @@ impl FluxMessage {
     /// Parse a text frame; `None` when it isn't valid JSON.
     pub fn parse(text: &str) -> Option<Self> {
         let value: serde_json::Value = serde_json::from_str(text).ok()?;
-        let field = |name: &str| value.get(name).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let field = |name: &str| {
+            value
+                .get(name)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
         Some(match value.get("type").and_then(|t| t.as_str()) {
             Some("Connected") => FluxMessage::Connected,
             Some("TurnInfo") => match serde_json::from_value::<TurnInfo>(value) {
                 Ok(info) => FluxMessage::TurnInfo(info),
                 Err(_) => FluxMessage::Other,
             },
-            Some("Error") => FluxMessage::Error { code: field("code"), description: field("description") },
-            Some("Warning") => FluxMessage::Warning { code: field("code"), description: field("description") },
+            Some("Error") => FluxMessage::Error {
+                code: field("code"),
+                description: field("description"),
+            },
+            Some("Warning") => FluxMessage::Warning {
+                code: field("code"),
+                description: field("description"),
+            },
             _ => FluxMessage::Other,
         })
     }
@@ -195,7 +224,10 @@ pub struct FluxTurns {
 
 impl FluxTurns {
     pub fn new(party: &str) -> Self {
-        Self { party: party.to_string(), open: None }
+        Self {
+            party: party.to_string(),
+            open: None,
+        }
     }
 
     /// The result for `info`, if it carries text. `epoch_at` maps an offset (ms)
@@ -207,7 +239,11 @@ impl FluxTurns {
         now_ms: u64,
     ) -> Option<TranscriptResult> {
         let ended = info.event == "EndOfTurn";
-        let open = if ended { self.open.take() } else { self.open.clone() };
+        let open = if ended {
+            self.open.take()
+        } else {
+            self.open.clone()
+        };
         let mut text = info.transcript.trim().to_string();
         // TurnResumed may come without words: the turn's latest text goes out again.
         if text.is_empty() && info.event == "TurnResumed" {
@@ -218,7 +254,12 @@ impl FluxTurns {
         }
 
         let first_start = info.words.first().and_then(|w| w.start).map(seconds_to_ms);
-        let last_end = info.words.iter().rev().find_map(|w| w.end).map(seconds_to_ms);
+        let last_end = info
+            .words
+            .iter()
+            .rev()
+            .find_map(|w| w.end)
+            .map(seconds_to_ms);
         let timestamp_ms = first_start
             .and_then(&epoch_at)
             .or(open.as_ref().map(|o| o.timestamp_ms))
@@ -256,7 +297,12 @@ impl FluxTurns {
     /// speaker finished, so it carries no turn signal. Reported once.
     pub fn finish_open_turn(&mut self) -> Option<TranscriptResult> {
         let open = self.open.take()?;
-        Some(TranscriptResult { is_final: true, turn: None, duration_ms: None, ..open })
+        Some(TranscriptResult {
+            is_final: true,
+            turn: None,
+            duration_ms: None,
+            ..open
+        })
     }
 }
 
@@ -308,7 +354,12 @@ mod frame_tests {
         assert_eq!(frames.take_if_paused(now), None);
         assert_eq!(frames.push(vec![4; 320], now), None);
         assert_eq!(frames.take_if_paused(now + PARTIAL_FRAME_WAIT / 2), None);
-        assert_eq!(frames.take_if_paused(now + PARTIAL_FRAME_WAIT).map(|f| f.len()), Some(320));
+        assert_eq!(
+            frames
+                .take_if_paused(now + PARTIAL_FRAME_WAIT)
+                .map(|f| f.len()),
+            Some(320)
+        );
         assert_eq!(frames.take_if_paused(now + PARTIAL_FRAME_WAIT * 2), None);
     }
 }
@@ -344,7 +395,12 @@ mod tests {
     }
 
     fn params(url: &str) -> Vec<String> {
-        url.split_once('?').unwrap().1.split('&').map(str::to_string).collect()
+        url.split_once('?')
+            .unwrap()
+            .1
+            .split('&')
+            .map(str::to_string)
+            .collect()
     }
 
     #[test]
@@ -356,19 +412,45 @@ mod tests {
 
     #[test]
     fn the_english_url_has_the_low_latency_profile_and_no_nova_options() {
-        let url = ws_url("wss://api.deepgram.com/v2/listen", &config("flux-general-en"), "en-US");
+        let url = ws_url(
+            "wss://api.deepgram.com/v2/listen",
+            &config("flux-general-en"),
+            "en-US",
+        );
         assert!(url.starts_with("wss://api.deepgram.com/v2/listen?"));
         let p = params(&url);
         for expected in [
-            "model=flux-general-en", "encoding=linear16", "sample_rate=16000",
-            "eager_eot_threshold=0.4", "eot_threshold=0.7", "eot_timeout_ms=6000",
-            "numerals=true", "keyterm=Lucid", "keyterm=turn%20detection",
+            "model=flux-general-en",
+            "encoding=linear16",
+            "sample_rate=16000",
+            "eager_eot_threshold=0.4",
+            "eot_threshold=0.7",
+            "eot_timeout_ms=6000",
+            "numerals=true",
+            "keyterm=Lucid",
+            "keyterm=turn%20detection",
         ] {
-            assert!(p.contains(&expected.to_string()), "missing {expected} in {url}");
+            assert!(
+                p.contains(&expected.to_string()),
+                "missing {expected} in {url}"
+            );
         }
-        for nova_only in ["smart_format", "diarize", "dictation", "endpointing", "interim_results",
-                          "punctuate", "vad_events", "language=", "channels", "language_hint"] {
-            assert!(!url.contains(nova_only), "{nova_only} must not be sent to Flux: {url}");
+        for nova_only in [
+            "smart_format",
+            "diarize",
+            "dictation",
+            "endpointing",
+            "interim_results",
+            "punctuate",
+            "vad_events",
+            "language=",
+            "channels",
+            "language_hint",
+        ] {
+            assert!(
+                !url.contains(nova_only),
+                "{nova_only} must not be sent to Flux: {url}"
+            );
         }
     }
 
@@ -379,7 +461,10 @@ mod tests {
         let pt = ws_url("wss://x/v2/listen", &config("flux-general-multi"), "pt-BR");
         assert!(params(&pt).contains(&"language_hint=pt".to_string()));
         let ko = ws_url("wss://x/v2/listen", &config("flux-general-multi"), "ko");
-        assert!(!ko.contains("language_hint"), "Flux auto-detects a language it can't be hinted: {ko}");
+        assert!(
+            !ko.contains("language_hint"),
+            "Flux auto-detects a language it can't be hinted: {ko}"
+        );
     }
 
     #[test]
@@ -414,36 +499,92 @@ mod tests {
 
     #[test]
     fn parses_the_message_types_nexq_reads() {
-        assert!(matches!(FluxMessage::parse(r#"{"type":"Connected","request_id":"r","sequence_id":0}"#), Some(FluxMessage::Connected)));
+        assert!(matches!(
+            FluxMessage::parse(r#"{"type":"Connected","request_id":"r","sequence_id":0}"#),
+            Some(FluxMessage::Connected)
+        ));
         assert!(matches!(
             FluxMessage::parse(r#"{"type":"Error","sequence_id":4,"code":"INTERNAL_SERVER_ERROR","description":"boom"}"#),
             Some(FluxMessage::Error { code, .. }) if code == "INTERNAL_SERVER_ERROR"
         ));
-        assert!(matches!(FluxMessage::parse(r#"{"type":"Warning","request_id":"r","sequence_id":5,"code":"W","description":"d"}"#), Some(FluxMessage::Warning { .. })));
-        assert!(matches!(FluxMessage::parse(r#"{"type":"ConfigureSuccess"}"#), Some(FluxMessage::Other)));
+        assert!(matches!(
+            FluxMessage::parse(
+                r#"{"type":"Warning","request_id":"r","sequence_id":5,"code":"W","description":"d"}"#
+            ),
+            Some(FluxMessage::Warning { .. })
+        ));
+        assert!(matches!(
+            FluxMessage::parse(r#"{"type":"ConfigureSuccess"}"#),
+            Some(FluxMessage::Other)
+        ));
         assert!(FluxMessage::parse("not json").is_none());
     }
 
     #[test]
     fn a_turn_becomes_interims_with_signals_then_one_final() {
         let mut turns = FluxTurns::new("Them");
-        assert!(turns.on_turn_info(&turn("StartOfTurn", "", &[]), clock, 5).is_none());
+        assert!(turns
+            .on_turn_info(&turn("StartOfTurn", "", &[]), clock, 5)
+            .is_none());
 
-        let update = turns.on_turn_info(&turn("Update", "What would", &[(1.0, 1.3), (1.3, 1.6)]), clock, 5).unwrap();
-        assert_eq!((update.is_final, update.turn, update.text.as_str()), (false, None, "What would"));
+        let update = turns
+            .on_turn_info(
+                &turn("Update", "What would", &[(1.0, 1.3), (1.3, 1.6)]),
+                clock,
+                5,
+            )
+            .unwrap();
+        assert_eq!(
+            (update.is_final, update.turn, update.text.as_str()),
+            (false, None, "What would")
+        );
         assert_eq!(update.timestamp_ms, 1_001_000);
         assert_eq!(update.speaker.as_deref(), Some("Them"));
 
-        let eager = turns.on_turn_info(&turn("EagerEndOfTurn", "What would you do?", &[(1.0, 1.3), (1.3, 2.4)]), clock, 5).unwrap();
-        assert_eq!((eager.is_final, eager.turn), (false, Some(TurnSignal::EagerEnd)));
+        let eager = turns
+            .on_turn_info(
+                &turn(
+                    "EagerEndOfTurn",
+                    "What would you do?",
+                    &[(1.0, 1.3), (1.3, 2.4)],
+                ),
+                clock,
+                5,
+            )
+            .unwrap();
+        assert_eq!(
+            (eager.is_final, eager.turn),
+            (false, Some(TurnSignal::EagerEnd))
+        );
 
-        let resumed = turns.on_turn_info(&turn("TurnResumed", "", &[]), clock, 5).unwrap();
-        assert_eq!((resumed.is_final, resumed.turn), (false, Some(TurnSignal::Resumed)));
+        let resumed = turns
+            .on_turn_info(&turn("TurnResumed", "", &[]), clock, 5)
+            .unwrap();
+        assert_eq!(
+            (resumed.is_final, resumed.turn),
+            (false, Some(TurnSignal::Resumed))
+        );
         assert_eq!(resumed.text, "What would you do?");
 
-        let end = turns.on_turn_info(&turn("EndOfTurn", " What would you do first? ", &[(1.0, 1.3), (1.3, 3.0)]), clock, 5).unwrap();
-        assert_eq!((end.is_final, end.turn, end.text.as_str()), (true, Some(TurnSignal::End), "What would you do first?"));
-        assert_eq!((end.timestamp_ms, end.duration_ms), (1_001_000, Some(2_000)));
+        let end = turns
+            .on_turn_info(
+                &turn(
+                    "EndOfTurn",
+                    " What would you do first? ",
+                    &[(1.0, 1.3), (1.3, 3.0)],
+                ),
+                clock,
+                5,
+            )
+            .unwrap();
+        assert_eq!(
+            (end.is_final, end.turn, end.text.as_str()),
+            (true, Some(TurnSignal::End), "What would you do first?")
+        );
+        assert_eq!(
+            (end.timestamp_ms, end.duration_ms),
+            (1_001_000, Some(2_000))
+        );
         assert!((end.confidence - 0.9).abs() < 1e-6);
         // The turn ended: nothing left to finish.
         assert!(turns.finish_open_turn().is_none());
@@ -452,9 +593,16 @@ mod tests {
     #[test]
     fn an_open_turn_is_finished_once_without_a_signal() {
         let mut turns = FluxTurns::new("Them");
-        turns.on_turn_info(&turn("EagerEndOfTurn", "Half a sente", &[(2.0, 2.5)]), clock, 5);
+        turns.on_turn_info(
+            &turn("EagerEndOfTurn", "Half a sente", &[(2.0, 2.5)]),
+            clock,
+            5,
+        );
         let last = turns.finish_open_turn().unwrap();
-        assert_eq!((last.is_final, last.turn, last.text.as_str()), (true, None, "Half a sente"));
+        assert_eq!(
+            (last.is_final, last.turn, last.text.as_str()),
+            (true, None, "Half a sente")
+        );
         assert_eq!(last.timestamp_ms, 1_002_000);
         assert!(turns.finish_open_turn().is_none());
     }
@@ -462,8 +610,12 @@ mod tests {
     #[test]
     fn a_turn_without_words_is_dated_by_its_arrival() {
         let mut turns = FluxTurns::new("You");
-        let update = turns.on_turn_info(&turn("Update", "Hello", &[]), clock, 42).unwrap();
+        let update = turns
+            .on_turn_info(&turn("Update", "Hello", &[]), clock, 42)
+            .unwrap();
         assert_eq!(update.timestamp_ms, 42);
-        assert!(turns.on_turn_info(&turn("EndOfTurn", "  ", &[]), clock, 43).is_none());
+        assert!(turns
+            .on_turn_info(&turn("EndOfTurn", "  ", &[]), clock, 43)
+            .is_none());
     }
 }

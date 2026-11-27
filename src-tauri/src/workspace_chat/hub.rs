@@ -10,7 +10,9 @@ use crate::ai_runs::AiRuns;
 use crate::llm::cli_agent::command::SourcesLaunch;
 use crate::llm::cli_agent::CliAgentKind;
 use crate::llm::provider::CancelToken;
-use crate::workspace_search::indexer::{IndexProgress, IndexProvider, IndexerConfig, IndexerService};
+use crate::workspace_search::indexer::{
+    IndexProgress, IndexProvider, IndexerConfig, IndexerService,
+};
 
 /// Chat answers that may run at once, and while a meeting is active.
 pub const MAX_ANSWERS: usize = 2;
@@ -175,7 +177,12 @@ impl ChatHub {
 
     /// Take a slot for one answer: one per chat, two in all, one while a
     /// meeting is active.
-    pub fn try_acquire(self: &Arc<Self>, chat_id: &str, request_id: &str, meeting_active: bool) -> Result<Permit, String> {
+    pub fn try_acquire(
+        self: &Arc<Self>,
+        chat_id: &str,
+        request_id: &str,
+        meeting_active: bool,
+    ) -> Result<Permit, String> {
         let mut active = self.active.lock().map_err(|_| "Chat is busy".to_string())?;
         if active.values().any(|a| a.chat_id == chat_id) {
             return Err("This chat is still answering. Wait for it or stop it first.".into());
@@ -183,7 +190,11 @@ impl ChatHub {
         if active.contains_key(request_id) {
             return Err("This request is already running.".into());
         }
-        let limit = if meeting_active { MAX_ANSWERS_IN_MEETING } else { MAX_ANSWERS };
+        let limit = if meeting_active {
+            MAX_ANSWERS_IN_MEETING
+        } else {
+            MAX_ANSWERS
+        };
         if active.len() >= limit {
             return Err(if meeting_active {
                 "A meeting is running, so only one chat answer runs at a time. Try again when the other one is done.".into()
@@ -192,8 +203,18 @@ impl ChatHub {
             });
         }
         let cancel = Arc::new(CancelToken::new());
-        active.insert(request_id.to_string(), Active { chat_id: chat_id.to_string(), cancel: cancel.clone() });
-        Ok(Permit { hub: self.clone(), request_id: request_id.to_string(), cancel })
+        active.insert(
+            request_id.to_string(),
+            Active {
+                chat_id: chat_id.to_string(),
+                cancel: cancel.clone(),
+            },
+        );
+        Ok(Permit {
+            hub: self.clone(),
+            request_id: request_id.to_string(),
+            cancel,
+        })
     }
 
     /// Cancel a request. Returns whether it was running.
@@ -207,11 +228,19 @@ impl ChatHub {
     /// The `request_id` of the answer this chat is writing now, if any (the id
     /// the chat store holds; tool events of the answer carry it).
     pub fn request_of(&self, chat_id: &str) -> Option<String> {
-        self.active.lock().ok()?.iter().find(|(_, a)| a.chat_id == chat_id).map(|(id, _)| id.clone())
+        self.active
+            .lock()
+            .ok()?
+            .iter()
+            .find(|(_, a)| a.chat_id == chat_id)
+            .map(|(id, _)| id.clone())
     }
 
     pub fn running_for(&self, chat_id: &str) -> bool {
-        self.active.lock().map(|a| a.values().any(|x| x.chat_id == chat_id)).unwrap_or(false)
+        self.active
+            .lock()
+            .map(|a| a.values().any(|x| x.chat_id == chat_id))
+            .unwrap_or(false)
     }
 
     pub fn running(&self) -> usize {
@@ -247,14 +276,31 @@ impl ChatHub {
     }
 
     /// The session is about to receive something resting on `prov`.
-    pub fn hold_in_session(&self, chat_id: &str, prov: &Provenance, generation: (Option<u64>, Option<u64>)) {
-        self.session_gen.lock().unwrap().insert(chat_id.to_string(), generation);
-        self.session_prov.lock().unwrap().entry(chat_id.to_string()).or_default().merge(prov);
+    pub fn hold_in_session(
+        &self,
+        chat_id: &str,
+        prov: &Provenance,
+        generation: (Option<u64>, Option<u64>),
+    ) {
+        self.session_gen
+            .lock()
+            .unwrap()
+            .insert(chat_id.to_string(), generation);
+        self.session_prov
+            .lock()
+            .unwrap()
+            .entry(chat_id.to_string())
+            .or_default()
+            .merge(prov);
     }
 
     /// True only when the live session is the one that received the last turn: the same
     /// generation now as then. After an idle restart or any change of session it is not.
-    pub fn session_is_current(&self, chat_id: &str, generation: (Option<u64>, Option<u64>)) -> bool {
+    pub fn session_is_current(
+        &self,
+        chat_id: &str,
+        generation: (Option<u64>, Option<u64>),
+    ) -> bool {
         self.session_gen.lock().unwrap().get(chat_id) == Some(&generation)
     }
 
@@ -280,7 +326,10 @@ impl ChatHub {
         emit: Arc<dyn Fn(IndexProgress, Option<String>) + Send + Sync>,
         initial_scan: bool,
     ) -> Result<(), String> {
-        let mut slot = self.indexer.lock().map_err(|_| "indexer is busy".to_string())?;
+        let mut slot = self
+            .indexer
+            .lock()
+            .map_err(|_| "indexer is busy".to_string())?;
         if slot.is_some() {
             return Ok(());
         }
@@ -301,11 +350,20 @@ impl ChatHub {
             rescan_interval: RESCAN_EVERY,
             initial_scan,
             watch_debounce: Some(crate::workspace_search::watch::WATCH_DEBOUNCE),
-            timer_enabled: Some(Arc::new(move || hub2.open_workspace.lock().map(|w| w.is_some()).unwrap_or(false))),
+            timer_enabled: Some(Arc::new(move || {
+                hub2.open_workspace
+                    .lock()
+                    .map(|w| w.is_some())
+                    .unwrap_or(false)
+            })),
         })?;
         let svc = Arc::new(svc);
         // under the same lock `wake` uses: no wake falls between "not started" and "started"
-        let waiting: Vec<Wake> = self.pending.lock().map(|mut p| std::mem::take(&mut *p)).unwrap_or_default();
+        let waiting: Vec<Wake> = self
+            .pending
+            .lock()
+            .map(|mut p| std::mem::take(&mut *p))
+            .unwrap_or_default();
         for w in waiting {
             deliver(&svc, w);
         }
@@ -383,7 +441,12 @@ impl ChatHub {
 
     #[cfg(test)]
     pub fn set_progress_for_tests(&self, done: usize, total: usize) {
-        *self.progress.lock().unwrap() = IndexProgress { done, total, current: String::new(), skipped: 0 };
+        *self.progress.lock().unwrap() = IndexProgress {
+            done,
+            total,
+            current: String::new(),
+            skipped: 0,
+        };
     }
 
     /// True while an indexing pass has work left (a pass that finished is not running).
@@ -422,16 +485,25 @@ mod tests {
     fn one_per_chat_two_overall_one_in_a_meeting() {
         let hub = ChatHub::new();
         let a = hub.try_acquire("c1", "r1", false).unwrap();
-        assert!(hub.try_acquire("c1", "r2", false).unwrap_err().contains("still answering"));
+        assert!(hub
+            .try_acquire("c1", "r2", false)
+            .unwrap_err()
+            .contains("still answering"));
         let b = hub.try_acquire("c2", "r3", false).unwrap();
-        assert!(hub.try_acquire("c3", "r4", false).unwrap_err().contains("Two chat answers"));
+        assert!(hub
+            .try_acquire("c3", "r4", false)
+            .unwrap_err()
+            .contains("Two chat answers"));
         drop(a);
         assert!(hub.try_acquire("c1", "r5", false).is_ok());
         drop(b);
         // while a meeting is active: one at a time
         let hub = ChatHub::new();
         let _x = hub.try_acquire("c1", "r1", true).unwrap();
-        assert!(hub.try_acquire("c2", "r2", true).unwrap_err().contains("meeting"));
+        assert!(hub
+            .try_acquire("c2", "r2", true)
+            .unwrap_err()
+            .contains("meeting"));
     }
 
     #[test]

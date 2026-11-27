@@ -7,8 +7,8 @@ pub mod assist;
 pub mod derived;
 pub mod documents;
 pub mod library;
-pub mod memory;
 pub mod meetings;
+pub mod memory;
 pub mod purge;
 pub mod restart;
 pub mod reveal;
@@ -47,10 +47,20 @@ pub mod test_support {
     }
 
     /// A new workspace; returns its id.
-    pub fn new_ws(conn: &Connection, name: &str, include_general: bool, keep_separate: bool) -> String {
+    pub fn new_ws(
+        conn: &Connection,
+        name: &str,
+        include_general: bool,
+        keep_separate: bool,
+    ) -> String {
         store::create_workspace(
             conn,
-            CreateWorkspaceInput { name: name.into(), include_general, keep_separate, ..Default::default() },
+            CreateWorkspaceInput {
+                name: name.into(),
+                include_general,
+                keep_separate,
+                ..Default::default()
+            },
         )
         .unwrap()
         .id

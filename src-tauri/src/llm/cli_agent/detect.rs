@@ -88,7 +88,10 @@ pub fn claude_too_old(bin: &Path) -> Option<ClaudeVersion> {
 /// A Windows Store alias folder. `claude` there can be the Claude desktop app's
 /// alias: running it would open a window, so it is never version-probed.
 fn is_windows_apps(p: &Path) -> bool {
-    p.to_string_lossy().replace('/', "\\").to_lowercase().contains("\\microsoft\\windowsapps\\")
+    p.to_string_lossy()
+        .replace('/', "\\")
+        .to_lowercase()
+        .contains("\\microsoft\\windowsapps\\")
 }
 
 /// Identity of a path for de-duplication (Windows paths ignore case and slash kind).
@@ -128,7 +131,9 @@ fn select_claude(
             if is_windows_apps(&candidate) || !version_of(&candidate).is_some_and(is_too_old) {
                 return first;
             }
-        } else if !is_windows_apps(&candidate) && version_of(&candidate).is_some_and(|v| !is_too_old(v)) {
+        } else if !is_windows_apps(&candidate)
+            && version_of(&candidate).is_some_and(|v| !is_too_old(v))
+        {
             return Some(candidate);
         }
     }
@@ -146,30 +151,43 @@ pub fn find_claude_binary() -> Option<PathBuf> {
 #[cfg(windows)]
 fn claude_candidates() -> impl Iterator<Item = PathBuf> {
     let native = std::env::var_os("USERPROFILE")
-        .map(|home| PathBuf::from(home).join(".local").join("bin").join("claude.exe"))
+        .map(|home| {
+            PathBuf::from(home)
+                .join(".local")
+                .join("bin")
+                .join("claude.exe")
+        })
         .filter(|p| p.is_file());
-    native
-        .into_iter()
-        .chain(std::iter::once(()).flat_map(|_| find_on_path("claude").into_iter().filter(|p| has_extension(p, "exe"))))
+    native.into_iter().chain(std::iter::once(()).flat_map(|_| {
+        find_on_path("claude")
+            .into_iter()
+            .filter(|p| has_extension(p, "exe"))
+    }))
 }
 
 /// An npm install of Claude Code (`claude.cmd` on PATH). Lucid can't use it:
 /// it spawns `claude.exe` directly, never through a shell.
 #[cfg(windows)]
 pub fn find_npm_claude() -> Option<PathBuf> {
-    find_on_path("claude").into_iter().find(|p| has_extension(p, "cmd"))
+    find_on_path("claude")
+        .into_iter()
+        .find(|p| has_extension(p, "cmd"))
 }
 
 #[cfg(windows)]
 fn has_extension(p: &Path, ext: &str) -> bool {
-    p.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case(ext))
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case(ext))
 }
 
 /// Every program `name` on PATH, in order (see [`find_on_path_in`]). Read here
 /// rather than from `where.exe` / `which`: no process to resolve, and
 /// `where.exe` looks in the current directory first.
 pub(super) fn find_on_path(name: &str) -> Vec<PathBuf> {
-    std::env::var_os("PATH").map(|path| find_on_path_in(&path, name)).unwrap_or_default()
+    std::env::var_os("PATH")
+        .map(|path| find_on_path_in(&path, name))
+        .unwrap_or_default()
 }
 
 /// [`find_on_path`] for a given `PATH`. On Windows the `.exe` and the `.cmd` of
@@ -184,7 +202,9 @@ fn find_on_path_in(path: &std::ffi::OsStr, name: &str) -> Vec<PathBuf> {
         // Not `is_file`: a Windows Store alias is a link that can't be followed.
         .filter(|p| std::fs::symlink_metadata(p).is_ok_and(|m| !m.is_dir()));
     #[cfg(unix)]
-    let found = dirs.map(|dir| dir.join(name)).filter(|p| is_executable_file(p));
+    let found = dirs
+        .map(|dir| dir.join(name))
+        .filter(|p| is_executable_file(p));
     found.collect()
 }
 
@@ -193,16 +213,25 @@ fn find_on_path_in(path: &std::ffi::OsStr, name: &str) -> Vec<PathBuf> {
 /// `claude` on PATH.
 #[cfg(unix)]
 fn claude_candidates() -> impl Iterator<Item = PathBuf> {
-    claude_candidates_in(std::env::var_os("HOME").as_deref(), std::env::var_os("PATH").as_deref()).into_iter()
+    claude_candidates_in(
+        std::env::var_os("HOME").as_deref(),
+        std::env::var_os("PATH").as_deref(),
+    )
+    .into_iter()
 }
 
 /// [`claude_candidates`] for a given `HOME` and `PATH`.
 #[cfg(unix)]
-fn claude_candidates_in(home: Option<&std::ffi::OsStr>, path: Option<&std::ffi::OsStr>) -> Vec<PathBuf> {
+fn claude_candidates_in(
+    home: Option<&std::ffi::OsStr>,
+    path: Option<&std::ffi::OsStr>,
+) -> Vec<PathBuf> {
     let native = home
         .map(|home| Path::new(home).join(".local").join("bin").join("claude"))
         .filter(|p| is_executable_file(p));
-    let on_path = path.map(|path| find_on_path_in(path, "claude")).unwrap_or_default();
+    let on_path = path
+        .map(|path| find_on_path_in(path, "claude"))
+        .unwrap_or_default();
     native.into_iter().chain(on_path).collect()
 }
 
@@ -244,7 +273,10 @@ fn version_with_cache(
     probe: impl FnOnce(&Path) -> Option<ClaudeVersion>,
 ) -> Option<ClaudeVersion> {
     let key = version_key(bin);
-    if let Some(found) = key.as_ref().and_then(|k| cache.lock().ok()?.get(k).copied()) {
+    if let Some(found) = key
+        .as_ref()
+        .and_then(|k| cache.lock().ok()?.get(k).copied())
+    {
         return Some(found);
     }
     let found = probe(bin)?;
@@ -262,7 +294,9 @@ pub fn claude_version_cached(bin: &Path) -> Option<ClaudeVersion> {
     if is_windows_apps(bin) {
         return None;
     }
-    version_with_cache(CACHE.get_or_init(Default::default), bin, |b| probe_version_blocking(b, VERSION_PROBE_TIMEOUT))
+    version_with_cache(CACHE.get_or_init(Default::default), bin, |b| {
+        probe_version_blocking(b, VERSION_PROBE_TIMEOUT)
+    })
 }
 
 /// Run `bin --version` with the session's hygiene (no console window, sandbox
@@ -319,7 +353,11 @@ pub enum ClaudeLogin {
 pub const API_BILLED_NOTE: &str = "This Claude login bills an API account, not your subscription.";
 
 /// Classify a `claude auth status` result (see [`ClaudeLogin`]).
-pub fn classify_login(logged_in: bool, auth_method: &str, subscription_type: Option<&str>) -> ClaudeLogin {
+pub fn classify_login(
+    logged_in: bool,
+    auth_method: &str,
+    subscription_type: Option<&str>,
+) -> ClaudeLogin {
     if !logged_in {
         ClaudeLogin::LoggedOut
     } else if auth_method == "claude.ai" && subscription_type.is_some() {
@@ -358,7 +396,11 @@ pub fn parse_auth_status(json: &str) -> Result<ClaudeAuthStatus, String> {
     let raw: RawAuth =
         serde_json::from_str(json.trim()).map_err(|e| format!("invalid auth status JSON: {e}"))?;
     let auth_method = raw.auth_method.unwrap_or_default();
-    let login = classify_login(raw.logged_in, &auth_method, raw.subscription_type.as_deref());
+    let login = classify_login(
+        raw.logged_in,
+        &auth_method,
+        raw.subscription_type.as_deref(),
+    );
     Ok(ClaudeAuthStatus {
         logged_in: raw.logged_in,
         auth_method,
@@ -428,11 +470,26 @@ mod tests {
 
     #[test]
     fn only_a_claude_ai_login_with_a_plan_uses_the_subscription() {
-        assert_eq!(classify_login(true, "claude.ai", Some("pro")), ClaudeLogin::Subscription);
-        assert_eq!(classify_login(true, "claude.ai", None), ClaudeLogin::ApiBilled);
-        assert_eq!(classify_login(true, "api_key", None), ClaudeLogin::ApiBilled);
-        assert_eq!(classify_login(true, "console", Some("max")), ClaudeLogin::ApiBilled);
-        assert_eq!(classify_login(false, "claude.ai", Some("max")), ClaudeLogin::LoggedOut);
+        assert_eq!(
+            classify_login(true, "claude.ai", Some("pro")),
+            ClaudeLogin::Subscription
+        );
+        assert_eq!(
+            classify_login(true, "claude.ai", None),
+            ClaudeLogin::ApiBilled
+        );
+        assert_eq!(
+            classify_login(true, "api_key", None),
+            ClaudeLogin::ApiBilled
+        );
+        assert_eq!(
+            classify_login(true, "console", Some("max")),
+            ClaudeLogin::ApiBilled
+        );
+        assert_eq!(
+            classify_login(false, "claude.ai", Some("max")),
+            ClaudeLogin::LoggedOut
+        );
         let s = parse_auth_status(r#"{"loggedIn":true,"authMethod":"api_key"}"#).unwrap();
         assert_eq!(s.login, ClaudeLogin::ApiBilled);
     }
@@ -473,7 +530,10 @@ mod tests {
         let plain = claude_script(&root.join("a"), 0o644);
         let exe = claude_script(&root.join("b"), 0o755);
         let path = std::env::join_paths([plain.parent().unwrap(), exe.parent().unwrap()]).unwrap();
-        assert_eq!(claude_candidates_in(None, Some(path.as_os_str())), vec![exe]);
+        assert_eq!(
+            claude_candidates_in(None, Some(path.as_os_str())),
+            vec![exe]
+        );
         assert!(claude_candidates_in(None, None).is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -485,7 +545,10 @@ mod tests {
         let native = claude_script(&root.join("home").join(".local").join("bin"), 0o755);
         let on_path = claude_script(&root.join("bin"), 0o755);
         let home = root.join("home");
-        let found = claude_candidates_in(Some(home.as_os_str()), Some(on_path.parent().unwrap().as_os_str()));
+        let found = claude_candidates_in(
+            Some(home.as_os_str()),
+            Some(on_path.parent().unwrap().as_os_str()),
+        );
         assert_eq!(found, vec![native, on_path]);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -494,16 +557,32 @@ mod tests {
     #[test]
     fn programs_are_found_on_path_in_order() {
         let root = temp_dir("find");
-        for (dir, file) in [("a", "tool"), ("a", "tool.cmd"), ("b", "tool.cmd"), ("b", "tool.EXE"), ("c", "other.exe")] {
+        for (dir, file) in [
+            ("a", "tool"),
+            ("a", "tool.cmd"),
+            ("b", "tool.cmd"),
+            ("b", "tool.EXE"),
+            ("c", "other.exe"),
+        ] {
             std::fs::create_dir_all(root.join(dir)).unwrap();
             std::fs::write(root.join(dir).join(file), "x").unwrap();
         }
         std::fs::create_dir_all(root.join("c").join("tool.exe")).unwrap();
-        let path = std::env::join_paths([root.join("a"), root.join("b"), root.join("c"), root.join("missing")]).unwrap();
+        let path = std::env::join_paths([
+            root.join("a"),
+            root.join("b"),
+            root.join("c"),
+            root.join("missing"),
+        ])
+        .unwrap();
         // npm's extensionless script and a folder of that name don't count.
         assert_eq!(
             find_on_path_in(&path, "tool"),
-            [root.join("a").join("tool.cmd"), root.join("b").join("tool.exe"), root.join("b").join("tool.cmd")]
+            [
+                root.join("a").join("tool.cmd"),
+                root.join("b").join("tool.exe"),
+                root.join("b").join("tool.cmd")
+            ]
         );
         assert!(find_on_path_in(&path, "absent").is_empty());
         assert!(find_on_path_in(std::ffi::OsStr::new(""), "tool").is_empty());
@@ -515,7 +594,11 @@ mod tests {
     fn the_current_directory_is_never_searched() {
         let dir = PathBuf::from("target").join(format!("nexq-cwd-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join(if cfg!(windows) { "nexqtool.exe" } else { "nexqtool" });
+        let file = dir.join(if cfg!(windows) {
+            "nexqtool.exe"
+        } else {
+            "nexqtool"
+        });
         std::fs::write(&file, "x").unwrap();
         #[cfg(unix)]
         {
@@ -527,22 +610,35 @@ mod tests {
         let full = std::env::join_paths([absolute.clone()]).unwrap();
         assert_eq!(find_on_path_in(&full, "nexqtool").len(), 1);
         // Not through a relative or an empty entry.
-        let relative = std::env::join_paths([dir.as_path(), Path::new("."), Path::new("")]).unwrap();
+        let relative =
+            std::env::join_paths([dir.as_path(), Path::new("."), Path::new("")]).unwrap();
         assert!(find_on_path_in(&relative, "nexqtool").is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn claude_versions_are_parsed_and_compared_numerically() {
-        assert_eq!(parse_claude_version("2.1.330 (Claude Code)\n"), Some((2, 1, 330)));
-        assert_eq!(parse_claude_version("\r\n  2.1.206 (Claude Code)"), Some((2, 1, 206)));
-        assert_eq!(parse_claude_version("2.1.330-beta.1 (Claude Code)"), Some((2, 1, 330)));
+        assert_eq!(
+            parse_claude_version("2.1.330 (Claude Code)\n"),
+            Some((2, 1, 330))
+        );
+        assert_eq!(
+            parse_claude_version("\r\n  2.1.206 (Claude Code)"),
+            Some((2, 1, 206))
+        );
+        assert_eq!(
+            parse_claude_version("2.1.330-beta.1 (Claude Code)"),
+            Some((2, 1, 330))
+        );
         assert_eq!(parse_claude_version("2.1.330+abc"), Some((2, 1, 330)));
         assert_eq!(parse_claude_version("claude 2.2.0"), Some((2, 2, 0)));
         for garbage in ["", "nope", "2.1", "2.x.3", "Claude Code", "\n\n"] {
             assert_eq!(parse_claude_version(garbage), None, "{garbage:?}");
         }
-        assert!(is_too_old((2, 1, 99)), "99 is below 259, not above it as text");
+        assert!(
+            is_too_old((2, 1, 99)),
+            "99 is below 259, not above it as text"
+        );
         assert!(is_too_old((2, 1, 206)));
         assert!(is_too_old((1, 9, 999)));
         assert!(!is_too_old((2, 1, 259)));
@@ -555,7 +651,10 @@ mod tests {
     fn the_refusal_names_both_versions_and_reads_as_outdated() {
         use crate::llm::cli_agent::protocol::{classify_error, AgentErrorKind};
         let message = outdated_message((2, 1, 206));
-        assert_eq!(message, "Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer.");
+        assert_eq!(
+            message,
+            "Claude Code 2.1.206 is too old for Lucid. Update it to 2.1.259 or newer."
+        );
         assert_eq!(classify_error(&message), AgentErrorKind::Outdated);
     }
 
@@ -584,7 +683,10 @@ mod tests {
         assert_eq!(asked, ["a"]);
         // Exactly the minimum is good.
         let (found, asked) = select(&["a", "b"], &[("a", MIN_CLAUDE_VERSION)]);
-        assert_eq!((found, asked), (Some(PathBuf::from("a")), vec!["a".to_string()]));
+        assert_eq!(
+            (found, asked),
+            (Some(PathBuf::from("a")), vec!["a".to_string()])
+        );
     }
 
     #[test]
@@ -601,7 +703,13 @@ mod tests {
         assert_eq!(asked, ["a", "b", "c"]);
         // The first good one wins; later ones are not looked at.
         let (found, asked) = select(&["a", "b", "c"], &[("a", OLD), ("b", NEW), ("c", NEW)]);
-        assert_eq!((found, asked), (Some(PathBuf::from("b")), vec!["a".to_string(), "b".to_string()]));
+        assert_eq!(
+            (found, asked),
+            (
+                Some(PathBuf::from("b")),
+                vec!["a".to_string(), "b".to_string()]
+            )
+        );
     }
 
     #[test]
@@ -624,7 +732,10 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn duplicates_ignore_case_and_slash_kind_on_windows() {
-        let (_, asked) = select(&["C:\\Bin\\claude.exe", "c:/bin/CLAUDE.exe"], &[("C:\\Bin\\claude.exe", OLD)]);
+        let (_, asked) = select(
+            &["C:\\Bin\\claude.exe", "c:/bin/CLAUDE.exe"],
+            &[("C:\\Bin\\claude.exe", OLD)],
+        );
         assert_eq!(asked.len(), 1);
     }
 
@@ -632,8 +743,12 @@ mod tests {
     fn a_windows_store_alias_is_never_looked_up() {
         let alias = "C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps\\claude.exe";
         assert!(is_windows_apps(Path::new(alias)));
-        assert!(is_windows_apps(Path::new("c:/users/u/appdata/local/MICROSOFT/windowsapps/claude.exe")));
-        assert!(!is_windows_apps(Path::new("C:\\Users\\u\\.local\\bin\\claude.exe")));
+        assert!(is_windows_apps(Path::new(
+            "c:/users/u/appdata/local/MICROSOFT/windowsapps/claude.exe"
+        )));
+        assert!(!is_windows_apps(Path::new(
+            "C:\\Users\\u\\.local\\bin\\claude.exe"
+        )));
         // Later candidate: skipped, even though it would be new.
         let (found, asked) = select(&["a", alias, "c"], &[("a", OLD), (alias, NEW), ("c", NEW)]);
         assert_eq!(found, Some(PathBuf::from("c")));
@@ -678,12 +793,22 @@ mod tests {
                 v
             }
         };
-        assert_eq!(version_with_cache(&cache, &bin, probe(Some(OLD))), Some(OLD));
-        assert_eq!(version_with_cache(&cache, &bin, probe(Some(NEW))), Some(OLD), "cached");
+        assert_eq!(
+            version_with_cache(&cache, &bin, probe(Some(OLD))),
+            Some(OLD)
+        );
+        assert_eq!(
+            version_with_cache(&cache, &bin, probe(Some(NEW))),
+            Some(OLD),
+            "cached"
+        );
         assert_eq!(probes.get(), 1);
         // An in-place update changes the length (and the time).
         std::fs::write(&bin, "a longer file").unwrap();
-        assert_eq!(version_with_cache(&cache, &bin, probe(Some(NEW))), Some(NEW));
+        assert_eq!(
+            version_with_cache(&cache, &bin, probe(Some(NEW))),
+            Some(NEW)
+        );
         assert_eq!(probes.get(), 2);
         assert_eq!(version_with_cache(&cache, &bin, probe(None)), Some(NEW));
         assert_eq!(probes.get(), 2);
@@ -691,12 +816,21 @@ mod tests {
         let other = dir.join("other.exe");
         std::fs::write(&other, "x").unwrap();
         assert_eq!(version_with_cache(&cache, &other, probe(None)), None);
-        assert_eq!(version_with_cache(&cache, &other, probe(Some(NEW))), Some(NEW));
+        assert_eq!(
+            version_with_cache(&cache, &other, probe(Some(NEW))),
+            Some(NEW)
+        );
         assert_eq!(probes.get(), 4);
         // A missing file is probed and never cached.
         let gone = dir.join("gone.exe");
-        assert_eq!(version_with_cache(&cache, &gone, probe(Some(NEW))), Some(NEW));
-        assert_eq!(version_with_cache(&cache, &gone, probe(Some(NEW))), Some(NEW));
+        assert_eq!(
+            version_with_cache(&cache, &gone, probe(Some(NEW))),
+            Some(NEW)
+        );
+        assert_eq!(
+            version_with_cache(&cache, &gone, probe(Some(NEW))),
+            Some(NEW)
+        );
         assert_eq!(probes.get(), 6);
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -23,7 +23,11 @@ pub fn models_updated_payload(provider: &str) -> serde_json::Value {
 }
 
 /// The wire payload of `workspace_chat_activity` (what the store's `activity` handler reads).
-pub fn activity_payload(chat_id: &str, request_id: &str, activity: &SourceActivity) -> serde_json::Value {
+pub fn activity_payload(
+    chat_id: &str,
+    request_id: &str,
+    activity: &SourceActivity,
+) -> serde_json::Value {
     serde_json::json!({
         "chat_id": chat_id,
         "request_id": request_id,
@@ -41,13 +45,19 @@ pub fn wire(
 ) {
     let told = emit.clone();
     runs.set_models_updated(Arc::new(move |provider| {
-        told(super::models::UPDATED_EVENT, models_updated_payload(provider));
+        told(
+            super::models::UPDATED_EVENT,
+            models_updated_payload(provider),
+        );
     }));
     let resolve = request_of.clone();
     broker.set_ask_resolver(Arc::new(move |chat| resolve(chat)));
     runs.set_chat_activity(Arc::new(move |chat, activity| {
         if let Some(request_id) = request_of(chat) {
-            emit(ACTIVITY_EVENT, activity_payload(chat, &request_id, &activity));
+            emit(
+                ACTIVITY_EVENT,
+                activity_payload(chat, &request_id, &activity),
+            );
         }
     }));
 }
@@ -62,10 +72,17 @@ mod tests {
         let activity = SourceActivity {
             kind: SourceKind::Tool,
             label: "Notes: set_flag".into(),
-            chip: Some(SourceChip { kind: SourceKind::Tool, label: "Notes: set_flag".into(), path: None }),
+            chip: Some(SourceChip {
+                kind: SourceKind::Tool,
+                label: "Notes: set_flag".into(),
+                path: None,
+            }),
             chip_only: false,
         };
-        crate::assert_contract!("workspace_chat_activity", activity_payload("c1", "ask-1", &activity));
+        crate::assert_contract!(
+            "workspace_chat_activity",
+            activity_payload("c1", "ask-1", &activity)
+        );
     }
 
     #[test]
@@ -75,7 +92,11 @@ mod tests {
         let line = chat_safe(SourceActivity {
             kind: SourceKind::Notes,
             label: long.clone(),
-            chip: Some(SourceChip { kind: SourceKind::Notes, label: long, path: Some("C:\\Users\\me\\AppData\\chat-transcripts\\1-abc\\m.txt".into()) }),
+            chip: Some(SourceChip {
+                kind: SourceKind::Notes,
+                label: long,
+                path: Some("C:\\Users\\me\\AppData\\chat-transcripts\\1-abc\\m.txt".into()),
+            }),
             chip_only: false,
         });
         assert!(line.label.chars().count() <= 80 && line.label.ends_with('…'));

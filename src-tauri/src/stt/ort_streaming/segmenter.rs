@@ -25,7 +25,12 @@ const IDLE_FLUSH: Duration = Duration::from_millis(800);
 const POLL: Duration = Duration::from_millis(100);
 
 pub(super) fn argmax(values: &[f32]) -> usize {
-    values.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map(|x| x.0).unwrap_or(0)
+    values
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.total_cmp(b.1))
+        .map(|x| x.0)
+        .unwrap_or(0)
 }
 
 /// SentencePiece pieces to text: `▁` is a space, `<...>` pieces are dropped.
@@ -42,7 +47,10 @@ pub(super) fn decode_tokens(ids: &[i64], vocab: &HashMap<i64, String>) -> String
 }
 
 fn epoch_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 /// Buffers audio from `audio_rx` into speech segments and sends each
@@ -82,17 +90,25 @@ pub(super) fn segment_loop(
             Ok(AudioMessage::Samples(audio)) => {
                 received = Instant::now();
                 // The chunk just arrived: its first sample was captured `len / 16` ms ago.
-                let chunk_start_ms = epoch_ms().saturating_sub(audio.len() as u64 * 1000 / SAMPLE_RATE as u64);
+                let chunk_start_ms =
+                    epoch_ms().saturating_sub(audio.len() as u64 * 1000 / SAMPLE_RATE as u64);
                 for (i, chunk) in audio.chunks(160).enumerate() {
                     if samples.is_empty() {
-                        segment_start_ms = chunk_start_ms + (i as u64 * 160 * 1000 / SAMPLE_RATE as u64);
+                        segment_start_ms =
+                            chunk_start_ms + (i as u64 * 160 * 1000 / SAMPLE_RATE as u64);
                     }
-                    let energy = chunk.iter().map(|&x| (x as f64 / 32768.0).powi(2)).sum::<f64>() / chunk.len() as f64;
+                    let energy = chunk
+                        .iter()
+                        .map(|&x| (x as f64 / 32768.0).powi(2))
+                        .sum::<f64>()
+                        / chunk.len() as f64;
                     let speech = energy >= SILENCE_ENERGY;
                     heard |= speech;
                     silence = if speech { 0 } else { silence + chunk.len() };
                     samples.extend(chunk.iter().map(|&x| x as f32 / 32768.0));
-                    if (silence >= PAUSE_SAMPLES && samples.len() >= MIN_SEGMENT_SAMPLES) || samples.len() >= MAX_SEGMENT_SAMPLES {
+                    if (silence >= PAUSE_SAMPLES && samples.len() >= MIN_SEGMENT_SAMPLES)
+                        || samples.len() >= MAX_SEGMENT_SAMPLES
+                    {
                         flush = true;
                     }
                 }
@@ -107,23 +123,36 @@ pub(super) fn segment_loop(
             }
         }
         if flush && !samples.is_empty() {
-            let text = if heard { recognize(&samples)? } else { String::new() };
+            let text = if heard {
+                recognize(&samples)?
+            } else {
+                String::new()
+            };
             let duration_ms = samples.len() as u64 * 1000 / SAMPLE_RATE as u64;
             samples.clear();
             silence = 0;
             heard = false;
             if !text.is_empty() {
-                result_tx.blocking_send(TranscriptResult {
-                    text, is_final: true, confidence: 0.9,
-                    timestamp_ms: segment_start_ms,
-                    speaker: None, language: crate::stt::provider::reported_language(language), segment_id: Some(format!("ort_{segment}")),
-                    duration_ms: Some(duration_ms), speaker_tag: None,
-                    turn: None,
-                }).map_err(|e| e.to_string())?;
+                result_tx
+                    .blocking_send(TranscriptResult {
+                        text,
+                        is_final: true,
+                        confidence: 0.9,
+                        timestamp_ms: segment_start_ms,
+                        speaker: None,
+                        language: crate::stt::provider::reported_language(language),
+                        segment_id: Some(format!("ort_{segment}")),
+                        duration_ms: Some(duration_ms),
+                        speaker_tag: None,
+                        turn: None,
+                    })
+                    .map_err(|e| e.to_string())?;
                 segment += 1;
             }
         }
-        if finished { return Ok(()); }
+        if finished {
+            return Ok(());
+        }
     }
 }
 
@@ -134,27 +163,47 @@ mod tests {
     use std::sync::Arc;
 
     /// `ms` of a loud tone (counts as speech) as 16 kHz samples.
-    fn speech(ms: usize) -> Vec<i16> { vec![1000; ms * 16] }
-    fn silence(ms: usize) -> Vec<i16> { vec![0; ms * 16] }
+    fn speech(ms: usize) -> Vec<i16> {
+        vec![1000; ms * 16]
+    }
+    fn silence(ms: usize) -> Vec<i16> {
+        vec![0; ms * 16]
+    }
 
     /// Runs the loop to its end on audio queued up front and returns what the
     /// recognizer was asked to decode (segment lengths in samples) and what
     /// was sent. `texts` are the recognizer's answers in order; it then
     /// answers "t".
-    fn run_queued(messages: Vec<AudioMessage>, texts: &[&str], start: u64) -> (Vec<usize>, Vec<TranscriptResult>) {
+    fn run_queued(
+        messages: Vec<AudioMessage>,
+        texts: &[&str],
+        start: u64,
+    ) -> (Vec<usize>, Vec<TranscriptResult>) {
         let (tx, rx) = channel();
-        for message in messages { tx.send(message).unwrap(); }
+        for message in messages {
+            tx.send(message).unwrap();
+        }
         drop(tx);
         let (result_tx, mut result_rx) = mpsc::channel(32);
         let mut lengths = Vec::new();
         let mut texts = texts.iter();
-        segment_loop(&AtomicBool::new(false), &rx, &result_tx, start, "en", |segment| {
-            lengths.push(segment.len());
-            Ok(texts.next().copied().unwrap_or("t").to_owned())
-        }).unwrap();
+        segment_loop(
+            &AtomicBool::new(false),
+            &rx,
+            &result_tx,
+            start,
+            "en",
+            |segment| {
+                lengths.push(segment.len());
+                Ok(texts.next().copied().unwrap_or("t").to_owned())
+            },
+        )
+        .unwrap();
         drop(result_tx);
         let mut results = Vec::new();
-        while let Ok(result) = result_rx.try_recv() { results.push(result); }
+        while let Ok(result) = result_rx.try_recv() {
+            results.push(result);
+        }
         (lengths, results)
     }
 
@@ -162,24 +211,36 @@ mod tests {
     fn a_pause_ends_a_segment_once_a_second_is_buffered() {
         // 100 ms of speech + 800 ms of silence is under 1 s: no flush yet, so the
         // next 200 ms of silence completes ONE segment of 1.1 s.
-        let (lengths, results) = run_queued(vec![
-            AudioMessage::Samples([speech(100), silence(800)].concat()),
-            AudioMessage::Samples(silence(200)),
-        ], &[], 0);
+        let (lengths, results) = run_queued(
+            vec![
+                AudioMessage::Samples([speech(100), silence(800)].concat()),
+                AudioMessage::Samples(silence(200)),
+            ],
+            &[],
+            0,
+        );
         assert_eq!(lengths, [17_600]);
         assert_eq!(results.len(), 1);
         // 1 s of speech followed by the pause flushes at once.
-        let (lengths, _) = run_queued(vec![AudioMessage::Samples([speech(1000), silence(800)].concat())], &[], 0);
+        let (lengths, _) = run_queued(
+            vec![AudioMessage::Samples([speech(1000), silence(800)].concat())],
+            &[],
+            0,
+        );
         assert_eq!(lengths, [28_800]);
     }
 
     #[test]
     fn auto_detect_never_tags_a_line_with_the_word_auto() {
         let (tx, rx) = channel();
-        tx.send(AudioMessage::Samples([speech(1000), silence(800)].concat())).unwrap();
+        tx.send(AudioMessage::Samples([speech(1000), silence(800)].concat()))
+            .unwrap();
         drop(tx);
         let (result_tx, mut result_rx) = mpsc::channel(4);
-        segment_loop(&AtomicBool::new(false), &rx, &result_tx, 0, "auto", |_| Ok("hello".into())).unwrap();
+        segment_loop(&AtomicBool::new(false), &rx, &result_tx, 0, "auto", |_| {
+            Ok("hello".into())
+        })
+        .unwrap();
         assert_eq!(result_rx.try_recv().unwrap().language, None);
     }
 
@@ -199,7 +260,11 @@ mod tests {
 
     #[test]
     fn a_stop_message_decodes_what_is_buffered() {
-        let (lengths, results) = run_queued(vec![AudioMessage::Samples(speech(500)), AudioMessage::Stop], &[], 0);
+        let (lengths, results) = run_queued(
+            vec![AudioMessage::Samples(speech(500)), AudioMessage::Stop],
+            &[],
+            0,
+        );
         assert_eq!(lengths, [8_000]);
         assert_eq!(results.len(), 1);
     }
@@ -216,20 +281,33 @@ mod tests {
         tx.send(AudioMessage::Samples(speech(500))).unwrap();
         let (result_tx, _result_rx) = mpsc::channel(4);
         let mut calls = 0;
-        segment_loop(&AtomicBool::new(true), &rx, &result_tx, 0, "en", |_| { calls += 1; Ok("t".into()) }).unwrap();
+        segment_loop(&AtomicBool::new(true), &rx, &result_tx, 0, "en", |_| {
+            calls += 1;
+            Ok("t".into())
+        })
+        .unwrap();
         assert_eq!(calls, 0);
     }
 
     #[test]
     fn segment_ids_advance_only_when_there_is_text() {
         let one_segment = || AudioMessage::Samples([speech(1000), silence(800)].concat());
-        let (lengths, results) = run_queued(vec![one_segment(), one_segment(), one_segment()], &["", "one", "two"], 5);
+        let (lengths, results) = run_queued(
+            vec![one_segment(), one_segment(), one_segment()],
+            &["", "one", "two"],
+            5,
+        );
         assert_eq!(lengths.len(), 3);
-        let ids: Vec<_> = results.iter().map(|r| r.segment_id.clone().unwrap()).collect();
+        let ids: Vec<_> = results
+            .iter()
+            .map(|r| r.segment_id.clone().unwrap())
+            .collect();
         assert_eq!(ids, ["ort_5", "ort_6"]);
         let texts: Vec<_> = results.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(texts, ["one", "two"]);
-        assert!(results.iter().all(|r| r.is_final && r.language.as_deref() == Some("en")));
+        assert!(results
+            .iter()
+            .all(|r| r.is_final && r.language.as_deref() == Some("en")));
     }
 
     #[test]
@@ -244,7 +322,8 @@ mod tests {
                 segment_loop(&stop, &rx, &result_tx, 0, "en", |segment| {
                     lengths.push(segment.len());
                     Ok("idle".into())
-                }).unwrap();
+                })
+                .unwrap();
                 lengths
             })
         };
@@ -255,14 +334,20 @@ mod tests {
         let result = loop {
             match result_rx.try_recv() {
                 Ok(result) => break result,
-                Err(_) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+                Err(_) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(20))
+                }
                 Err(_) => {
                     let _ = tx.send(AudioMessage::Stop);
                     panic!("the idle flush sent nothing within 5 s");
                 }
             }
         };
-        assert!(sent.elapsed() >= Duration::from_millis(700), "flushed after {:?}", sent.elapsed());
+        assert!(
+            sent.elapsed() >= Duration::from_millis(700),
+            "flushed after {:?}",
+            sent.elapsed()
+        );
         assert_eq!(result.text, "idle");
         tx.send(AudioMessage::Stop).unwrap();
         assert_eq!(worker.join().unwrap(), [8_000]);
@@ -270,7 +355,14 @@ mod tests {
 
     #[test]
     fn sentencepiece_preserves_case_spaces_and_unicode() {
-        let vocab = HashMap::from([(0, "<unk>".into()), (1, "▁Hello".into()), (2, ",".into()), (3, "▁café".into()), (4, "!".into()), (5, "<blk>".into())]);
+        let vocab = HashMap::from([
+            (0, "<unk>".into()),
+            (1, "▁Hello".into()),
+            (2, ",".into()),
+            (3, "▁café".into()),
+            (4, "!".into()),
+            (5, "<blk>".into()),
+        ]);
         assert_eq!(decode_tokens(&[1, 2, 3, 4], &vocab), "Hello, café!");
     }
 

@@ -21,7 +21,11 @@ use std::time::{Duration, SystemTime};
 use serde::Serialize;
 
 /// The settings files the app keeps in its data folder.
-pub const STORES: &[&str] = &["config.json", "lucid-settings.json", "translation-config.json"];
+pub const STORES: &[&str] = &[
+    "config.json",
+    "lucid-settings.json",
+    "translation-config.json",
+];
 /// How many unreadable copies are kept per file.
 pub const KEEP_CORRUPT: usize = 3;
 /// The least time between two good copies of one file.
@@ -39,7 +43,9 @@ pub struct StoreRecovery {
 }
 
 fn is_valid_store(text: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(text).map(|v| v.is_object()).unwrap_or(false)
+    serde_json::from_str::<serde_json::Value>(text)
+        .map(|v| v.is_object())
+        .unwrap_or(false)
 }
 
 fn modified(path: &Path) -> Option<SystemTime> {
@@ -67,7 +73,9 @@ fn corrupt_prefix(name: &str) -> String {
 /// Deletes all but the newest `KEEP_CORRUPT` unreadable copies of `name`.
 fn trim_corrupt(dir: &Path, name: &str) {
     let prefix = corrupt_prefix(name);
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     let mut copies: Vec<(String, PathBuf)> = entries
         .filter_map(Result::ok)
         .filter_map(|e| {
@@ -108,11 +116,17 @@ pub fn guard(dir: &Path, stamp: u64) -> Vec<StoreRecovery> {
         // The last good copy, if it is itself readable.
         let backup = dir.join(format!("{name}.bak"));
         let restored = match fs::read(&backup) {
-            Ok(bytes) if is_valid_store(&String::from_utf8_lossy(&bytes)) => write_atomic(&path, &bytes).is_ok(),
+            Ok(bytes) if is_valid_store(&String::from_utf8_lossy(&bytes)) => {
+                write_atomic(&path, &bytes).is_ok()
+            }
             _ => false,
         };
         log::warn!("{name} could not be read; kept as {kept_as:?}, restored from the last good copy: {restored}");
-        found.push(StoreRecovery { file: (*name).to_string(), kept_as, restored });
+        found.push(StoreRecovery {
+            file: (*name).to_string(),
+            kept_as,
+            restored,
+        });
     }
     found
 }
@@ -129,7 +143,9 @@ pub fn refresh_backups(dir: &Path, now: SystemTime) -> usize {
             continue;
         }
         let backup = dir.join(format!("{name}.bak"));
-        let due = modified(&backup).map_or(true, |t| now.duration_since(t).unwrap_or_default() >= BACKUP_EVERY);
+        let due = modified(&backup).map_or(true, |t| {
+            now.duration_since(t).unwrap_or_default() >= BACKUP_EVERY
+        });
         if due && write_atomic(&backup, &bytes).is_ok() {
             made += 1;
         }
@@ -151,7 +167,11 @@ mod tests {
     const BAD: &str = r#"{"onboarding_done":tr"#;
 
     fn names(dir: &Path) -> Vec<String> {
-        let mut v: Vec<String> = fs::read_dir(dir).unwrap().filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        let mut v: Vec<String> = fs::read_dir(dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
         v.sort();
         v
     }
@@ -179,11 +199,22 @@ mod tests {
         let found = guard(&d, 42);
         assert_eq!(found.len(), 1);
         assert!(found[0].restored && found[0].file == "config.json");
-        assert_eq!(fs::read_to_string(d.join("config.json")).unwrap(), GOOD, "defaults did not replace it");
+        assert_eq!(
+            fs::read_to_string(d.join("config.json")).unwrap(),
+            GOOD,
+            "defaults did not replace it"
+        );
         let kept = found[0].kept_as.clone().unwrap();
-        assert_eq!(fs::read_to_string(d.join(&kept)).unwrap(), BAD, "the unreadable bytes are kept for the user");
+        assert_eq!(
+            fs::read_to_string(d.join(&kept)).unwrap(),
+            BAD,
+            "the unreadable bytes are kept for the user"
+        );
         assert!(kept.starts_with("config.json.corrupt-"));
-        assert!(!names(&d).iter().any(|n| n.ends_with(".tmp")), "the restore was atomic");
+        assert!(
+            !names(&d).iter().any(|n| n.ends_with(".tmp")),
+            "the restore was atomic"
+        );
         let _ = fs::remove_dir_all(d);
     }
 
@@ -194,7 +225,10 @@ mod tests {
         let found = guard(&d, 7);
         assert_eq!(found[0].restored, false);
         assert!(!d.join("lucid-settings.json").exists());
-        assert_eq!(fs::read_to_string(d.join(found[0].kept_as.clone().unwrap())).unwrap(), "");
+        assert_eq!(
+            fs::read_to_string(d.join(found[0].kept_as.clone().unwrap())).unwrap(),
+            ""
+        );
         // A bad good copy is not used either, and valid JSON that is not an object is unreadable.
         fs::write(d.join("config.json"), "[]").unwrap();
         fs::write(d.join("config.json.bak"), BAD).unwrap();
@@ -210,9 +244,15 @@ mod tests {
             fs::write(d.join("config.json"), BAD).unwrap();
             guard(&d, stamp);
         }
-        let kept: Vec<String> = names(&d).into_iter().filter(|n| n.starts_with("config.json.corrupt-")).collect();
+        let kept: Vec<String> = names(&d)
+            .into_iter()
+            .filter(|n| n.starts_with("config.json.corrupt-"))
+            .collect();
         assert_eq!(kept.len(), KEEP_CORRUPT);
-        assert!(kept[0].ends_with("00000000000000000003") && kept[2].ends_with("00000000000000000005"), "{kept:?}");
+        assert!(
+            kept[0].ends_with("00000000000000000003") && kept[2].ends_with("00000000000000000005"),
+            "{kept:?}"
+        );
         let _ = fs::remove_dir_all(d);
     }
 
@@ -227,19 +267,32 @@ mod tests {
         assert_eq!(refresh_backups(&d, t0 + Duration::from_secs(5 * 60)), 0);
         assert_eq!(fs::read_to_string(d.join("config.json.bak")).unwrap(), GOOD);
         // After ten minutes: refreshed.
-        assert_eq!(refresh_backups(&d, t0 + BACKUP_EVERY + Duration::from_secs(1)), 1);
-        assert_eq!(fs::read_to_string(d.join("config.json.bak")).unwrap(), r#"{"changed":1}"#);
+        assert_eq!(
+            refresh_backups(&d, t0 + BACKUP_EVERY + Duration::from_secs(1)),
+            1
+        );
+        assert_eq!(
+            fs::read_to_string(d.join("config.json.bak")).unwrap(),
+            r#"{"changed":1}"#
+        );
         // A file that has gone bad never replaces the good copy, however old it is.
         fs::write(d.join("config.json"), BAD).unwrap();
         assert_eq!(refresh_backups(&d, t0 + Duration::from_secs(3600)), 0);
-        assert_eq!(fs::read_to_string(d.join("config.json.bak")).unwrap(), r#"{"changed":1}"#);
+        assert_eq!(
+            fs::read_to_string(d.join("config.json.bak")).unwrap(),
+            r#"{"changed":1}"#
+        );
         assert!(!names(&d).iter().any(|n| n.ends_with(".tmp")));
         let _ = fs::remove_dir_all(d);
     }
 
     #[test]
     fn every_store_the_app_keeps_is_listed() {
-        for name in ["config.json", "lucid-settings.json", "translation-config.json"] {
+        for name in [
+            "config.json",
+            "lucid-settings.json",
+            "translation-config.json",
+        ] {
             assert!(STORES.contains(&name), "{name}");
         }
     }

@@ -45,13 +45,18 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    args.into_iter().skip(1).any(|a| a.as_ref() == OsStr::new(NOTES_MCP_ARG))
+    args.into_iter()
+        .skip(1)
+        .any(|a| a.as_ref() == OsStr::new(NOTES_MCP_ARG))
 }
 
 /// What the CLI's MCP configuration needs to start the server: the command,
 /// its arguments and its environment, for the folders `dirs`.
 pub fn server_command(exe: &std::path::Path, dirs: &[PathBuf]) -> Value {
-    let list: Vec<String> = dirs.iter().map(|d| d.to_string_lossy().into_owned()).collect();
+    let list: Vec<String> = dirs
+        .iter()
+        .map(|d| d.to_string_lossy().into_owned())
+        .collect();
     json!({
         "command": exe.to_string_lossy(),
         "args": [NOTES_MCP_ARG],
@@ -64,7 +69,12 @@ pub fn server_command(exe: &std::path::Path, dirs: &[PathBuf]) -> Value {
 pub fn dirs_from_env(value: Option<&str>) -> Vec<PathBuf> {
     value
         .and_then(|v| serde_json::from_str::<Vec<String>>(v).ok())
-        .map(|v| v.into_iter().filter(|s| !s.trim().is_empty()).map(PathBuf::from).collect())
+        .map(|v| {
+            v.into_iter()
+                .filter(|s| !s.trim().is_empty())
+                .map(PathBuf::from)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -87,7 +97,11 @@ pub fn run_stdio() -> i32 {
 }
 
 /// Answer the messages on `input` to `output` until `input` ends.
-pub fn serve(mut input: impl BufRead, mut output: impl Write, notes: &Notes) -> std::io::Result<()> {
+pub fn serve(
+    mut input: impl BufRead,
+    mut output: impl Write,
+    notes: &Notes,
+) -> std::io::Result<()> {
     let mut buf: Vec<u8> = Vec::new();
     loop {
         buf.clear();
@@ -100,7 +114,8 @@ pub fn serve(mut input: impl BufRead, mut output: impl Write, notes: &Notes) -> 
             // Skip the rest of the line.
             loop {
                 buf.clear();
-                let n = Read::take(&mut input, MAX_LINE_BYTES as u64).read_until(b'\n', &mut buf)?;
+                let n =
+                    Read::take(&mut input, MAX_LINE_BYTES as u64).read_until(b'\n', &mut buf)?;
                 if n == 0 || buf.ends_with(b"\n") {
                     break;
                 }
@@ -141,13 +156,20 @@ pub fn handle(message: &Value, notes: &Notes) -> Option<Value> {
     let id = object.get("id").filter(|id| !id.is_null());
     let (Some(method), Some(id)) = (method, id) else {
         // A notification (or a response to a request we never made): no reply.
-        return if method.is_some() { None } else { Some(error_reply(&Value::Null, -32600, "Invalid request")) };
+        return if method.is_some() {
+            None
+        } else {
+            Some(error_reply(&Value::Null, -32600, "Invalid request"))
+        };
     };
     let params = object.get("params").cloned().unwrap_or(Value::Null);
     Some(match method {
         "initialize" => {
             let asked = params["protocolVersion"].as_str().unwrap_or_default();
-            let version = SUPPORTED_VERSIONS.iter().find(|v| **v == asked).unwrap_or(&SUPPORTED_VERSIONS[0]);
+            let version = SUPPORTED_VERSIONS
+                .iter()
+                .find(|v| **v == asked)
+                .unwrap_or(&SUPPORTED_VERSIONS[0]);
             ok_reply(
                 id,
                 json!({
@@ -242,7 +264,11 @@ mod tests {
     fn notes_in(tag: &str) -> (Notes, PathBuf) {
         let dir = std::env::temp_dir().join(format!("nexq-mcp-{tag}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(dir.join("Vault")).unwrap();
-        std::fs::write(dir.join("Vault").join("falcon.md"), "Project Falcon launches on March 3.\n").unwrap();
+        std::fs::write(
+            dir.join("Vault").join("falcon.md"),
+            "Project Falcon launches on March 3.\n",
+        )
+        .unwrap();
         std::fs::write(dir.join("secret.md"), "TOPSECRET").unwrap();
         let (notes, _) = Notes::open_with(&[dir.join("Vault")], &|_| None);
         (notes, dir)
@@ -253,7 +279,11 @@ mod tests {
         let input: String = lines.iter().map(|l| format!("{l}\n")).collect();
         let mut out = Vec::new();
         serve(Cursor::new(input.into_bytes()), &mut out, notes).unwrap();
-        String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
+        String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
     }
 
     fn call(id: u64, name: &str, args: Value) -> Value {
@@ -282,16 +312,31 @@ mod tests {
         assert_eq!(replies[0]["result"]["serverInfo"]["name"], "nexq-notes");
         assert!(replies[0]["result"]["capabilities"]["tools"].is_object());
         assert_eq!(replies[1]["result"], json!({}));
-        let names: Vec<&str> = replies[2]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+        let names: Vec<&str> = replies[2]["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
         assert_eq!(names, TOOLS);
         for tool in replies[2]["result"]["tools"].as_array().unwrap() {
             assert_eq!(tool["annotations"]["readOnlyHint"], true);
             assert_eq!(tool["inputSchema"]["type"], "object");
         }
-        let text = |r: &Value| r["result"]["content"][0]["text"].as_str().unwrap().to_string();
+        let text = |r: &Value| {
+            r["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
         assert!(text(&replies[3]).contains("Vault/falcon.md"));
-        assert!(text(&replies[4]).contains("Vault/falcon.md:1: Project Falcon launches on March 3."));
-        assert_eq!(text(&replies[5]).trim(), "Project Falcon launches on March 3.");
+        assert!(
+            text(&replies[4]).contains("Vault/falcon.md:1: Project Falcon launches on March 3.")
+        );
+        assert_eq!(
+            text(&replies[5]).trim(),
+            "Project Falcon launches on March 3."
+        );
         assert_eq!(replies[5]["result"]["isError"], false);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -303,7 +348,11 @@ mod tests {
             &notes,
             &[
                 call(1, "read_note", json!({ "path": "../secret.md" })),
-                call(2, "read_note", json!({ "path": dir.join("secret.md").to_string_lossy() })),
+                call(
+                    2,
+                    "read_note",
+                    json!({ "path": dir.join("secret.md").to_string_lossy() }),
+                ),
                 call(3, "read_note", json!({ "path": "C:\\Windows\\win.ini" })),
                 call(4, "list_notes", json!({ "subpath": ".." })),
             ],
@@ -345,9 +394,16 @@ mod tests {
     fn garbage_gets_a_parse_error_and_the_server_keeps_going() {
         let (notes, dir) = notes_in("garbage");
         let mut out = Vec::new();
-        let input = format!("not json\n\n{}\n", json!({ "jsonrpc": "2.0", "id": 9, "method": "ping" }));
+        let input = format!(
+            "not json\n\n{}\n",
+            json!({ "jsonrpc": "2.0", "id": 9, "method": "ping" })
+        );
         serve(Cursor::new(input.into_bytes()), &mut out, &notes).unwrap();
-        let lines: Vec<Value> = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let lines: Vec<Value> = String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
         assert_eq!(lines[0]["error"]["code"], -32700);
         assert_eq!(lines[1]["id"], 9);
         let _ = std::fs::remove_dir_all(dir);
@@ -355,7 +411,13 @@ mod tests {
 
     #[test]
     fn with_no_folders_every_tool_says_so() {
-        let replies = talk(&Notes::default(), &[call(1, "list_notes", json!({})), call(2, "read_note", json!({ "path": "a.md" }))]);
+        let replies = talk(
+            &Notes::default(),
+            &[
+                call(1, "list_notes", json!({})),
+                call(2, "read_note", json!({ "path": "a.md" })),
+            ],
+        );
         assert!(replies.iter().all(|r| r["result"]["isError"] == true));
     }
 
@@ -365,11 +427,20 @@ mod tests {
         assert!(!is_notes_mode(["lucid.exe"]));
         // The program name is not an argument.
         assert!(!is_notes_mode(["--notes-mcp"]));
-        assert_eq!(dirs_from_env(Some(r#"["C:\\Notes","D:\\Wiki",""]"#)), [PathBuf::from("C:\\Notes"), PathBuf::from("D:\\Wiki")]);
+        assert_eq!(
+            dirs_from_env(Some(r#"["C:\\Notes","D:\\Wiki",""]"#)),
+            [PathBuf::from("C:\\Notes"), PathBuf::from("D:\\Wiki")]
+        );
         assert!(dirs_from_env(Some("not json")).is_empty() && dirs_from_env(None).is_empty());
-        let cmd = server_command(std::path::Path::new("C:\\Lucid\\lucid.exe"), &[PathBuf::from("C:\\My Notes")]);
+        let cmd = server_command(
+            std::path::Path::new("C:\\Lucid\\lucid.exe"),
+            &[PathBuf::from("C:\\My Notes")],
+        );
         assert_eq!(cmd["command"], "C:\\Lucid\\lucid.exe");
         assert_eq!(cmd["args"], json!(["--notes-mcp"]));
-        assert_eq!(dirs_from_env(cmd["env"][DIRS_ENV].as_str()), [PathBuf::from("C:\\My Notes")]);
+        assert_eq!(
+            dirs_from_env(cmd["env"][DIRS_ENV].as_str()),
+            [PathBuf::from("C:\\My Notes")]
+        );
     }
 }

@@ -18,17 +18,19 @@
 //! `AppHandle` every `stream_completion` call already receives, so
 //! `create_provider` needs no access to `AppState`.
 
-use super::detect::{claude_status, find_current_claude, ClaudeBinaryError, ClaudeLogin, API_BILLED_NOTE};
-use super::models::ModelCatalog;
-use super::status::{probe_kind, CODEX_API_KEY_NOTE};
-use super::CliAgentKind;
+use super::detect::{
+    claude_status, find_current_claude, ClaudeBinaryError, ClaudeLogin, API_BILLED_NOTE,
+};
 use super::manager::{AgentSessionManager, OnDelta, SessionInit, SessionKey, SessionScope, Tier};
+use super::models::ModelCatalog;
 use super::protocol::{AgentErrorKind, TurnResult};
 use super::session::AgentError;
+use super::status::{probe_kind, CODEX_API_KEY_NOTE};
+use super::CliAgentKind;
 use crate::llm::provider::{
     emit_end_with_usage, emit_error, emit_thinking, emit_token, is_cancelled, CancelToken,
-    CompletionStats, GenerationParams, LLMError, LLMMessage, LLMProvider, ModelInfo,
-    StreamUsage, TokenSink,
+    CompletionStats, GenerationParams, LLMError, LLMMessage, LLMProvider, ModelInfo, StreamUsage,
+    TokenSink,
 };
 use crate::state::AppState;
 use std::sync::Arc;
@@ -114,7 +116,11 @@ pub fn build_utility_prompt(messages: &[LLMMessage]) -> String {
     if instructions.is_empty() {
         body
     } else {
-        format!("## Instructions\n\n{}\n\n{}", instructions.join("\n\n"), body)
+        format!(
+            "## Instructions\n\n{}\n\n{}",
+            instructions.join("\n\n"),
+            body
+        )
     }
 }
 
@@ -229,7 +235,9 @@ impl StreamTiming {
         }
         if token.is_empty() {
             return self.first_token_ms.get().is_none()
-                && !self.thinking.swap(true, std::sync::atomic::Ordering::SeqCst);
+                && !self
+                    .thinking
+                    .swap(true, std::sync::atomic::Ordering::SeqCst);
         }
         self.first_token_ms
             .get_or_init(|| self.start.elapsed().as_millis() as u64);
@@ -284,12 +292,16 @@ impl LLMProvider for CliAgentProvider {
         if kind != CliAgentKind::Claude {
             return match probe_kind(kind).await {
                 Ok(()) => Ok(true),
-                Err(AgentErrorKind::NotInstalled) => {
-                    Err(LLMError::NotConfigured(format!("{} CLI is not installed", kind.short_name())))
-                }
+                Err(AgentErrorKind::NotInstalled) => Err(LLMError::NotConfigured(format!(
+                    "{} CLI is not installed",
+                    kind.short_name()
+                ))),
                 Err(AgentErrorKind::NotLoggedIn) if kind == CliAgentKind::Codex => {
                     // An API-key login reads the same here; the status card tells them apart.
-                    Err(LLMError::AuthError(format!("{} {CODEX_API_KEY_NOTE}", login_hint(kind))))
+                    Err(LLMError::AuthError(format!(
+                        "{} {CODEX_API_KEY_NOTE}",
+                        login_hint(kind)
+                    )))
                 }
                 Err(AgentErrorKind::NotLoggedIn) => Err(LLMError::AuthError(login_hint(kind))),
                 Err(other) => Err(LLMError::ConnectionFailed(format!(
@@ -301,9 +313,13 @@ impl LLMProvider for CliAgentProvider {
         let bin = match tokio::task::spawn_blocking(find_current_claude).await.ok() {
             Some(Ok(bin)) => bin,
             // Too old to launch: said plainly, never as connected.
-            Some(Err(ClaudeBinaryError::TooOld(message))) => return Err(LLMError::NotConfigured(message)),
+            Some(Err(ClaudeBinaryError::TooOld(message))) => {
+                return Err(LLMError::NotConfigured(message))
+            }
             Some(Err(ClaudeBinaryError::NotFound)) | None => {
-                return Err(LLMError::NotConfigured("Claude CLI is not installed".to_string()))
+                return Err(LLMError::NotConfigured(
+                    "Claude CLI is not installed".to_string(),
+                ))
             }
         };
         let (_version, auth) = claude_status(&bin)
@@ -372,7 +388,13 @@ impl LLMProvider for CliAgentProvider {
                 }
                 let stats = stats_from(&turn, start.elapsed().as_millis() as u64);
                 let usage = stream_usage(&turn, timing.first_token_ms());
-                emit_end_with_usage(&app_handle, &params, stats.total_tokens, stats.latency_ms, Some(usage));
+                emit_end_with_usage(
+                    &app_handle,
+                    &params,
+                    stats.total_tokens,
+                    stats.latency_ms,
+                    Some(usage),
+                );
                 Ok(stats)
             }
             Err(e) => {
@@ -392,8 +414,8 @@ impl LLMProvider for CliAgentProvider {
 mod tests {
     use super::*;
     use crate::llm::cli_agent::command::SessionConfig;
-    use crate::llm::cli_agent::models::ClaudeModelInfo;
     use crate::llm::cli_agent::manager::{NoopStatusSink, SessionHandle, SessionSpawner};
+    use crate::llm::cli_agent::models::ClaudeModelInfo;
     use crate::llm::cli_agent::settings::CliSettings;
     use async_trait::async_trait;
     use std::sync::Mutex;
@@ -407,14 +429,23 @@ mod tests {
 
     #[tokio::test]
     async fn claude_cli_list_models_static() {
-        let models = CliAgentProvider::with_catalog(CliAgentKind::Claude, Arc::new(ModelCatalog::default()))
-            .list_models()
-            .await
-            .unwrap();
+        let models =
+            CliAgentProvider::with_catalog(CliAgentKind::Claude, Arc::new(ModelCatalog::default()))
+                .list_models()
+                .await
+                .unwrap();
         let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, ["haiku", "sonnet", "opus", "fable"]);
         let names: Vec<&str> = models.iter().map(|m| m.name.as_str()).collect();
-        assert_eq!(names, ["Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"]);
+        assert_eq!(
+            names,
+            [
+                "Claude Haiku",
+                "Claude Sonnet",
+                "Claude Opus",
+                "Claude Fable"
+            ]
+        );
         assert!(models.iter().all(|m| m.provider == "claude_cli"));
     }
 
@@ -435,7 +466,10 @@ mod tests {
         }]);
         let models = provider.list_models().await.unwrap();
         assert_eq!(models.len(), 1);
-        assert_eq!((models[0].id.as_str(), models[0].name.as_str()), ("claude-opus-4-8", "Opus 4.8"));
+        assert_eq!(
+            (models[0].id.as_str(), models[0].name.as_str()),
+            ("claude-opus-4-8", "Opus 4.8")
+        );
         assert_eq!(models[0].provider, "claude_cli");
     }
 
@@ -460,9 +494,24 @@ mod tests {
         }
         // Without a catalog: Claude's aliases, nothing for the others.
         let empty = |kind| CliAgentProvider::with_catalog(kind, Arc::new(ModelCatalog::default()));
-        assert_eq!(empty(CliAgentKind::Claude).list_models().await.unwrap().len(), 4);
-        assert!(empty(CliAgentKind::Antigravity).list_models().await.unwrap().is_empty());
-        assert!(empty(CliAgentKind::Codex).list_models().await.unwrap().is_empty());
+        assert_eq!(
+            empty(CliAgentKind::Claude)
+                .list_models()
+                .await
+                .unwrap()
+                .len(),
+            4
+        );
+        assert!(empty(CliAgentKind::Antigravity)
+            .list_models()
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(empty(CliAgentKind::Codex)
+            .list_models()
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -470,14 +519,22 @@ mod tests {
         let prompt = build_utility_prompt(&[msg("system", "Be brief."), msg("user", "Hi")]);
         assert_eq!(prompt, "## Instructions\n\nBe brief.\n\nHi");
         // No system message: the user text goes as-is.
-        assert_eq!(build_utility_prompt(&[msg("user", "Translate x")]), "Translate x");
+        assert_eq!(
+            build_utility_prompt(&[msg("user", "Translate x")]),
+            "Translate x"
+        );
     }
 
     #[test]
     fn claude_cli_errors_map_to_llm_errors() {
-        assert!(matches!(to_llm_error(AgentError::Cancelled), LLMError::Cancelled));
         assert!(matches!(
-            to_llm_error(AgentError::Spawn("Claude CLI not installed: claude.exe not found".into())),
+            to_llm_error(AgentError::Cancelled),
+            LLMError::Cancelled
+        ));
+        assert!(matches!(
+            to_llm_error(AgentError::Spawn(
+                "Claude CLI not installed: claude.exe not found".into()
+            )),
             LLMError::NotConfigured(_)
         ));
         assert!(matches!(
@@ -485,11 +542,17 @@ mod tests {
             LLMError::NotConfigured(m) if m.contains("too old")
         ));
         assert!(matches!(
-            to_llm_error(AgentError::Cli(AgentErrorKind::NotLoggedIn, "Not logged in".into())),
+            to_llm_error(AgentError::Cli(
+                AgentErrorKind::NotLoggedIn,
+                "Not logged in".into()
+            )),
             LLMError::AuthError(_)
         ));
         assert!(matches!(
-            to_llm_error(AgentError::Cli(AgentErrorKind::RateLimited, "usage limit".into())),
+            to_llm_error(AgentError::Cli(
+                AgentErrorKind::RateLimited,
+                "usage limit".into()
+            )),
             LLMError::ProviderError(_)
         ));
     }
@@ -519,7 +582,10 @@ mod tests {
                 return Err(AgentError::Cancelled);
             }
             if prompt == "cli-error" {
-                return Err(AgentError::Cli(AgentErrorKind::Other, "Prompt is too long".into()));
+                return Err(AgentError::Cli(
+                    AgentErrorKind::Other,
+                    "Prompt is too long".into(),
+                ));
             }
             if prompt == "big" {
                 return Ok(TurnResult {
@@ -600,11 +666,20 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err, AgentError::Cancelled);
-        assert!(rec.prompts.lock().unwrap().is_empty(), "nothing is sent once cancelled");
+        assert!(
+            rec.prompts.lock().unwrap().is_empty(),
+            "nothing is sent once cancelled"
+        );
     }
 
     async fn ask(mgr: &AgentSessionManager, prompt: &str) -> Result<TurnResult, AgentError> {
-        ask_utility(mgr, prompt, Box::new(|_: &str| {}), Arc::new(CancelToken::new())).await
+        ask_utility(
+            mgr,
+            prompt,
+            Box::new(|_: &str| {}),
+            Arc::new(CancelToken::new()),
+        )
+        .await
     }
 
     #[tokio::test]
@@ -613,18 +688,32 @@ mod tests {
         let mgr = manager(&rec);
         ask(&mgr, "q").await.unwrap();
         ask(&mgr, "big").await.unwrap(); // 50k input + 10k cache reads
-        assert!(mgr.snapshot().is_empty(), "grown session is retired at once");
+        assert!(
+            mgr.snapshot().is_empty(),
+            "grown session is retired at once"
+        );
         ask(&mgr, "q").await.unwrap();
-        assert_eq!(rec.configs.lock().unwrap().len(), 2, "next call starts a fresh session");
+        assert_eq!(
+            rec.configs.lock().unwrap().len(),
+            2,
+            "next call starts a fresh session"
+        );
     }
 
     #[tokio::test]
     async fn claude_cli_utility_recycles_after_cli_error() {
         let rec = Arc::new(Recorder::default());
         let mgr = manager(&rec);
-        assert!(matches!(ask(&mgr, "cli-error").await, Err(AgentError::Cli(..))));
+        assert!(matches!(
+            ask(&mgr, "cli-error").await,
+            Err(AgentError::Cli(..))
+        ));
         ask(&mgr, "q").await.unwrap();
-        assert_eq!(rec.configs.lock().unwrap().len(), 2, "errored session is replaced");
+        assert_eq!(
+            rec.configs.lock().unwrap().len(),
+            2,
+            "errored session is replaced"
+        );
     }
 
     #[tokio::test]
@@ -664,7 +753,10 @@ mod tests {
             ..Default::default()
         };
         // Mostly cache writes (a fresh session's first big prompt).
-        assert!(needs_recycle(&turn(10, 0, UTILITY_MAX_CONTEXT_TOKENS - 10), 1));
+        assert!(needs_recycle(
+            &turn(10, 0, UTILITY_MAX_CONTEXT_TOKENS - 10),
+            1
+        ));
         assert!(needs_recycle(&turn(10, 30_000, 29_990), 1));
         assert!(!needs_recycle(&turn(10, 30_000, 29_989), 1));
         assert!(needs_recycle(&turn(0, 0, 0), UTILITY_MAX_TURNS));
@@ -684,11 +776,19 @@ mod tests {
         };
         let usage = stream_usage(&turn, Some(640));
         assert_eq!(
-            (usage.input_tokens, usage.cache_read_tokens, usage.cache_write_tokens),
+            (
+                usage.input_tokens,
+                usage.cache_read_tokens,
+                usage.cache_write_tokens
+            ),
             (10, 4000, 190)
         );
         assert_eq!((usage.output_tokens, usage.thinking_tokens), (189, 151));
-        assert_eq!(usage.cost_usd, Some(0.0093), "per turn, not the process total");
+        assert_eq!(
+            usage.cost_usd,
+            Some(0.0093),
+            "per turn, not the process total"
+        );
         assert_eq!(usage.first_token_ms, Some(640));
     }
 
@@ -714,7 +814,11 @@ mod tests {
         use crate::llm::cli_agent::protocol::ToolUse;
         use crate::llm::cli_agent::session::encode_activity;
         let timing = StreamTiming::new(Instant::now());
-        let tool = ToolUse { id: "t1".into(), name: "Grep".into(), input: serde_json::json!({"pattern": "x"}) };
+        let tool = ToolUse {
+            id: "t1".into(),
+            name: "Grep".into(),
+            input: serde_json::json!({"pattern": "x"}),
+        };
         assert!(!timing.on_delta(&encode_activity(&tool)));
         assert_eq!(timing.first_token_ms(), None);
         // A thinking signal after a tool use is still reported.

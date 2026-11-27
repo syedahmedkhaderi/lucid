@@ -204,7 +204,10 @@ mod tests {
             total += out.len();
         }
         assert!(empty > 0, "some chunks gave nothing");
-        assert!((total as i64 - 1000).abs() <= 1, "{total} samples for 3000 frames");
+        assert!(
+            (total as i64 - 1000).abs() <= 1,
+            "{total} samples for 3000 frames"
+        );
     }
 
     /// 44.1 kHz is not a whole ratio: the count still follows the rate

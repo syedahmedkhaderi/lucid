@@ -260,10 +260,7 @@ impl GroqWhisperSTT {
         if samples.is_empty() {
             return 0.0;
         }
-        let sum_sq: f64 = samples
-            .iter()
-            .map(|&s| (s as f64) * (s as f64))
-            .sum();
+        let sum_sq: f64 = samples.iter().map(|&s| (s as f64) * (s as f64)).sum();
         (sum_sq / samples.len() as f64).sqrt()
     }
 
@@ -419,11 +416,7 @@ impl GroqWhisperSTT {
                 } else {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_default();
-                    log::error!(
-                        "GroqWhisperSTT: API returned status {}: {}",
-                        status,
-                        body
-                    );
+                    log::error!("GroqWhisperSTT: API returned status {}: {}", status, body);
                     if let Some(handle) = app_handle {
                         let short = preview(&body, 120);
                         super::emit_stt_debug(
@@ -500,10 +493,7 @@ impl STTProvider for GroqWhisperSTT {
 
             while let Some(msg) = acc_rx.recv().await {
                 match msg {
-                    AccumulatorMsg::Speech {
-                        text,
-                        timestamp_ms,
-                    } => {
+                    AccumulatorMsg::Speech { text, timestamp_ms } => {
                         // Start a new utterance if needed
                         if utt_text.is_empty() {
                             utt_counter += 1;
@@ -642,19 +632,25 @@ impl STTProvider for GroqWhisperSTT {
         // now instead of waiting for the full segment_duration.
         let pause_samples = (SAMPLE_RATE as usize) * 2; // 2 seconds
         let min_speech = (SAMPLE_RATE as usize) / 2; // 0.5 seconds minimum
-        let speech_len = self.audio_buffer.len().saturating_sub(self.trailing_silence_samples);
+        let speech_len = self
+            .audio_buffer
+            .len()
+            .saturating_sub(self.trailing_silence_samples);
 
-        let should_send = if self.trailing_silence_samples >= pause_samples && speech_len >= min_speech {
-            true // Pause detected — send speech portion
-        } else {
-            self.audio_buffer.len() >= threshold // Normal: buffer full
-        };
+        let should_send =
+            if self.trailing_silence_samples >= pause_samples && speech_len >= min_speech {
+                true // Pause detected — send speech portion
+            } else {
+                self.audio_buffer.len() >= threshold // Normal: buffer full
+            };
 
         if should_send {
             self.segment_counter += 1;
             // Trim trailing silence from the segment to send cleaner audio
             let full_buffer = std::mem::take(&mut self.audio_buffer);
-            let segment = if self.trailing_silence_samples > 0 && self.trailing_silence_samples < full_buffer.len() {
+            let segment = if self.trailing_silence_samples > 0
+                && self.trailing_silence_samples < full_buffer.len()
+            {
                 full_buffer[..full_buffer.len() - self.trailing_silence_samples].to_vec()
             } else {
                 full_buffer
@@ -698,8 +694,7 @@ impl STTProvider for GroqWhisperSTT {
             let app_handle = self.app_handle.clone();
 
             tokio::spawn(async move {
-                let text =
-                    Self::call_api(&api_key, &config, segment, app_handle.as_ref()).await;
+                let text = Self::call_api(&api_key, &config, segment, app_handle.as_ref()).await;
 
                 match text {
                     Some(t) if !Self::is_hallucination(&t) => {
@@ -772,13 +767,8 @@ impl STTProvider for GroqWhisperSTT {
                 let config = self.current_config();
 
                 // Send final segment synchronously (awaited in stop_stream)
-                let text = Self::call_api(
-                    &self.api_key,
-                    &config,
-                    segment,
-                    self.app_handle.as_ref(),
-                )
-                .await;
+                let text =
+                    Self::call_api(&self.api_key, &config, segment, self.app_handle.as_ref()).await;
 
                 if let Some(t) = text {
                     if !Self::is_hallucination(&t) {
@@ -872,7 +862,10 @@ mod tests {
     }
 
     fn shared(language: &str) -> Arc<RwLock<GroqConfig>> {
-        Arc::new(RwLock::new(GroqConfig { language: language.to_string(), ..GroqConfig::default() }))
+        Arc::new(RwLock::new(GroqConfig {
+            language: language.to_string(),
+            ..GroqConfig::default()
+        }))
     }
 
     #[test]

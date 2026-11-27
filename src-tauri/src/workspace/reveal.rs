@@ -13,7 +13,8 @@ use std::path::{Component, Path, PathBuf};
 /// The real path of `sub_path` below the saved folder `root`, or why it is refused.
 /// An empty `sub_path` is the folder itself.
 pub fn resolve_in_folder(root: &Path, sub_path: &str) -> Result<PathBuf, String> {
-    let canonical_root = std::fs::canonicalize(root).map_err(|_| "This folder can't be found".to_string())?;
+    let canonical_root =
+        std::fs::canonicalize(root).map_err(|_| "This folder can't be found".to_string())?;
     if !canonical_root.is_dir() {
         return Err("This is not a folder".to_string());
     }
@@ -25,7 +26,8 @@ pub fn resolve_in_folder(root: &Path, sub_path: &str) -> Result<PathBuf, String>
     if relative.as_os_str().is_empty() {
         return Ok(canonical_root);
     }
-    let real = std::fs::canonicalize(canonical_root.join(&relative)).map_err(|_| "This file can't be found".to_string())?;
+    let real = std::fs::canonicalize(canonical_root.join(&relative))
+        .map_err(|_| "This file can't be found".to_string())?;
     // Component-wise: a link or junction that leaves the folder resolves outside it.
     if !real.starts_with(&canonical_root) {
         return Err("This file is outside the folder".to_string());
@@ -37,14 +39,19 @@ pub fn resolve_in_folder(root: &Path, sub_path: &str) -> Result<PathBuf, String>
 /// share, `..`, URL-like text or stream suffix (`:`), no control characters.
 fn clean_relative(sub_path: &str) -> Result<PathBuf, String> {
     let refused = || "This path isn't allowed".to_string();
-    if sub_path.chars().any(|c| c.is_control() || c == ':' || c == '|' || c == '<' || c == '>' || c == '?' || c == '*') {
+    if sub_path.chars().any(|c| {
+        c.is_control() || c == ':' || c == '|' || c == '<' || c == '>' || c == '?' || c == '*'
+    }) {
         return Err(refused());
     }
     if sub_path.starts_with('\\') || sub_path.starts_with('/') || sub_path.contains("\\\\") {
         return Err(refused());
     }
     let mut out = PathBuf::new();
-    for part in sub_path.split(['/', '\\']).filter(|p| !p.is_empty() && *p != ".") {
+    for part in sub_path
+        .split(['/', '\\'])
+        .filter(|p| !p.is_empty() && *p != ".")
+    {
         let parts: Vec<Component<'_>> = Path::new(part).components().collect();
         // One plain name per part: no `..`, no prefix, no root.
         if parts.len() != 1 || !matches!(parts[0], Component::Normal(_)) {
@@ -79,8 +86,15 @@ pub fn display_path(path: &Path) -> String {
 pub fn reveal_command(path: &Path) -> (PathBuf, Vec<OsString>) {
     if cfg!(windows) {
         let root = std::env::var_os("SystemRoot").unwrap_or_else(|| OsString::from(r"C:\Windows"));
-        let dir = if path.is_dir() { path } else { path.parent().unwrap_or(path) };
-        (PathBuf::from(root).join("explorer.exe"), vec![dir.as_os_str().to_os_string()])
+        let dir = if path.is_dir() {
+            path
+        } else {
+            path.parent().unwrap_or(path)
+        };
+        (
+            PathBuf::from(root).join("explorer.exe"),
+            vec![dir.as_os_str().to_os_string()],
+        )
     } else if cfg!(target_os = "macos") {
         (PathBuf::from("/usr/bin/open"), mac_argv(path))
     } else {
@@ -147,7 +161,9 @@ pub fn shell_select(path: &Path) -> Result<(), String> {
     match shell::select(&shown) {
         Ok(()) => Ok(()),
         Err(first) => match path.parent() {
-            Some(dir) => open_directory(dir).map_err(|_| format!("Couldn't open the file manager: {first}")),
+            Some(dir) => {
+                open_directory(dir).map_err(|_| format!("Couldn't open the file manager: {first}"))
+            }
             None => Err(format!("Couldn't open the file manager: {first}")),
         },
     }
@@ -155,12 +171,20 @@ pub fn shell_select(path: &Path) -> Result<(), String> {
 
 /// `open -R <path>` (reveal in Finder).
 pub fn mac_argv(path: &Path) -> Vec<OsString> {
-    vec![OsString::from("-R"), OsString::from("--"), path.as_os_str().to_os_string()]
+    vec![
+        OsString::from("-R"),
+        OsString::from("--"),
+        path.as_os_str().to_os_string(),
+    ]
 }
 
 /// `xdg-open <directory>`: the directory that holds the file.
 pub fn linux_argv(path: &Path) -> Vec<OsString> {
-    let dir = if path.is_dir() { path } else { path.parent().unwrap_or(path) };
+    let dir = if path.is_dir() {
+        path
+    } else {
+        path.parent().unwrap_or(path)
+    };
     vec![OsString::from("--"), dir.as_os_str().to_os_string()]
 }
 
@@ -168,11 +192,20 @@ pub fn linux_argv(path: &Path) -> Vec<OsString> {
 pub fn open_directory(dir: &Path) -> Result<(), String> {
     let (program, args) = if cfg!(windows) {
         let root = std::env::var_os("SystemRoot").unwrap_or_else(|| OsString::from(r"C:\Windows"));
-        (PathBuf::from(root).join("explorer.exe"), vec![dir.as_os_str().to_os_string()])
+        (
+            PathBuf::from(root).join("explorer.exe"),
+            vec![dir.as_os_str().to_os_string()],
+        )
     } else if cfg!(target_os = "macos") {
-        (PathBuf::from("/usr/bin/open"), vec![OsString::from("--"), dir.as_os_str().to_os_string()])
+        (
+            PathBuf::from("/usr/bin/open"),
+            vec![OsString::from("--"), dir.as_os_str().to_os_string()],
+        )
     } else {
-        (PathBuf::from("xdg-open"), vec![OsString::from("--"), dir.as_os_str().to_os_string()])
+        (
+            PathBuf::from("xdg-open"),
+            vec![OsString::from("--"), dir.as_os_str().to_os_string()],
+        )
     };
     std::process::Command::new(&program)
         .args(&args)
@@ -185,7 +218,11 @@ pub fn open_directory(dir: &Path) -> Result<(), String> {
 pub fn reveal(path: &Path) -> Result<(), String> {
     #[cfg(windows)]
     {
-        return if path.is_dir() { open_directory(path) } else { shell_select(path) };
+        return if path.is_dir() {
+            open_directory(path)
+        } else {
+            shell_select(path)
+        };
     }
     #[allow(unreachable_code)]
     let (program, args) = reveal_command(path);
@@ -209,7 +246,13 @@ mod tests {
     fn link_dir(link: &Path, target: &Path) -> bool {
         #[cfg(windows)]
         {
-            std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(link).arg(target).output().map(|o| o.status.success()).unwrap_or(false)
+            std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
         }
         #[cfg(unix)]
         {
@@ -224,8 +267,14 @@ mod tests {
         std::fs::write(root.join("notes").join("2026").join("plan.md"), b"x").unwrap();
         let real = resolve_in_folder(&root, "notes/2026\\plan.md").unwrap();
         assert!(real.ends_with("plan.md"));
-        assert_eq!(resolve_in_folder(&root, "./notes/").unwrap(), std::fs::canonicalize(root.join("notes")).unwrap());
-        assert_eq!(resolve_in_folder(&root, "").unwrap(), std::fs::canonicalize(&root).unwrap());
+        assert_eq!(
+            resolve_in_folder(&root, "./notes/").unwrap(),
+            std::fs::canonicalize(root.join("notes")).unwrap()
+        );
+        assert_eq!(
+            resolve_in_folder(&root, "").unwrap(),
+            std::fs::canonicalize(&root).unwrap()
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -258,11 +307,23 @@ mod tests {
             "*".to_string(),
         ];
         for path in bad {
-            assert!(resolve_in_folder(&root, &path).is_err(), "{path:?} must be refused");
+            assert!(
+                resolve_in_folder(&root, &path).is_err(),
+                "{path:?} must be refused"
+            );
         }
-        assert!(resolve_in_folder(&root, "missing.txt").is_err(), "a file that is not there");
-        assert!(resolve_in_folder(&root.join("nope"), "a.txt").is_err(), "a folder that is not there");
-        assert!(resolve_in_folder(&root.join("a.txt"), "").is_err(), "a root that is a file");
+        assert!(
+            resolve_in_folder(&root, "missing.txt").is_err(),
+            "a file that is not there"
+        );
+        assert!(
+            resolve_in_folder(&root.join("nope"), "a.txt").is_err(),
+            "a folder that is not there"
+        );
+        assert!(
+            resolve_in_folder(&root.join("a.txt"), "").is_err(),
+            "a root that is a file"
+        );
         let _ = std::fs::remove_file(outside);
         let _ = std::fs::remove_dir_all(root);
     }
@@ -273,7 +334,10 @@ mod tests {
         let elsewhere = tree("elsewhere");
         std::fs::write(elsewhere.join("secret.txt"), b"x").unwrap();
         let link = root.join("sneaky");
-        assert!(link_dir(&link, &elsewhere), "the test needs a directory link");
+        assert!(
+            link_dir(&link, &elsewhere),
+            "the test needs a directory link"
+        );
         assert!(resolve_in_folder(&root, "sneaky/secret.txt").is_err());
         assert!(resolve_in_folder(&root, "sneaky").is_err());
         #[cfg(windows)]
@@ -310,13 +374,17 @@ mod tests {
         // Windows goes through the shell API, not a command line: the name is never quoted or split.
         #[cfg(windows)]
         {
-            let pidl = shell::parse(&display_path(&real)).expect("the shell takes a name with spaces, commas, quotes and an ampersand");
+            let pidl = shell::parse(&display_path(&real))
+                .expect("the shell takes a name with spaces, commas, quotes and an ampersand");
             shell::free(pidl);
         }
         // The other systems pass the path whole too, after `--` so it is never read as an option.
         assert_eq!(mac_argv(&real).last().unwrap(), real.as_os_str());
         assert_eq!(mac_argv(&real)[1], OsString::from("--"));
-        assert_eq!(linux_argv(&real).last().unwrap(), real.parent().unwrap().as_os_str());
+        assert_eq!(
+            linux_argv(&real).last().unwrap(),
+            real.parent().unwrap().as_os_str()
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -334,19 +402,30 @@ mod tests {
         let pidl = shell::parse(&display_path(&real)).expect("unicode name");
         shell::free(pidl);
         // A path past the classic limit is not one the shell takes: it is reported, never half-opened.
-        let long = format!("{}\\{}", root.display(), "d".repeat(120)).repeat(1) + &format!("\\{}\\f.md", "e".repeat(200));
+        let long = format!("{}\\{}", root.display(), "d".repeat(120)).repeat(1)
+            + &format!("\\{}\\f.md", "e".repeat(200));
         assert!(shell::parse(&long).is_err());
         let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
-    fn the_file_manager_is_started_by_absolute_path_and_the_display_path_drops_the_verbatim_prefix() {
+    fn the_file_manager_is_started_by_absolute_path_and_the_display_path_drops_the_verbatim_prefix()
+    {
         let (program, _) = reveal_command(Path::new("x"));
         if cfg!(windows) {
-            assert!(program.is_absolute() && program.ends_with("explorer.exe"), "{program:?}");
+            assert!(
+                program.is_absolute() && program.ends_with("explorer.exe"),
+                "{program:?}"
+            );
         }
-        assert_eq!(display_path(Path::new(r"\\?\C:\Users\me\a.md")), r"C:\Users\me\a.md");
-        assert_eq!(display_path(Path::new(r"\\?\UNC\srv\share\a.md")), r"\\srv\share\a.md");
+        assert_eq!(
+            display_path(Path::new(r"\\?\C:\Users\me\a.md")),
+            r"C:\Users\me\a.md"
+        );
+        assert_eq!(
+            display_path(Path::new(r"\\?\UNC\srv\share\a.md")),
+            r"\\srv\share\a.md"
+        );
         assert_eq!(display_path(Path::new("/home/me/a.md")), "/home/me/a.md");
     }
 }

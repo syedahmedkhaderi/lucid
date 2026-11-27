@@ -34,7 +34,10 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             let dev = webview.app_handle().config().build.dev_url.clone();
             let allowed = navigation_allowed(url, dev.as_ref());
             if !allowed {
-                log::warn!("blocked navigation of a window to {}", url.origin().ascii_serialization());
+                log::warn!(
+                    "blocked navigation of a window to {}",
+                    url.origin().ascii_serialization()
+                );
             }
             allowed
         })
@@ -52,7 +55,13 @@ mod tests {
     #[test]
     fn only_the_apps_own_pages_are_allowed() {
         let dev = u("http://localhost:5173");
-        for ok in ["http://tauri.localhost/index.html?window=overlay", "https://tauri.localhost/", "tauri://localhost/", "about:blank", "http://localhost:5173/index.html"] {
+        for ok in [
+            "http://tauri.localhost/index.html?window=overlay",
+            "https://tauri.localhost/",
+            "tauri://localhost/",
+            "about:blank",
+            "http://localhost:5173/index.html",
+        ] {
             assert!(navigation_allowed(&u(ok), Some(&dev)), "{ok}");
         }
         for bad in [

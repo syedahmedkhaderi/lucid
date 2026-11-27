@@ -26,7 +26,8 @@ fn open_nofollow(path: &Path) -> std::io::Result<File> {
         use std::os::windows::fs::OpenOptionsExt;
         const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
         // share read, write and delete so a file being saved is not blocked
-        opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT).share_mode(7);
+        opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+            .share_mode(7);
     }
     #[cfg(all(unix, target_os = "linux"))]
     {
@@ -53,7 +54,9 @@ fn final_path(file: &File) -> Result<std::path::PathBuf, String> {
     if n == 0 || n > buf.len() {
         return Err("could not resolve the file's location".into());
     }
-    Ok(std::path::PathBuf::from(std::ffi::OsString::from_wide(&buf[..n])))
+    Ok(std::path::PathBuf::from(std::ffi::OsString::from_wide(
+        &buf[..n],
+    )))
 }
 
 #[cfg(target_os = "linux")]
@@ -92,8 +95,11 @@ fn final_path(_file: &File) -> Result<std::path::PathBuf, String> {
 /// Read `path` if it is a regular file of at most `max` bytes that really
 /// lives inside `canon_root`, without ever following a link.
 pub fn read_confined(path: &Path, canon_root: &Path, max: u64) -> Result<ReadFile, String> {
-    let file = open_nofollow(path).map_err(|e| format!("not readable: {}", crate::db::health::plain_io(&e)))?;
-    let md = file.metadata().map_err(|e| format!("not readable: {}", crate::db::health::plain_io(&e)))?;
+    let file = open_nofollow(path)
+        .map_err(|e| format!("not readable: {}", crate::db::health::plain_io(&e)))?;
+    let md = file
+        .metadata()
+        .map_err(|e| format!("not readable: {}", crate::db::health::plain_io(&e)))?;
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -126,7 +132,10 @@ pub fn read_confined(path: &Path, canon_root: &Path, max: u64) -> Result<ReadFil
     if bytes.len() as u64 > max {
         return Err("over 2 MB".into());
     }
-    Ok(ReadFile { size: bytes.len() as u64, bytes })
+    Ok(ReadFile {
+        size: bytes.len() as u64,
+        bytes,
+    })
 }
 
 #[cfg(test)]
@@ -142,9 +151,14 @@ mod tests {
         let canon = fs::canonicalize(&root).unwrap();
         let r = read_confined(&canon.join("a.txt"), &canon, 100).unwrap();
         assert_eq!(r.bytes, b"hello");
-        assert!(read_confined(&canon.join("a.txt"), &canon, 3).unwrap_err().contains("over"));
+        assert!(read_confined(&canon.join("a.txt"), &canon, 3)
+            .unwrap_err()
+            .contains("over"));
         assert!(read_confined(&canon.join("missing.txt"), &canon, 100).is_err());
-        assert!(read_confined(&canon, &canon, 100).is_err(), "a folder is not a file");
+        assert!(
+            read_confined(&canon, &canon, 100).is_err(),
+            "a folder is not a file"
+        );
         fs::remove_dir_all(&root).ok();
     }
 
@@ -154,7 +168,12 @@ mod tests {
         let other = temp_dir("so2b");
         fs::write(other.join("leak.txt"), "CANARY").unwrap();
         let canon = fs::canonicalize(&root).unwrap();
-        let err = read_confined(&fs::canonicalize(&other).unwrap().join("leak.txt"), &canon, 100).unwrap_err();
+        let err = read_confined(
+            &fs::canonicalize(&other).unwrap().join("leak.txt"),
+            &canon,
+            100,
+        )
+        .unwrap_err();
         assert!(err.contains("outside"), "{err}");
         fs::remove_dir_all(&root).ok();
         fs::remove_dir_all(&other).ok();

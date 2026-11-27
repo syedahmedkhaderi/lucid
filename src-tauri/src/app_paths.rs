@@ -26,27 +26,38 @@ pub fn data_dir_for(identifier: &str) -> PathBuf {
     let base = if cfg!(windows) {
         std::env::var_os("APPDATA").map(PathBuf::from)
     } else if cfg!(target_os = "macos") {
-        std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support"))
+        std::env::var_os("HOME")
+            .map(|h| PathBuf::from(h).join("Library").join("Application Support"))
     } else {
         std::env::var_os("XDG_DATA_HOME")
             .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share")))
+            .or_else(|| {
+                std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share"))
+            })
     };
     base.unwrap_or_else(std::env::temp_dir).join(identifier)
 }
 
 /// Remember this run's identifier and data folder. The first call wins.
 pub fn init(data_dir: PathBuf, identifier: &str) {
-    let _ = RESOLVED.set(Resolved { data_dir, identifier: identifier.to_string() });
+    let _ = RESOLVED.set(Resolved {
+        data_dir,
+        identifier: identifier.to_string(),
+    });
 }
 
 /// The identifier this run was set up with (the real one before [`init`]).
 pub fn identifier() -> &'static str {
-    RESOLVED.get().map(|r| r.identifier.as_str()).unwrap_or(DEFAULT_IDENTIFIER)
+    RESOLVED
+        .get()
+        .map(|r| r.identifier.as_str())
+        .unwrap_or(DEFAULT_IDENTIFIER)
 }
 
 fn set() -> Option<(&'static Path, &'static str)> {
-    RESOLVED.get().map(|r| (r.data_dir.as_path(), r.identifier.as_str()))
+    RESOLVED
+        .get()
+        .map(|r| (r.data_dir.as_path(), r.identifier.as_str()))
 }
 
 /// The app's data folder (the one holding `lucid.db`). In unit tests, a private
@@ -55,7 +66,10 @@ pub fn data_dir() -> PathBuf {
     if cfg!(test) {
         return test_root().join("data");
     }
-    RESOLVED.get().map(|r| r.data_dir.clone()).unwrap_or_else(|| data_dir_for(DEFAULT_IDENTIFIER))
+    RESOLVED
+        .get()
+        .map(|r| r.data_dir.clone())
+        .unwrap_or_else(|| data_dir_for(DEFAULT_IDENTIFIER))
 }
 
 /// Where the recordings go (`.../recordings`).
@@ -85,7 +99,11 @@ pub struct Env {
 impl Env {
     fn current() -> Self {
         let var = |name: &str| std::env::var_os(name).map(PathBuf::from);
-        Self { appdata: var("APPDATA"), localappdata: var("LOCALAPPDATA"), home: var("HOME").or_else(|| var("USERPROFILE")) }
+        Self {
+            appdata: var("APPDATA"),
+            localappdata: var("LOCALAPPDATA"),
+            home: var("HOME").or_else(|| var("USERPROFILE")),
+        }
     }
 }
 
@@ -121,7 +139,12 @@ pub fn context_impl(set: Option<(&Path, &str)>, env: &Env, isolate: bool) -> Pat
         Some((data, id)) if id != DEFAULT_IDENTIFIER => data.join("context"),
         _ => match &env.appdata {
             Some(appdata) => appdata.join(DEFAULT_IDENTIFIER).join("context"),
-            None => env.home.clone().unwrap_or_else(|| PathBuf::from(".")).join(".lucid").join("context"),
+            None => env
+                .home
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".lucid")
+                .join("context"),
         },
     }
 }
@@ -131,8 +154,16 @@ pub fn local_root_impl(identifier: &str, env: &Env, isolate: bool) -> PathBuf {
     if isolate {
         return test_root().join("local");
     }
-    let base = env.localappdata.clone().unwrap_or_else(std::env::temp_dir).join("Lucid");
-    if identifier == DEFAULT_IDENTIFIER { base } else { base.join(identifier) }
+    let base = env
+        .localappdata
+        .clone()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("Lucid");
+    if identifier == DEFAULT_IDENTIFIER {
+        base
+    } else {
+        base.join(identifier)
+    }
 }
 
 #[cfg(test)]
@@ -153,9 +184,15 @@ mod tests {
         let set = Some((data.as_path(), "com.lucid.test"));
         assert_eq!(recordings_impl(set, &env(), false), data.join("recordings"));
         assert_eq!(context_impl(set, &env(), false), data.join("context"));
-        assert_eq!(local_root_impl("com.lucid.test", &env(), false), PathBuf::from("L").join("Lucid").join("com.lucid.test"));
+        assert_eq!(
+            local_root_impl("com.lucid.test", &env(), false),
+            PathBuf::from("L").join("Lucid").join("com.lucid.test")
+        );
         // Not before init either, once the identifier is known to be another one.
-        assert_ne!(recordings_impl(set, &env(), false), recordings_impl(None, &env(), false));
+        assert_ne!(
+            recordings_impl(set, &env(), false),
+            recordings_impl(None, &env(), false)
+        );
     }
 
     #[test]
@@ -163,18 +200,48 @@ mod tests {
         let e = env();
         let data = PathBuf::from("R").join("com.lucid.desktop");
         let real = Some((data.as_path(), DEFAULT_IDENTIFIER));
-        assert_eq!(recordings_impl(real, &e, false), PathBuf::from("R").join("com.lucid.desktop").join("recordings"));
-        assert_eq!(recordings_impl(None, &e, false), recordings_impl(real, &e, false));
-        assert_eq!(context_impl(real, &e, false), PathBuf::from("R").join("com.lucid.desktop").join("context"));
-        assert_eq!(local_root_impl(DEFAULT_IDENTIFIER, &e, false), PathBuf::from("L").join("Lucid"));
+        assert_eq!(
+            recordings_impl(real, &e, false),
+            PathBuf::from("R")
+                .join("com.lucid.desktop")
+                .join("recordings")
+        );
+        assert_eq!(
+            recordings_impl(None, &e, false),
+            recordings_impl(real, &e, false)
+        );
+        assert_eq!(
+            context_impl(real, &e, false),
+            PathBuf::from("R").join("com.lucid.desktop").join("context")
+        );
+        assert_eq!(
+            local_root_impl(DEFAULT_IDENTIFIER, &e, false),
+            PathBuf::from("L").join("Lucid")
+        );
         // Without APPDATA: use Lucid's private config namespace.
-        let none = Env { appdata: None, localappdata: Some(PathBuf::from("L")), home: Some(PathBuf::from("H")) };
-        assert_eq!(recordings_impl(None, &none, false), PathBuf::from("H").join(".config").join("com.lucid.desktop").join("recordings"));
-        assert_eq!(context_impl(None, &none, false), PathBuf::from("H").join(".lucid").join("context"));
+        let none = Env {
+            appdata: None,
+            localappdata: Some(PathBuf::from("L")),
+            home: Some(PathBuf::from("H")),
+        };
+        assert_eq!(
+            recordings_impl(None, &none, false),
+            PathBuf::from("H")
+                .join(".config")
+                .join("com.lucid.desktop")
+                .join("recordings")
+        );
+        assert_eq!(
+            context_impl(None, &none, false),
+            PathBuf::from("H").join(".lucid").join("context")
+        );
         // Tauri's own folder is the same one on Windows.
         if cfg!(windows) {
             if let Some(appdata) = std::env::var_os("APPDATA") {
-                assert_eq!(data_dir_for(DEFAULT_IDENTIFIER), PathBuf::from(appdata).join(DEFAULT_IDENTIFIER));
+                assert_eq!(
+                    data_dir_for(DEFAULT_IDENTIFIER),
+                    PathBuf::from(appdata).join(DEFAULT_IDENTIFIER)
+                );
             }
         }
     }
@@ -183,9 +250,16 @@ mod tests {
     fn a_unit_test_never_reaches_the_real_folders_even_with_the_real_identifier() {
         let data = PathBuf::from("R").join("com.lucid.desktop");
         let real = Some((data.as_path(), DEFAULT_IDENTIFIER));
-        for path in [recordings_impl(real, &env(), true), context_impl(None, &env(), true), local_root_impl(DEFAULT_IDENTIFIER, &env(), true)] {
+        for path in [
+            recordings_impl(real, &env(), true),
+            context_impl(None, &env(), true),
+            local_root_impl(DEFAULT_IDENTIFIER, &env(), true),
+        ] {
             assert!(path.starts_with(std::env::temp_dir()), "{path:?}");
-            assert!(!path.to_string_lossy().contains("com.lucid.desktop"), "{path:?}");
+            assert!(
+                !path.to_string_lossy().contains("com.lucid.desktop"),
+                "{path:?}"
+            );
         }
         // And the functions the app calls are those isolated ones under cargo test.
         for path in [recordings_dir(), context_dir(), local_root()] {

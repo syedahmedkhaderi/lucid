@@ -4,7 +4,6 @@
 //!
 //! Nothing here touches the network, the database or the wall clock.
 
-
 use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::Value;
@@ -93,13 +92,25 @@ pub struct LlmError {
 
 impl LlmError {
     pub fn failed(msg: impl Into<String>) -> Self {
-        Self { kind: LlmErrorKind::Failed, message: msg.into(), code: "" }
+        Self {
+            kind: LlmErrorKind::Failed,
+            message: msg.into(),
+            code: "",
+        }
     }
     pub fn plan_limit(msg: impl Into<String>) -> Self {
-        Self { kind: LlmErrorKind::PlanLimit, message: msg.into(), code: "" }
+        Self {
+            kind: LlmErrorKind::PlanLimit,
+            message: msg.into(),
+            code: "",
+        }
     }
     pub fn cancelled() -> Self {
-        Self { kind: LlmErrorKind::Cancelled, message: "cancelled".into(), code: "cancelled" }
+        Self {
+            kind: LlmErrorKind::Cancelled,
+            message: "cancelled".into(),
+            code: "cancelled",
+        }
     }
 }
 
@@ -138,13 +149,17 @@ pub fn is_epoch_ms(ts: i64) -> bool {
 
 /// A meeting's `start_time` (RFC 3339) as epoch ms.
 pub fn parse_start_ms(s: &str) -> Option<i64> {
-    chrono::DateTime::parse_from_rfc3339(s).ok().map(|d| d.timestamp_millis())
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|d| d.timestamp_millis())
 }
 
 /// The epoch ms that counts as 0 for a meeting: its start when it has a usable
 /// one, else the earliest epoch stamp seen (a meeting with no start time).
 pub fn base_ms(start: Option<i64>, stamps: impl IntoIterator<Item = i64>) -> Option<i64> {
-    start.filter(|s| is_epoch_ms(*s)).or_else(|| stamps.into_iter().filter(|t| is_epoch_ms(*t)).min())
+    start
+        .filter(|s| is_epoch_ms(*s))
+        .or_else(|| stamps.into_iter().filter(|t| is_epoch_ms(*t)).min())
 }
 
 /// Milliseconds since the meeting started. Relative stamps stay as they are;
@@ -203,13 +218,20 @@ pub fn fmt_clock(ms: u64) -> String {
 /// Parses `mm:ss`, `h:mm:ss`, `[mm:ss]` or a plain number (seconds; from
 /// 100000 up it is read as milliseconds).
 pub fn parse_clock(s: &str) -> Option<u64> {
-    let t = s.trim().trim_matches(|c| c == '[' || c == ']' || c == '(' || c == ')').trim();
+    let t = s
+        .trim()
+        .trim_matches(|c| c == '[' || c == ']' || c == '(' || c == ')')
+        .trim();
     if t.is_empty() {
         return None;
     }
     if t.contains(':') {
         let parts: Vec<&str> = t.split(':').collect();
-        if parts.len() > 3 || parts.iter().any(|p| p.is_empty() || !p.chars().all(|c| c.is_ascii_digit())) {
+        if parts.len() > 3
+            || parts
+                .iter()
+                .any(|p| p.is_empty() || !p.chars().all(|c| c.is_ascii_digit()))
+        {
             return None;
         }
         let nums: Vec<u64> = parts.iter().filter_map(|p| p.parse().ok()).collect();
@@ -227,7 +249,11 @@ pub fn parse_clock(s: &str) -> Option<u64> {
     if !f.is_finite() || f < 0.0 {
         return None;
     }
-    Some(if f >= 100_000.0 { f as u64 } else { (f * 1000.0) as u64 })
+    Some(if f >= 100_000.0 {
+        f as u64
+    } else {
+        (f * 1000.0) as u64
+    })
 }
 
 pub fn parse_clock_value(v: &Value) -> Option<u64> {
@@ -237,7 +263,11 @@ pub fn parse_clock_value(v: &Value) -> Option<u64> {
             if !f.is_finite() || f < 0.0 {
                 return None;
             }
-            Some(if f >= 100_000.0 { f as u64 } else { (f * 1000.0) as u64 })
+            Some(if f >= 100_000.0 {
+                f as u64
+            } else {
+                (f * 1000.0) as u64
+            })
         }
         Value::String(s) => parse_clock(s),
         _ => None,
@@ -248,22 +278,22 @@ pub fn parse_clock_value(v: &Value) -> Option<u64> {
 
 const STOPWORDS: &[&str] = &[
     // English
-    "the", "and", "for", "are", "but", "not", "you", "all", "any", "can", "had", "her", "was", "one",
-    "our", "out", "has", "have", "his", "how", "its", "may", "new", "now", "see", "two", "who", "did",
-    "yes", "that", "this", "with", "from", "they", "will", "would", "there", "their", "what", "about",
-    "which", "when", "your", "been", "were", "them", "then", "than", "some", "just", "like", "also",
-    "into", "over", "more", "very", "much", "here", "okay", "yeah", "well", "going", "think", "know",
-    "want", "need", "should", "could", "really", "because", "thing", "things", "actually", "maybe",
-    "right", "let", "get", "got", "gonna", "don", "doesn", "didn", "isn", "was", "too", "say", "said",
-    // Spanish
+    "the", "and", "for", "are", "but", "not", "you", "all", "any", "can", "had", "her", "was",
+    "one", "our", "out", "has", "have", "his", "how", "its", "may", "new", "now", "see", "two",
+    "who", "did", "yes", "that", "this", "with", "from", "they", "will", "would", "there", "their",
+    "what", "about", "which", "when", "your", "been", "were", "them", "then", "than", "some",
+    "just", "like", "also", "into", "over", "more", "very", "much", "here", "okay", "yeah", "well",
+    "going", "think", "know", "want", "need", "should", "could", "really", "because", "thing",
+    "things", "actually", "maybe", "right", "let", "get", "got", "gonna", "don", "doesn", "didn",
+    "isn", "was", "too", "say", "said", // Spanish
     "que", "los", "las", "una", "uno", "por", "con", "para", "del", "como", "pero", "mas", "más",
     "esto", "esta", "este", "eso", "esa", "ese", "muy", "son", "sus", "hay", "fue", "ser", "sobre",
-    "entre", "cuando", "donde", "tiene", "tengo", "bueno", "entonces", "porque", "también", "vamos",
-    "creo", "puede", "pues", "ahora", "todo", "nos", "algo", "sin", "mis", "tus",
+    "entre", "cuando", "donde", "tiene", "tengo", "bueno", "entonces", "porque", "también",
+    "vamos", "creo", "puede", "pues", "ahora", "todo", "nos", "algo", "sin", "mis", "tus",
     // French / German / Portuguese / Italian (a few of the most common)
-    "les", "des", "une", "pour", "dans", "avec", "pas", "sur", "mais", "est", "sont", "nous", "vous",
-    "der", "die", "das", "und", "ist", "nicht", "ein", "eine", "mit", "auf", "für", "den", "dem",
-    "não", "uma", "com", "para", "mais", "são", "che", "per", "non", "una", "sono", "come",
+    "les", "des", "une", "pour", "dans", "avec", "pas", "sur", "mais", "est", "sont", "nous",
+    "vous", "der", "die", "das", "und", "ist", "nicht", "ein", "eine", "mit", "auf", "für", "den",
+    "dem", "não", "uma", "com", "para", "mais", "são", "che", "per", "non", "una", "sono", "come",
 ];
 
 fn stopwords() -> &'static HashSet<&'static str> {
@@ -277,7 +307,9 @@ pub fn is_stopword(lower: &str) -> bool {
     stopwords().contains(lower)
 }
 
-const CJK_PARTICLES: &[char] = &['的', '了', '吗', '吧', '呢', '啊', '和', '也', '都', '就', '是', '在'];
+const CJK_PARTICLES: &[char] = &[
+    '的', '了', '吗', '吧', '呢', '啊', '和', '也', '都', '就', '是', '在',
+];
 
 /// Content words of a text, language-agnostic:
 /// * space-separated scripts: lowercase alphanumeric words of 3+ chars that are
@@ -484,7 +516,10 @@ pub fn repair_json(src: &str) -> Option<Value> {
                 if stack.last() == Some(&c) {
                     stack.pop();
                     out.push(c);
-                    snaps.push(Snap { len: out.len(), stack: stack.clone() });
+                    snaps.push(Snap {
+                        len: out.len(),
+                        stack: stack.clone(),
+                    });
                     if stack.is_empty() {
                         complete = true;
                         break;
@@ -494,13 +529,18 @@ pub fn repair_json(src: &str) -> Option<Value> {
                 }
             }
             ',' => {
-                snaps.push(Snap { len: out.len(), stack: stack.clone() });
+                snaps.push(Snap {
+                    len: out.len(),
+                    stack: stack.clone(),
+                });
                 out.push(',');
             }
             c if c.is_alphabetic() || c == '_' => {
                 let mut j = i;
                 let mut ident = String::new();
-                while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-') {
+                while j < chars.len()
+                    && (chars[j].is_alphanumeric() || chars[j] == '_' || chars[j] == '-')
+                {
                     ident.push(chars[j]);
                     j += 1;
                 }
@@ -578,7 +618,9 @@ pub fn parse_loose_where(text: &str, accept: impl Fn(&Value) -> bool) -> Option<
             tries += 1;
             let (end, _complete) = balanced_end(&chars, i);
             let span: String = chars[i..end].iter().collect();
-            let parsed = serde_json::from_str::<Value>(&span).ok().or_else(|| repair_json(&span));
+            let parsed = serde_json::from_str::<Value>(&span)
+                .ok()
+                .or_else(|| repair_json(&span));
             if let Some(v) = parsed {
                 if accept(&v) {
                     return Some(v);
@@ -601,7 +643,9 @@ pub fn salvage_objects(text: &str) -> Vec<Value> {
         if chars[i] == '{' {
             let (end, complete) = balanced_end(&chars, i);
             let span: String = chars[i..end].iter().collect();
-            let v = serde_json::from_str::<Value>(&span).ok().or_else(|| repair_json(&span));
+            let v = serde_json::from_str::<Value>(&span)
+                .ok()
+                .or_else(|| repair_json(&span));
             match v {
                 Some(v @ Value::Object(_)) if complete => {
                     out.push(v);
@@ -700,8 +744,10 @@ impl RunGuard {
     pub fn can_start_final(&self) -> bool {
         !self.in_flight
             && self.under_cap()
-            && (matches!(self.state, RunState::Running | RunState::Paused(PauseReason::User))
-                || (self.final_retry && self.state == RunState::Paused(PauseReason::Failures)))
+            && (matches!(
+                self.state,
+                RunState::Running | RunState::Paused(PauseReason::User)
+            ) || (self.final_retry && self.state == RunState::Paused(PauseReason::Failures)))
     }
 
     /// The end-of-meeting pass may try once more after errors (never after a plan limit or a missing key).
@@ -897,7 +943,11 @@ mod tests {
         g.end_ok(50);
         g.pause();
         g.resume();
-        assert_eq!((g.cap, g.state), (220, RunState::Running), "pause and resume keep the raised cap");
+        assert_eq!(
+            (g.cap, g.state),
+            (220, RunState::Running),
+            "pause and resume keep the raised cap"
+        );
         // the app restarts: the saved cap (200) is bigger than the configured one (100)
         let mut again = RunGuard::new(100, 3);
         again.restore(170, 200);
@@ -927,10 +977,18 @@ mod tests {
             g
         };
         // every start, whatever the state says
-        for st in [RunState::Running, RunState::Paused(PauseReason::User), RunState::Paused(PauseReason::Failures), RunState::Paused(PauseReason::PlanLimit)] {
+        for st in [
+            RunState::Running,
+            RunState::Paused(PauseReason::User),
+            RunState::Paused(PauseReason::Failures),
+            RunState::Paused(PauseReason::PlanLimit),
+        ] {
             let mut g = over(st);
             g.allow_final_retry();
-            assert!(!g.can_start() && !g.can_start_manual() && !g.can_start_final(), "{st:?}");
+            assert!(
+                !g.can_start() && !g.can_start_manual() && !g.can_start_final(),
+                "{st:?}"
+            );
         }
         // a failed run that used tokens and passed the cap ends capped, not running
         let mut g = RunGuard::new(100, 3);
@@ -956,7 +1014,11 @@ mod tests {
         p.used = 500;
         assert_eq!(p.state, RunState::Paused(PauseReason::PlanLimit));
         p.resume();
-        assert_eq!(p.state, RunState::CapReached, "resuming over the cap waits for Keep going");
+        assert_eq!(
+            p.state,
+            RunState::CapReached,
+            "resuming over the cap waits for Keep going"
+        );
         p.keep_going();
         assert!(p.under_cap() && p.can_start() && p.state == RunState::Running);
         // a manual run in a user pause that goes over: resume does not run
@@ -1022,8 +1084,15 @@ mod time_contract_tests {
 
     #[test]
     fn a_meeting_without_a_usable_start_counts_from_its_first_stamp() {
-        assert_eq!(base_ms(None, [START + 9_000, START + 2_000, 500]), Some(START + 2_000));
-        assert_eq!(base_ms(Some(7), [START + 2_000]), Some(START + 2_000), "a relative 'start' is no start");
+        assert_eq!(
+            base_ms(None, [START + 9_000, START + 2_000, 500]),
+            Some(START + 2_000)
+        );
+        assert_eq!(
+            base_ms(Some(7), [START + 2_000]),
+            Some(START + 2_000),
+            "a relative 'start' is no start"
+        );
         assert_eq!(base_ms(Some(START), [START - 1]), Some(START));
         assert_eq!(base_ms(None, [10, 20]), None);
         assert_eq!(parse_start_ms("2026-01-02T10:00:00Z"), Some(START));

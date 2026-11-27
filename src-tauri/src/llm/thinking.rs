@@ -148,13 +148,17 @@ pub fn parse_extra_request(raw: Option<&str>) -> Option<Map<String, Value>> {
 /// With `merge_options` (Ollama), an `options` object is merged key by key into
 /// the existing `options` instead of replacing it.
 pub fn merge_extra_request(body: &mut Value, extra: &Map<String, Value>, merge_options: bool) {
-    let Some(target) = body.as_object_mut() else { return };
+    let Some(target) = body.as_object_mut() else {
+        return;
+    };
     for (key, value) in extra {
         if PROTECTED_KEYS.contains(&key.as_str()) {
             continue;
         }
         if merge_options && key == "options" {
-            if let (Some(add), Some(Value::Object(current))) = (value.as_object(), target.get_mut("options")) {
+            if let (Some(add), Some(Value::Object(current))) =
+                (value.as_object(), target.get_mut("options"))
+            {
                 for (k, v) in add {
                     current.insert(k.clone(), v.clone());
                 }
@@ -199,7 +203,12 @@ fn off_effort(model: &str) -> &'static str {
 /// OpenAI-compatible `/chat/completions` (OpenAI, Groq, LM Studio, custom):
 /// `reasoning_effort`. OpenRouter has its own unified `reasoning` object.
 /// Returns whether anything was added.
-pub fn apply_openai_compat(body: &mut Value, provider: &str, model: &str, setting: ThinkingSetting) -> bool {
+pub fn apply_openai_compat(
+    body: &mut Value,
+    provider: &str,
+    model: &str,
+    setting: ThinkingSetting,
+) -> bool {
     if setting.is_auto() {
         return false;
     }
@@ -230,16 +239,34 @@ pub fn apply_gemini(gen_config: &mut Value, model: &str, setting: ThinkingSettin
     let pro = m.contains("pro");
     let config = if m.contains("gemini-3") {
         let level = match setting {
-            ThinkingSetting::Off => if pro { "low" } else { "minimal" },
+            ThinkingSetting::Off => {
+                if pro {
+                    "low"
+                } else {
+                    "minimal"
+                }
+            }
             ThinkingSetting::Low => "low",
             _ => "high",
         };
         json!({ "thinkingLevel": level })
     } else {
         let budget: i64 = match setting {
-            ThinkingSetting::Off => if pro { 128 } else { 0 },
+            ThinkingSetting::Off => {
+                if pro {
+                    128
+                } else {
+                    0
+                }
+            }
             ThinkingSetting::Low => 1024,
-            _ => if pro { 32768 } else { 24576 },
+            _ => {
+                if pro {
+                    32768
+                } else {
+                    24576
+                }
+            }
         };
         json!({ "thinkingBudget": budget })
     };
@@ -255,7 +282,15 @@ pub fn apply_gemini(gen_config: &mut Value, model: &str, setting: ThinkingSettin
 /// effort; the rest take `disabled`. Returns whether anything was added.
 pub fn apply_anthropic(body: &mut Value, model: &str, setting: ThinkingSetting) -> bool {
     const ADAPTIVE: [&str; 9] = [
-        "sonnet-5", "opus-5", "haiku-5", "fable", "mythos", "opus-4-8", "opus-4-7", "opus-4-6", "sonnet-4-6",
+        "sonnet-5",
+        "opus-5",
+        "haiku-5",
+        "fable",
+        "mythos",
+        "opus-4-8",
+        "opus-4-7",
+        "opus-4-6",
+        "sonnet-4-6",
     ];
     let m = model.to_ascii_lowercase();
     if setting.is_auto() || !ADAPTIVE.iter().any(|p| m.contains(p)) {
@@ -265,14 +300,20 @@ pub fn apply_anthropic(body: &mut Value, model: &str, setting: ThinkingSetting) 
         ThinkingSetting::Off if m.contains("sonnet-5-5") => {
             body["thinking"] = json!({ "type": "between_tools" });
         }
-        ThinkingSetting::Off if m.contains("opus-5-5") || m.contains("fable") || m.contains("mythos") => {
+        ThinkingSetting::Off
+            if m.contains("opus-5-5") || m.contains("fable") || m.contains("mythos") =>
+        {
             body["output_config"] = json!({ "effort": "low" });
         }
         ThinkingSetting::Off => {
             body["thinking"] = json!({ "type": "disabled" });
         }
         _ => {
-            let effort = if setting == ThinkingSetting::Low { "low" } else { "high" };
+            let effort = if setting == ThinkingSetting::Low {
+                "low"
+            } else {
+                "high"
+            };
             body["thinking"] = json!({ "type": "adaptive" });
             body["output_config"] = json!({ "effort": effort });
         }
@@ -290,12 +331,20 @@ fn unsupported() -> &'static Mutex<HashSet<String>> {
 /// One entry per provider label, endpoint (base URL) and model: a new URL
 /// for Custom / Ollama / LM Studio is a different server and starts clean.
 fn key(provider: &str, endpoint: &str, model: &str) -> String {
-    format!("{}\u{1}{}\u{1}{}", provider, endpoint.trim_end_matches('/'), model)
+    format!(
+        "{}\u{1}{}\u{1}{}",
+        provider,
+        endpoint.trim_end_matches('/'),
+        model
+    )
 }
 
 /// True once this provider, endpoint and model rejected the thinking parameter this session.
 pub fn is_known_unsupported(provider: &str, endpoint: &str, model: &str) -> bool {
-    unsupported().lock().map(|s| s.contains(&key(provider, endpoint, model))).unwrap_or(false)
+    unsupported()
+        .lock()
+        .map(|s| s.contains(&key(provider, endpoint, model)))
+        .unwrap_or(false)
 }
 
 pub fn remember_unsupported(provider: &str, endpoint: &str, model: &str) {
@@ -310,7 +359,14 @@ pub fn should_send(provider: &str, endpoint: &str, model: &str, setting: Thinkin
 }
 
 /// Words a 400 names when it refuses a thinking parameter.
-const PARAM_MARKERS: [&str; 6] = ["think", "reasoning", "effort", "output_config", "budget", "adaptive"];
+const PARAM_MARKERS: [&str; 6] = [
+    "think",
+    "reasoning",
+    "effort",
+    "output_config",
+    "budget",
+    "adaptive",
+];
 
 /// The retry decision: HTTP 400 whose body mentions the thinking parameter.
 pub fn rejects_thinking_param(status: u16, body: &str) -> bool {
@@ -324,7 +380,10 @@ pub fn rejects_thinking_param(status: u16, body: &str) -> bool {
 /// A response: successful (stream it), or failed with its status and body.
 pub enum Sent {
     Ok(reqwest::Response),
-    Failed { status: reqwest::StatusCode, body: String },
+    Failed {
+        status: reqwest::StatusCode,
+        body: String,
+    },
 }
 
 /// Sends the request via `send(with_thinking)`. When `thinking_sent` and the
@@ -349,14 +408,20 @@ where
     let status = first.status();
     let body = cancellable(params, first.text()).await?.unwrap_or_default();
     if thinking_sent && rejects_thinking_param(status.as_u16(), &body) {
-        log::warn!("{}/{} rejected the thinking parameter; retrying without it", provider, model);
+        log::warn!(
+            "{}/{} rejected the thinking parameter; retrying without it",
+            provider,
+            model
+        );
         remember_unsupported(provider, endpoint, model);
         let second = send(false).await?;
         if second.status().is_success() {
             return Ok(Sent::Ok(second));
         }
         let status = second.status();
-        let body = cancellable(params, second.text()).await?.unwrap_or_default();
+        let body = cancellable(params, second.text())
+            .await?
+            .unwrap_or_default();
         return Ok(Sent::Failed { status, body });
     }
     Ok(Sent::Failed { status, body })
@@ -369,17 +434,35 @@ mod tests {
 
     fn msgs() -> Vec<LLMMessage> {
         vec![
-            LLMMessage { role: "system".into(), content: "Be brief.".into() },
-            LLMMessage { role: "user".into(), content: "hi".into() },
+            LLMMessage {
+                role: "system".into(),
+                content: "Be brief.".into(),
+            },
+            LLMMessage {
+                role: "user".into(),
+                content: "hi".into(),
+            },
         ]
     }
 
     #[test]
     fn setting_parses_leniently_and_defaults_to_auto() {
-        assert_eq!(serde_json::from_str::<ThinkingSetting>("\"off\"").unwrap(), Off);
-        assert_eq!(serde_json::from_str::<ThinkingSetting>("\"HIGH\"").unwrap(), High);
-        assert_eq!(serde_json::from_str::<ThinkingSetting>("\"bogus\"").unwrap(), Auto);
-        assert_eq!(serde_json::from_str::<ThinkingSetting>("null").unwrap(), Auto);
+        assert_eq!(
+            serde_json::from_str::<ThinkingSetting>("\"off\"").unwrap(),
+            Off
+        );
+        assert_eq!(
+            serde_json::from_str::<ThinkingSetting>("\"HIGH\"").unwrap(),
+            High
+        );
+        assert_eq!(
+            serde_json::from_str::<ThinkingSetting>("\"bogus\"").unwrap(),
+            Auto
+        );
+        assert_eq!(
+            serde_json::from_str::<ThinkingSetting>("null").unwrap(),
+            Auto
+        );
         assert_eq!(serde_json::from_str::<ThinkingSetting>("3").unwrap(), Auto);
         assert_eq!(serde_json::to_string(&Low).unwrap(), "\"low\"");
     }
@@ -389,12 +472,19 @@ mod tests {
         let plain = GenerationParams::default();
         assert_eq!(resolve(&plain, Auto), Auto);
         assert_eq!(resolve(&plain, High), High);
-        let background = GenerationParams { thinking_auto_off: true, ..Default::default() };
+        let background = GenerationParams {
+            thinking_auto_off: true,
+            ..Default::default()
+        };
         assert_eq!(resolve(&background, Auto), Off);
         // An explicit user setting wins over the background preference.
         assert_eq!(resolve(&background, High), High);
         assert_eq!(resolve(&background, Low), Low);
-        let explicit = GenerationParams { thinking: Low, thinking_auto_off: true, ..Default::default() };
+        let explicit = GenerationParams {
+            thinking: Low,
+            thinking_auto_off: true,
+            ..Default::default()
+        };
         assert_eq!(resolve(&explicit, High), Low);
     }
 
@@ -424,7 +514,10 @@ mod tests {
         assert_eq!(other[0].content, "Be brief.");
 
         // No system message: the last user message carries it.
-        let mut user_only = vec![LLMMessage { role: "user".into(), content: "q".into() }];
+        let mut user_only = vec![LLMMessage {
+            role: "user".into(),
+            content: "q".into(),
+        }];
         apply_prompt_hint(&mut user_only, "qwen3:8b", Off);
         assert_eq!(user_only[0].content, "q\n/no_think");
     }
@@ -435,7 +528,10 @@ mod tests {
         assert!(parse_extra_request(Some("  ")).is_none());
         assert!(parse_extra_request(Some("{bad")).is_none());
         assert!(parse_extra_request(Some("[1,2]")).is_none());
-        assert_eq!(parse_extra_request(Some(r#"{"top_p":0.5}"#)).unwrap()["top_p"], 0.5);
+        assert_eq!(
+            parse_extra_request(Some(r#"{"top_p":0.5}"#)).unwrap()["top_p"],
+            0.5
+        );
     }
 
     #[test]
@@ -449,23 +545,33 @@ mod tests {
         assert_eq!(body["model"], "m");
         assert_eq!(body["messages"], json!([1]));
         assert_eq!(body["stream"], true);
-        assert_eq!(body["think"], true, "the user's JSON wins over what Lucid built");
+        assert_eq!(
+            body["think"], true,
+            "the user's JSON wins over what Lucid built"
+        );
         assert_eq!(body["top_p"], 0.9);
         assert_eq!(body["temperature"], 0.2);
     }
 
     #[test]
     fn extra_request_options_merge_for_ollama_only() {
-        let extra = parse_extra_request(Some(r#"{"options":{"num_ctx":8192,"temperature":0.7}}"#)).unwrap();
+        let extra =
+            parse_extra_request(Some(r#"{"options":{"num_ctx":8192,"temperature":0.7}}"#)).unwrap();
         let mut ollama = json!({ "options": { "temperature": 0.2, "num_predict": 50 } });
         merge_extra_request(&mut ollama, &extra, true);
-        assert_eq!(ollama["options"], json!({ "temperature": 0.7, "num_predict": 50, "num_ctx": 8192 }));
+        assert_eq!(
+            ollama["options"],
+            json!({ "temperature": 0.7, "num_predict": 50, "num_ctx": 8192 })
+        );
         let mut ollama_without = json!({ "model": "m" });
         merge_extra_request(&mut ollama_without, &extra, true);
         assert_eq!(ollama_without["options"]["num_ctx"], 8192);
         let mut other = json!({ "options": { "temperature": 0.2 } });
         merge_extra_request(&mut other, &extra, false);
-        assert_eq!(other["options"], json!({ "num_ctx": 8192, "temperature": 0.7 }));
+        assert_eq!(
+            other["options"],
+            json!({ "num_ctx": 8192, "temperature": 0.7 })
+        );
         assert_eq!(other["options"].as_object().unwrap().len(), 2);
     }
 
@@ -498,7 +604,10 @@ mod tests {
         for (provider, model, setting, want) in cases {
             let mut b = json!({});
             assert!(apply_openai_compat(&mut b, provider, model, setting));
-            assert_eq!(b["reasoning_effort"], want, "{provider} {model} {setting:?}");
+            assert_eq!(
+                b["reasoning_effort"], want,
+                "{provider} {model} {setting:?}"
+            );
             assert!(b.get("reasoning").is_none());
         }
     }
@@ -529,14 +638,38 @@ mod tests {
         let (sent, g) = cfg("gemini-2.5-flash", Auto);
         assert!(!sent);
         assert_eq!(g, json!({ "maxOutputTokens": 10 }));
-        assert_eq!(cfg("gemini-2.5-flash", Off).1["thinkingConfig"], json!({ "thinkingBudget": 0 }));
-        assert_eq!(cfg("gemini-2.5-pro", Off).1["thinkingConfig"], json!({ "thinkingBudget": 128 }));
-        assert_eq!(cfg("gemini-2.5-flash", Low).1["thinkingConfig"], json!({ "thinkingBudget": 1024 }));
-        assert_eq!(cfg("gemini-2.5-flash", High).1["thinkingConfig"], json!({ "thinkingBudget": 24576 }));
-        assert_eq!(cfg("gemini-3-flash-preview", Off).1["thinkingConfig"], json!({ "thinkingLevel": "minimal" }));
-        assert_eq!(cfg("gemini-3-pro-preview", Off).1["thinkingConfig"], json!({ "thinkingLevel": "low" }));
-        assert_eq!(cfg("gemini-3-pro-preview", Low).1["thinkingConfig"], json!({ "thinkingLevel": "low" }));
-        assert_eq!(cfg("gemini-3-pro-preview", High).1["thinkingConfig"], json!({ "thinkingLevel": "high" }));
+        assert_eq!(
+            cfg("gemini-2.5-flash", Off).1["thinkingConfig"],
+            json!({ "thinkingBudget": 0 })
+        );
+        assert_eq!(
+            cfg("gemini-2.5-pro", Off).1["thinkingConfig"],
+            json!({ "thinkingBudget": 128 })
+        );
+        assert_eq!(
+            cfg("gemini-2.5-flash", Low).1["thinkingConfig"],
+            json!({ "thinkingBudget": 1024 })
+        );
+        assert_eq!(
+            cfg("gemini-2.5-flash", High).1["thinkingConfig"],
+            json!({ "thinkingBudget": 24576 })
+        );
+        assert_eq!(
+            cfg("gemini-3-flash-preview", Off).1["thinkingConfig"],
+            json!({ "thinkingLevel": "minimal" })
+        );
+        assert_eq!(
+            cfg("gemini-3-pro-preview", Off).1["thinkingConfig"],
+            json!({ "thinkingLevel": "low" })
+        );
+        assert_eq!(
+            cfg("gemini-3-pro-preview", Low).1["thinkingConfig"],
+            json!({ "thinkingLevel": "low" })
+        );
+        assert_eq!(
+            cfg("gemini-3-pro-preview", High).1["thinkingConfig"],
+            json!({ "thinkingLevel": "high" })
+        );
         assert_eq!(cfg("gemini-3-pro-preview", High).1["maxOutputTokens"], 10);
     }
 
@@ -550,12 +683,27 @@ mod tests {
         let (sent, b) = run("claude-sonnet-5-5", Auto);
         assert!(!sent);
         assert_eq!(b, json!({ "model": "claude-sonnet-5-5" }));
-        assert_eq!(run("claude-sonnet-5-5", Off).1["thinking"], json!({ "type": "between_tools" }));
-        assert_eq!(run("claude-opus-5-5", Off).1["output_config"], json!({ "effort": "low" }));
+        assert_eq!(
+            run("claude-sonnet-5-5", Off).1["thinking"],
+            json!({ "type": "between_tools" })
+        );
+        assert_eq!(
+            run("claude-opus-5-5", Off).1["output_config"],
+            json!({ "effort": "low" })
+        );
         assert!(run("claude-opus-5-5", Off).1.get("thinking").is_none());
-        assert_eq!(run("claude-fable-5-2", Off).1["output_config"], json!({ "effort": "low" }));
-        assert_eq!(run("claude-opus-4-8", Off).1["thinking"], json!({ "type": "disabled" }));
-        assert_eq!(run("claude-haiku-5-5", Off).1["thinking"], json!({ "type": "disabled" }));
+        assert_eq!(
+            run("claude-fable-5-2", Off).1["output_config"],
+            json!({ "effort": "low" })
+        );
+        assert_eq!(
+            run("claude-opus-4-8", Off).1["thinking"],
+            json!({ "type": "disabled" })
+        );
+        assert_eq!(
+            run("claude-haiku-5-5", Off).1["thinking"],
+            json!({ "type": "disabled" })
+        );
         for old in ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-5"] {
             for s in [Off, Low, High] {
                 assert!(!run(old, s).0, "{old} doesn't think unless given a budget");
@@ -571,11 +719,26 @@ mod tests {
 
     #[test]
     fn retry_decision_needs_a_400_naming_the_parameter() {
-        assert!(rejects_thinking_param(400, r#"{"error":"\"llama3.2\" does not support thinking"}"#));
-        assert!(rejects_thinking_param(400, r#"{"error":{"message":"Unrecognized request argument supplied: reasoning_effort"}}"#));
-        assert!(rejects_thinking_param(400, "Unknown name \"thinkingConfig\": Cannot find field."));
-        assert!(rejects_thinking_param(400, r#"{"error":{"message":"output_config.effort: Extra inputs are not permitted"}}"#));
-        assert!(!rejects_thinking_param(400, r#"{"error":"context length exceeded"}"#));
+        assert!(rejects_thinking_param(
+            400,
+            r#"{"error":"\"llama3.2\" does not support thinking"}"#
+        ));
+        assert!(rejects_thinking_param(
+            400,
+            r#"{"error":{"message":"Unrecognized request argument supplied: reasoning_effort"}}"#
+        ));
+        assert!(rejects_thinking_param(
+            400,
+            "Unknown name \"thinkingConfig\": Cannot find field."
+        ));
+        assert!(rejects_thinking_param(
+            400,
+            r#"{"error":{"message":"output_config.effort: Extra inputs are not permitted"}}"#
+        ));
+        assert!(!rejects_thinking_param(
+            400,
+            r#"{"error":"context length exceeded"}"#
+        ));
         assert!(!rejects_thinking_param(401, "invalid reasoning key"));
         assert!(!rejects_thinking_param(500, "thinking failed"));
         assert!(!rejects_thinking_param(404, "model not found"));
@@ -588,7 +751,10 @@ mod tests {
         assert!(!should_send("p-test", url, "m1", Auto));
         remember_unsupported("p-test", url, "m1");
         assert!(!should_send("p-test", url, "m1", Off));
-        assert!(!should_send("p-test", "http://a:1/v1/", "m1", Off), "a trailing slash is the same endpoint");
+        assert!(
+            !should_send("p-test", "http://a:1/v1/", "m1", Off),
+            "a trailing slash is the same endpoint"
+        );
         assert!(should_send("p-test", url, "m2", Off));
         assert!(should_send("p-other", url, "m1", Off));
     }
@@ -596,9 +762,23 @@ mod tests {
     #[test]
     fn a_different_endpoint_with_the_same_model_is_not_suppressed() {
         remember_unsupported("custom-ep", "http://old-server:8080/v1", "qwen3");
-        assert!(!should_send("custom-ep", "http://old-server:8080/v1", "qwen3", Off));
-        assert!(should_send("custom-ep", "http://new-server:9090/v1", "qwen3", Off));
-        assert!(!is_known_unsupported("custom-ep", "http://new-server:9090/v1", "qwen3"));
+        assert!(!should_send(
+            "custom-ep",
+            "http://old-server:8080/v1",
+            "qwen3",
+            Off
+        ));
+        assert!(should_send(
+            "custom-ep",
+            "http://new-server:9090/v1",
+            "qwen3",
+            Off
+        ));
+        assert!(!is_known_unsupported(
+            "custom-ep",
+            "http://new-server:9090/v1",
+            "qwen3"
+        ));
     }
 
     // ── send_with_fallback against a local server ───────────
@@ -608,7 +788,10 @@ mod tests {
 
     /// A server answering 400 `reject_body` to any request whose body contains
     /// "reasoning_effort", else 200 / 400 `other_error`. Records each request body.
-    async fn server(reject_body: &'static str, always_fail: bool) -> (String, Arc<StdMutex<Vec<String>>>) {
+    async fn server(
+        reject_body: &'static str,
+        always_fail: bool,
+    ) -> (String, Arc<StdMutex<Vec<String>>>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/", listener.local_addr().unwrap());
         let seen: Arc<StdMutex<Vec<String>>> = Arc::default();
@@ -631,7 +814,10 @@ mod tests {
                 let head = String::from_utf8_lossy(&raw[..head_end]).to_lowercase();
                 let length: usize = head
                     .lines()
-                    .find_map(|l| l.strip_prefix("content-length:").map(|v| v.trim().parse().unwrap_or(0)))
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .map(|v| v.trim().parse().unwrap_or(0))
+                    })
                     .unwrap_or(0);
                 while raw.len() < head_end + length {
                     let n = socket.read(&mut buf).await.unwrap();
@@ -643,7 +829,11 @@ mod tests {
                 let body = String::from_utf8_lossy(&raw[head_end..]).to_string();
                 let rejected = always_fail || body.contains("reasoning_effort");
                 log.lock().unwrap().push(body);
-                let (status, text) = if rejected { (400, reject_body) } else { (200, "ok") };
+                let (status, text) = if rejected {
+                    (400, reject_body)
+                } else {
+                    (200, "ok")
+                };
                 let resp = format!(
                     "HTTP/1.1 {} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                     status,
@@ -667,11 +857,17 @@ mod tests {
 
     #[tokio::test]
     async fn a_rejected_parameter_is_retried_once_without_it_and_remembered() {
-        let (url, seen) = server(r#"{"error":"Unrecognized request argument supplied: reasoning_effort"}"#, false).await;
+        let (url, seen) = server(
+            r#"{"error":"Unrecognized request argument supplied: reasoning_effort"}"#,
+            false,
+        )
+        .await;
         let params = GenerationParams::default();
-        let sent = send_with_fallback("retry-prov", &url, "retry-model", true, &params, |t| post(&url, t))
-            .await
-            .unwrap();
+        let sent = send_with_fallback("retry-prov", &url, "retry-model", true, &params, |t| {
+            post(&url, t)
+        })
+        .await
+        .unwrap();
         assert!(matches!(sent, Sent::Ok(_)));
         let bodies = seen.lock().unwrap().clone();
         assert_eq!(bodies.len(), 2);
@@ -686,9 +882,11 @@ mod tests {
     async fn an_unrelated_400_is_not_retried() {
         let (url, seen) = server(r#"{"error":"context length exceeded"}"#, true).await;
         let params = GenerationParams::default();
-        let sent = send_with_fallback("retry-prov2", &url, "retry-model2", true, &params, |t| post(&url, t))
-            .await
-            .unwrap();
+        let sent = send_with_fallback("retry-prov2", &url, "retry-model2", true, &params, |t| {
+            post(&url, t)
+        })
+        .await
+        .unwrap();
         match sent {
             Sent::Failed { status, body } => {
                 assert_eq!(status.as_u16(), 400);
@@ -704,9 +902,11 @@ mod tests {
     async fn nothing_is_retried_when_no_thinking_parameter_was_sent() {
         let (url, seen) = server(r#"{"error":"bad reasoning_effort"}"#, true).await;
         let params = GenerationParams::default();
-        let sent = send_with_fallback("retry-prov3", &url, "retry-model3", false, &params, |t| post(&url, t))
-            .await
-            .unwrap();
+        let sent = send_with_fallback("retry-prov3", &url, "retry-model3", false, &params, |t| {
+            post(&url, t)
+        })
+        .await
+        .unwrap();
         assert!(matches!(sent, Sent::Failed { .. }));
         assert_eq!(seen.lock().unwrap().len(), 1);
     }

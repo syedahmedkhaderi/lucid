@@ -109,11 +109,23 @@ pub fn snapshot(i: &StateInput) -> RunSnapshot {
         ("off", i.stop_reason.clone(), vec!["start"])
     } else {
         match i.state {
-            RunState::CapReached => ("capped", Some("The token cap for this meeting was reached".to_string()), vec!["keep_going"]),
+            RunState::CapReached => (
+                "capped",
+                Some("The token cap for this meeting was reached".to_string()),
+                vec!["keep_going"],
+            ),
             RunState::Paused(PauseReason::User) => ("paused", None, vec!["resume", "update"]),
             RunState::Paused(PauseReason::PlanLimit) => {
                 error_kind = kind_of(i.error_code, true);
-                ("paused", Some(i.last_error.clone().unwrap_or_else(|| "The plan's usage limit was reached".into())), vec!["try_again"])
+                (
+                    "paused",
+                    Some(
+                        i.last_error
+                            .clone()
+                            .unwrap_or_else(|| "The plan's usage limit was reached".into()),
+                    ),
+                    vec!["try_again"],
+                )
             }
             RunState::Paused(PauseReason::Failures) => {
                 error_kind = kind_of(i.error_code, false);
@@ -129,7 +141,11 @@ pub fn snapshot(i: &StateInput) -> RunSnapshot {
                 if i.in_flight {
                     ("running", i.last_error.clone(), vec!["pause"])
                 } else if i.manual_mode {
-                    ("on", Some("Manual: it updates when you press Update now".to_string()), vec!["pause", "update"])
+                    (
+                        "on",
+                        Some("Manual: it updates when you press Update now".to_string()),
+                        vec!["pause", "update"],
+                    )
                 } else if !i.started {
                     ("waiting", i.last_error.clone(), vec!["pause", "update"])
                 } else {
@@ -139,7 +155,11 @@ pub fn snapshot(i: &StateInput) -> RunSnapshot {
             RunState::Stopped => unreachable!("handled above"),
         }
     };
-    let next_in_ms = if status == "on" || status == "waiting" { i.next_in_ms } else { None };
+    let next_in_ms = if status == "on" || status == "waiting" {
+        i.next_in_ms
+    } else {
+        None
+    };
     RunSnapshot {
         meeting_id: i.meeting_id.clone(),
         status,
@@ -151,21 +171,69 @@ pub fn snapshot(i: &StateInput) -> RunSnapshot {
         cap: i.cap,
         next_in_ms,
         model: i.model.clone(),
-        not_covered: if status == "finished" { i.not_covered.map(|(from_ms, to_ms)| NotCovered { from_ms, to_ms }) } else { None },
-        ended: if status == "finished" { i.ended.clone().map(|(kind, detail)| Ended { kind, detail }) } else { None },
+        not_covered: if status == "finished" {
+            i.not_covered
+                .map(|(from_ms, to_ms)| NotCovered { from_ms, to_ms })
+        } else {
+            None
+        },
+        ended: if status == "finished" {
+            i.ended.clone().map(|(kind, detail)| Ended { kind, detail })
+        } else {
+            None
+        },
         moved_online: i.moved_online.clone(),
     }
 }
 
 /// The state of a feature that has no actor (never started, stopped, or after a restart).
-pub fn idle_snapshot(meeting_id: &str, stored_status: Option<&str>, tokens_used: u64, cap: u64, reason: Option<String>, model: Option<ModelLabel>, not_covered: Option<(u64, u64)>, ended: Option<(String, Option<String>)>, over_cap: bool) -> RunSnapshot {
+pub fn idle_snapshot(
+    meeting_id: &str,
+    stored_status: Option<&str>,
+    tokens_used: u64,
+    cap: u64,
+    reason: Option<String>,
+    model: Option<ModelLabel>,
+    not_covered: Option<(u64, u64)>,
+    ended: Option<(String, Option<String>)>,
+    over_cap: bool,
+) -> RunSnapshot {
     let (status, can): (&'static str, Vec<&'static str>) = match stored_status {
-        Some("done") if not_covered.is_some() => ("finished", if over_cap { vec!["update", "keep_going"] } else { vec!["update"] }),
+        Some("done") if not_covered.is_some() => (
+            "finished",
+            if over_cap {
+                vec!["update", "keep_going"]
+            } else {
+                vec!["update"]
+            },
+        ),
         Some("done") => ("finished", vec![]),
         Some("cap_reached") => ("capped", vec!["keep_going"]),
         _ => ("off", vec!["start"]),
     };
-    RunSnapshot { meeting_id: meeting_id.to_string(), status, reason, error_kind: None, can, tokens_used, total_tokens: 0, cap, next_in_ms: None, model, not_covered: if status == "finished" { not_covered.map(|(from_ms, to_ms)| NotCovered { from_ms, to_ms }) } else { None }, ended: if status == "finished" { ended.map(|(kind, detail)| Ended { kind, detail }) } else { None }, moved_online: None }
+    RunSnapshot {
+        meeting_id: meeting_id.to_string(),
+        status,
+        reason,
+        error_kind: None,
+        can,
+        tokens_used,
+        total_tokens: 0,
+        cap,
+        next_in_ms: None,
+        model,
+        not_covered: if status == "finished" {
+            not_covered.map(|(from_ms, to_ms)| NotCovered { from_ms, to_ms })
+        } else {
+            None
+        },
+        ended: if status == "finished" {
+            ended.map(|(kind, detail)| Ended { kind, detail })
+        } else {
+            None
+        },
+        moved_online: None,
+    }
 }
 
 #[cfg(test)]
@@ -203,10 +271,16 @@ mod tests {
         i.started = true;
         i.tokens_used = 900;
         let s = snapshot(&i);
-        assert_eq!((s.status, s.can.clone(), s.next_in_ms), ("on", vec!["pause", "update"], Some(12_000)));
+        assert_eq!(
+            (s.status, s.can.clone(), s.next_in_ms),
+            ("on", vec!["pause", "update"], Some(12_000))
+        );
         i.in_flight = true;
         let s = snapshot(&i);
-        assert_eq!((s.status, s.can, s.next_in_ms), ("running", vec!["pause"], None));
+        assert_eq!(
+            (s.status, s.can, s.next_in_ms),
+            ("running", vec!["pause"], None)
+        );
     }
 
     #[test]
@@ -216,19 +290,41 @@ mod tests {
         i.state = RunState::Paused(PauseReason::User);
         assert_eq!(snapshot(&i).can, vec!["resume", "update"]);
         i.state = RunState::CapReached;
-        assert_eq!((snapshot(&i).status, snapshot(&i).can), ("capped", vec!["keep_going"]));
+        assert_eq!(
+            (snapshot(&i).status, snapshot(&i).can),
+            ("capped", vec!["keep_going"])
+        );
         i.state = RunState::Paused(PauseReason::PlanLimit);
         i.last_error = Some("Usage limit reached".into());
         let s = snapshot(&i);
-        assert_eq!((s.status, s.error_kind.as_deref(), s.reason.as_deref(), s.can), ("paused", Some("plan_limit"), Some("Usage limit reached"), vec!["try_again"]));
+        assert_eq!(
+            (
+                s.status,
+                s.error_kind.as_deref(),
+                s.reason.as_deref(),
+                s.can
+            ),
+            (
+                "paused",
+                Some("plan_limit"),
+                Some("Usage limit reached"),
+                vec!["try_again"]
+            )
+        );
         i.state = RunState::Paused(PauseReason::Failures);
         i.last_error = Some("no key".into());
         i.error_code = "no_key";
         let s = snapshot(&i);
-        assert_eq!((s.status, s.error_kind.as_deref(), s.can), ("error", Some("no_key"), vec!["try_again", "update"]));
+        assert_eq!(
+            (s.status, s.error_kind.as_deref(), s.can),
+            ("error", Some("no_key"), vec!["try_again", "update"])
+        );
         i.state = RunState::Stopped;
         i.user_stopped = true;
-        assert_eq!((snapshot(&i).status, snapshot(&i).can), ("off", vec!["start"]));
+        assert_eq!(
+            (snapshot(&i).status, snapshot(&i).can),
+            ("off", vec!["start"])
+        );
     }
 
     #[test]
@@ -237,7 +333,10 @@ mod tests {
         i.manual_mode = true;
         i.started = true;
         let s = snapshot(&i);
-        assert_eq!((s.status, s.can.contains(&"update"), s.next_in_ms), ("on", true, Some(12_000)));
+        assert_eq!(
+            (s.status, s.can.contains(&"update"), s.next_in_ms),
+            ("on", true, Some(12_000))
+        );
         assert!(s.reason.unwrap().contains("Update now"));
         i.finished = true;
         i.not_covered = Some((60_000, 120_000));
@@ -248,10 +347,47 @@ mod tests {
 
     #[test]
     fn idle_states() {
-        assert_eq!(idle_snapshot("m", None, 0, 100, None, None, None, None, false).can, vec!["start"]);
-        assert_eq!(idle_snapshot("m", Some("done"), 5, 100, None, None, None, None, false).status, "finished");
-        assert_eq!(idle_snapshot("m", Some("cap_reached"), 100, 100, None, None, None, None, false).can, vec!["keep_going"]);
-        let s = idle_snapshot("m", Some("done"), 5, 100, None, None, Some((60_000, 90_000)), Some(("limit".to_string(), None)), true);
-        assert_eq!((s.status, s.can, s.not_covered.map(|n| (n.from_ms, n.to_ms))), ("finished", vec!["update", "keep_going"], Some((60_000, 90_000))));
+        assert_eq!(
+            idle_snapshot("m", None, 0, 100, None, None, None, None, false).can,
+            vec!["start"]
+        );
+        assert_eq!(
+            idle_snapshot("m", Some("done"), 5, 100, None, None, None, None, false).status,
+            "finished"
+        );
+        assert_eq!(
+            idle_snapshot(
+                "m",
+                Some("cap_reached"),
+                100,
+                100,
+                None,
+                None,
+                None,
+                None,
+                false
+            )
+            .can,
+            vec!["keep_going"]
+        );
+        let s = idle_snapshot(
+            "m",
+            Some("done"),
+            5,
+            100,
+            None,
+            None,
+            Some((60_000, 90_000)),
+            Some(("limit".to_string(), None)),
+            true,
+        );
+        assert_eq!(
+            (s.status, s.can, s.not_covered.map(|n| (n.from_ms, n.to_ms))),
+            (
+                "finished",
+                vec!["update", "keep_going"],
+                Some((60_000, 90_000))
+            )
+        );
     }
 }

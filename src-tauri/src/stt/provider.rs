@@ -86,8 +86,14 @@ mod turn_signal_tests {
 
     #[test]
     fn turn_signals_travel_as_snake_case() {
-        assert_eq!(serde_json::to_string(&TurnSignal::EagerEnd).unwrap(), "\"eager_end\"");
-        assert_eq!(serde_json::to_string(&TurnSignal::Resumed).unwrap(), "\"resumed\"");
+        assert_eq!(
+            serde_json::to_string(&TurnSignal::EagerEnd).unwrap(),
+            "\"eager_end\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TurnSignal::Resumed).unwrap(),
+            "\"resumed\""
+        );
         assert_eq!(serde_json::to_string(&TurnSignal::End).unwrap(), "\"end\"");
     }
 

@@ -171,7 +171,12 @@ fn route_token(params: &GenerationParams, token: &str, sink: Option<&TokenSink>)
 }
 
 /// Delivers one streamed token: to the sink, and as `llm_stream_token` unless the stream is silent.
-pub fn emit_token(app: &AppHandle, params: &GenerationParams, token: &str, sink: Option<&TokenSink>) {
+pub fn emit_token(
+    app: &AppHandle,
+    params: &GenerationParams,
+    token: &str,
+    sink: Option<&TokenSink>,
+) {
     if route_token(params, token, sink) == Route::Global {
         let _ = app.emit(
             "llm_stream_token",
@@ -188,13 +193,20 @@ pub const STREAM_ACTIVITY_EVENT: &str = "llm_stream_activity";
 
 /// Emits `llm_stream_activity`: a line about the sources an answer is using
 /// (nothing for silent streams).
-pub fn emit_activity(app: &AppHandle, params: &GenerationParams, activity: crate::sources::activity::SourceActivity) {
+pub fn emit_activity(
+    app: &AppHandle,
+    params: &GenerationParams,
+    activity: crate::sources::activity::SourceActivity,
+) {
     if params.silent {
         return;
     }
     let _ = app.emit(
         STREAM_ACTIVITY_EVENT,
-        StreamActivityPayload { request_id: params.request_id.clone(), activity },
+        StreamActivityPayload {
+            request_id: params.request_id.clone(),
+            activity,
+        },
     );
 }
 
@@ -321,7 +333,8 @@ pub fn error_text(e: &reqwest::Error) -> String {
             hidden.set_query(None);
             let _ = hidden.set_password(None);
             let _ = hidden.set_username("");
-            text.replace(url.as_str(), "[url hidden]").replace(hidden.as_str(), "[url hidden]")
+            text.replace(url.as_str(), "[url hidden]")
+                .replace(hidden.as_str(), "[url hidden]")
         }
         None => text,
     }
@@ -571,7 +584,10 @@ mod tests {
         assert!(!payload.cancelled);
         assert_eq!(payload.usage, None);
         // Without usage the payload looks exactly as before.
-        assert!(serde_json::to_value(&payload).unwrap().get("usage").is_none());
+        assert!(serde_json::to_value(&payload)
+            .unwrap()
+            .get("usage")
+            .is_none());
     }
 
     #[test]
@@ -597,7 +613,10 @@ mod tests {
         };
         assert_eq!(StreamUsage::from_stats(&stats(0)), None);
         let real = StreamUsage::from_stats(&stats(12)).unwrap();
-        assert_eq!((real.input_tokens, real.output_tokens, real.cost_usd), (12, 7, None));
+        assert_eq!(
+            (real.input_tokens, real.output_tokens, real.cost_usd),
+            (12, 7, None)
+        );
     }
 
     /// Mirrors a provider's stream loop (chunk -> lines -> SSE events -> token) over a
@@ -654,10 +673,12 @@ mod tests {
         });
 
         let stalled = std::future::pending::<()>();
-        let result =
-            tokio::time::timeout(std::time::Duration::from_secs(2), cancellable(&params, stalled))
-                .await
-                .expect("cancellable must return promptly after cancel()");
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            cancellable(&params, stalled),
+        )
+        .await
+        .expect("cancellable must return promptly after cancel()");
         assert!(matches!(result, Err(LLMError::Cancelled)));
     }
 
@@ -685,7 +706,12 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(cancellable(&params, async { 7 }).await.unwrap(), 7);
-        assert_eq!(cancellable(&GenerationParams::default(), async { 8 }).await.unwrap(), 8);
+        assert_eq!(
+            cancellable(&GenerationParams::default(), async { 8 })
+                .await
+                .unwrap(),
+            8
+        );
     }
 
     #[tokio::test]
@@ -695,7 +721,10 @@ mod tests {
             .send()
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("SECRETKEY123"), "reqwest itself would leak it");
+        assert!(
+            err.to_string().contains("SECRETKEY123"),
+            "reqwest itself would leak it"
+        );
         assert!(!error_text(&err).contains("SECRETKEY123"));
         assert!(!LLMError::from(err).to_string().contains("SECRETKEY123"));
     }

@@ -14,8 +14,8 @@ fn main() {
     // tauri-build is told not to embed its own copy so the manifests don't collide.
     #[cfg(target_os = "windows")]
     {
-        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("windows-app-manifest.xml");
+        let manifest =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows-app-manifest.xml");
         println!("cargo:rerun-if-changed={}", manifest.display());
         // Plain link-arg (not -bins/-tests): cargo only accepts the scoped forms when
         // the package declares such targets, and lib unit tests are not covered by them.

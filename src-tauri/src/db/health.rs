@@ -51,12 +51,18 @@ pub struct DbProblem {
 
 /// The version number of the newest schema step this build knows.
 pub fn top_version() -> i64 {
-    super::workspace_migrations::STEPS.iter().map(|s| s.version).max().unwrap_or(0)
+    super::workspace_migrations::STEPS
+        .iter()
+        .map(|s| s.version)
+        .max()
+        .unwrap_or(0)
 }
 
 fn map_sqlite(e: &rusqlite::Error) -> ProblemKind {
     match e.sqlite_error_code() {
-        Some(rusqlite::ErrorCode::DatabaseBusy) | Some(rusqlite::ErrorCode::DatabaseLocked) => ProblemKind::Locked,
+        Some(rusqlite::ErrorCode::DatabaseBusy) | Some(rusqlite::ErrorCode::DatabaseLocked) => {
+            ProblemKind::Locked
+        }
         _ => ProblemKind::Unreadable,
     }
 }
@@ -77,8 +83,17 @@ pub fn plain_io(e: &std::io::Error) -> String {
         (_, NotFound) => "it is not there".to_string(),
         _ => {
             let text = e.to_string();
-            let text = text.split(" (os error").next().unwrap_or(&text).trim().trim_end_matches('.').to_string();
-            text.chars().next().map(|c| c.to_lowercase().collect::<String>() + &text[c.len_utf8()..]).unwrap_or(text)
+            let text = text
+                .split(" (os error")
+                .next()
+                .unwrap_or(&text)
+                .trim()
+                .trim_end_matches('.')
+                .to_string();
+            text.chars()
+                .next()
+                .map(|c| c.to_lowercase().collect::<String>() + &text[c.len_utf8()..])
+                .unwrap_or(text)
         }
     }
 }
@@ -88,16 +103,30 @@ pub fn plain_io(e: &std::io::Error) -> String {
 /// device error) says nothing about the file, so it is `Locked`.
 fn header_check(path: &Path, len: u64) -> Result<(), (ProblemKind, String)> {
     let mut head = [0u8; 100];
-    let mut file = fs::File::open(path).map_err(|e| (ProblemKind::Locked, format!("The file can't be read: {}.", plain_io(&e))))?;
+    let mut file = fs::File::open(path).map_err(|e| {
+        (
+            ProblemKind::Locked,
+            format!("The file can't be read: {}.", plain_io(&e)),
+        )
+    })?;
     if let Err(e) = file.read_exact(&mut head) {
         return Err(if e.kind() == std::io::ErrorKind::UnexpectedEof {
-            (ProblemKind::Unreadable, "The file is too short to be a database.".to_string())
+            (
+                ProblemKind::Unreadable,
+                "The file is too short to be a database.".to_string(),
+            )
         } else {
-            (ProblemKind::Locked, format!("The file can't be read: {}.", plain_io(&e)))
+            (
+                ProblemKind::Locked,
+                format!("The file can't be read: {}.", plain_io(&e)),
+            )
         });
     }
     if &head[..16] != MAGIC {
-        return Err((ProblemKind::Unreadable, "The file is not an SQLite database.".to_string()));
+        return Err((
+            ProblemKind::Unreadable,
+            "The file is not an SQLite database.".to_string(),
+        ));
     }
     let page_size = match u16::from_be_bytes([head[16], head[17]]) {
         1 => 65_536u64,
@@ -108,11 +137,17 @@ fn header_check(path: &Path, len: u64) -> Result<(), (ProblemKind, String)> {
     let current = head[24..28] == head[92..96];
     // A stop during a checkpoint leaves a short file whose missing pages are
     // still in the -wal: SQLite completes it, so that is not a damaged file.
-    let has_wal = fs::metadata(path.with_file_name(format!("{}-wal", path.file_name().unwrap_or_default().to_string_lossy())))
-        .map(|m| m.len() > 0)
-        .unwrap_or(false);
+    let has_wal = fs::metadata(path.with_file_name(format!(
+        "{}-wal",
+        path.file_name().unwrap_or_default().to_string_lossy()
+    )))
+    .map(|m| m.len() > 0)
+    .unwrap_or(false);
     if !has_wal && current && pages > 0 && len < pages * page_size {
-        return Err((ProblemKind::Unreadable, "The file is cut short: part of it is missing.".to_string()));
+        return Err((
+            ProblemKind::Unreadable,
+            "The file is cut short: part of it is missing.".to_string(),
+        ));
     }
     Ok(())
 }
@@ -121,9 +156,15 @@ fn header_check(path: &Path, len: u64) -> Result<(), (ProblemKind, String)> {
 /// that means, and may open it with data a stale -wal brought along. Such an open is checked
 /// for damage at once (see `integrity::check_soon`), not after the usual delay.
 pub fn open_needs_early_check(path: &Path) -> bool {
-    let Ok(len) = fs::metadata(path).map(|m| m.len()) else { return false };
+    let Ok(len) = fs::metadata(path).map(|m| m.len()) else {
+        return false;
+    };
     let mut head = [0u8; 100];
-    if fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)).is_err() || &head[..16] != MAGIC {
+    if fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_err()
+        || &head[..16] != MAGIC
+    {
         return false;
     }
     let page_size = match u16::from_be_bytes([head[16], head[17]]) {
@@ -131,9 +172,12 @@ pub fn open_needs_early_check(path: &Path) -> bool {
         n => n as u64,
     };
     let pages = u32::from_be_bytes([head[28], head[29], head[30], head[31]]) as u64;
-    let has_wal = fs::metadata(path.with_file_name(format!("{}-wal", path.file_name().unwrap_or_default().to_string_lossy())))
-        .map(|m| m.len() > 0)
-        .unwrap_or(false);
+    let has_wal = fs::metadata(path.with_file_name(format!(
+        "{}-wal",
+        path.file_name().unwrap_or_default().to_string_lossy()
+    )))
+    .map(|m| m.len() > 0)
+    .unwrap_or(false);
     has_wal && pages > 0 && len < pages * page_size
 }
 
@@ -147,21 +191,35 @@ pub fn probe(path: &Path) -> Result<(), (ProblemKind, String)> {
     };
     if meta.len() == 0 {
         // A first start that stopped early, unless there were meetings before.
-        let had_meetings = path.parent().map(|d| list_backups(d).iter().any(|b| b.meetings.unwrap_or(0) > 0)).unwrap_or(false);
+        let had_meetings = path
+            .parent()
+            .map(|d| list_backups(d).iter().any(|b| b.meetings.unwrap_or(0) > 0))
+            .unwrap_or(false);
         if had_meetings {
             return Err((ProblemKind::Unreadable, "The file is empty.".to_string()));
         }
         return Ok(());
     }
     header_check(path, meta.len())?;
-    let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
-        .map_err(|e| (map_sqlite(&e), format!("The database can't be opened: {e}.")))?;
-    conn.busy_timeout(PROBE_WAIT).map_err(|e| (map_sqlite(&e), e.to_string()))?;
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| {
+        (
+            map_sqlite(&e),
+            format!("The database can't be opened: {e}."),
+        )
+    })?;
+    conn.busy_timeout(PROBE_WAIT)
+        .map_err(|e| (map_sqlite(&e), e.to_string()))?;
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .map_err(|e| (map_sqlite(&e), format!("The database can't be read: {e}.")))?;
-    conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
-        .map_err(|e| (map_sqlite(&e), format!("The database can't be read: {e}.")))?;
+    conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |r| {
+        r.get::<_, i64>(0)
+    })
+    .map_err(|e| (map_sqlite(&e), format!("The database can't be read: {e}.")))?;
     if version > top_version() {
         return Err((
             ProblemKind::Newer,
@@ -172,7 +230,9 @@ pub fn probe(path: &Path) -> Result<(), (ProblemKind, String)> {
 }
 
 fn millis(t: std::time::SystemTime) -> i64 {
-    t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    t.duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Opens a copy read-only and checks it; `Some(meetings)` when it is whole and
@@ -182,30 +242,44 @@ fn inspect(path: &Path) -> Option<Option<i64>> {
     if len == 0 || header_check(path, len).is_err() {
         return None;
     }
-    let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX).ok()?;
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .ok()?;
     conn.busy_timeout(PROBE_WAIT).ok()?;
-    let check: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0)).ok()?;
+    let check: String = conn
+        .query_row("PRAGMA quick_check", [], |r| r.get(0))
+        .ok()?;
     if check != "ok" {
         return None;
     }
-    let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).ok()?;
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .ok()?;
     if version > top_version() {
         return None;
     }
-    Some(conn.query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get::<_, i64>(0)).ok())
+    Some(
+        conn.query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get::<_, i64>(0))
+            .ok(),
+    )
 }
 
 fn is_copy_name(name: &str) -> bool {
     if name == RESTORE_TMP || name.ends_with("-wal") || name.ends_with("-shm") {
         return false;
     }
-    ((name.starts_with("nexq-before-") || name.starts_with("nexq-backup-")) && name.ends_with(".db"))
+    ((name.starts_with("nexq-before-") || name.starts_with("nexq-backup-"))
+        && name.ends_with(".db"))
         || name.starts_with("lucid.db.damaged-")
 }
 
 /// The copies of the database in `dir` that open and check out, newest first.
 pub fn list_backups(dir: &Path) -> Vec<BackupInfo> {
-    let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
     let mut out: Vec<BackupInfo> = entries
         .filter_map(Result::ok)
         .filter_map(|e| {
@@ -215,7 +289,12 @@ pub fn list_backups(dir: &Path) -> Vec<BackupInfo> {
             }
             let meta = e.metadata().ok()?;
             let meetings = inspect(&e.path())?;
-            Some(BackupInfo { name, created_at: meta.modified().map(millis).unwrap_or(0), bytes: meta.len(), meetings })
+            Some(BackupInfo {
+                name,
+                created_at: meta.modified().map(millis).unwrap_or(0),
+                bytes: meta.len(),
+                meetings,
+            })
         })
         .collect();
     out.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(a.name.cmp(&b.name)));
@@ -224,7 +303,12 @@ pub fn list_backups(dir: &Path) -> Vec<BackupInfo> {
 
 /// What the app shows for a database that did not open.
 pub fn problem(kind: ProblemKind, message: String, dir: &Path) -> DbProblem {
-    DbProblem { kind, message, path: dir.join(DB_NAME).to_string_lossy().to_string(), backups: list_backups(dir) }
+    DbProblem {
+        kind,
+        message,
+        path: dir.join(DB_NAME).to_string_lossy().to_string(),
+        backups: list_backups(dir),
+    }
 }
 
 // ── Recovery: put aside, then restore or start new ───────────────────────────
@@ -258,7 +342,15 @@ pub fn restore_copy(dir: &Path, name: &str, stamp: u64, kind: ProblemKind) -> Re
         return Err("That copy is not one Lucid can restore from".to_string());
     }
     still_needed(dir, kind)?;
-    write_marker(dir, &Pending { action: "restore".into(), source: Some(name.to_string()), stamp, phase: planned() })?;
+    write_marker(
+        dir,
+        &Pending {
+            action: "restore".into(),
+            source: Some(name.to_string()),
+            stamp,
+            phase: planned(),
+        },
+    )?;
     run_pending(dir, None, false).map(|_| ())
 }
 
@@ -277,7 +369,15 @@ fn still_needed(dir: &Path, kind: ProblemKind) -> Result<(), String> {
 /// Puts the old files aside and lets the next start make an empty database.
 pub fn start_new(dir: &Path, stamp: u64, kind: ProblemKind) -> Result<(), String> {
     still_needed(dir, kind)?;
-    write_marker(dir, &Pending { action: "new".into(), source: None, stamp, phase: planned() })?;
+    write_marker(
+        dir,
+        &Pending {
+            action: "new".into(),
+            source: None,
+            stamp,
+            phase: planned(),
+        },
+    )?;
     run_pending(dir, None, false).map(|_| ())
 }
 
@@ -286,7 +386,8 @@ fn write_marker(dir: &Path, pending: &Pending) -> Result<(), String> {
         return Err("An earlier recovery is still being finished. Restart Lucid".to_string());
     }
     let text = serde_json::to_string(pending).map_err(|e| e.to_string())?;
-    crate::store_guard::write_atomic(&dir.join(MARKER), text.as_bytes()).map_err(|e| format!("Couldn't start the recovery: {e}"))
+    crate::store_guard::write_atomic(&dir.join(MARKER), text.as_bytes())
+        .map_err(|e| format!("Couldn't start the recovery: {e}"))
 }
 
 /// Finishes a recovery a previous run began (or this one just recorded):
@@ -305,14 +406,17 @@ fn rewrite_marker(dir: &Path, pending: &Pending) -> Result<(), String> {
 /// `startup`: a note found at a start, from an earlier run.
 fn run_pending(dir: &Path, stop_after: Option<u8>, startup: bool) -> Result<bool, String> {
     let marker = dir.join(MARKER);
-    let Ok(text) = fs::read_to_string(&marker) else { return Ok(false) };
+    let Ok(text) = fs::read_to_string(&marker) else {
+        return Ok(false);
+    };
     let pending: Pending = match serde_json::from_str(&text) {
         Ok(p) => p,
         Err(e) => {
             // Notes are written whole, so nothing was begun under this one.
             // It is put aside, or every later start would stop here.
             log::error!("The recovery note can't be read: {e}");
-            fs::rename(&marker, dir.join(format!("{MARKER}.bad-{}", stamp_now()))).map_err(|e| format!("Couldn't put the recovery note aside: {e}"))?;
+            fs::rename(&marker, dir.join(format!("{MARKER}.bad-{}", stamp_now())))
+                .map_err(|e| format!("Couldn't put the recovery note aside: {e}"))?;
             return Ok(false);
         }
     };
@@ -323,7 +427,9 @@ fn run_pending(dir: &Path, stop_after: Option<u8>, startup: bool) -> Result<bool
         if startup {
             // An earlier run stopped (or failed) before every old file was aside. The file that
             // is there may be perfectly healthy: it is not touched, and what was moved is put back.
-            log::warn!("A recovery that was not finished is undone; the database file is left as it is");
+            log::warn!(
+                "A recovery that was not finished is undone; the database file is left as it is"
+            );
             let _ = rollback(dir, &pending);
             return Ok(false);
         }
@@ -337,7 +443,11 @@ fn run_pending(dir: &Path, stop_after: Option<u8>, startup: bool) -> Result<bool
                     return Err(format!(
                         "Couldn't put {DB_NAME}{suffix} aside ({}). Nothing was changed.{}",
                         plain_io(&e),
-                        if restored { "" } else { " Some files could not be put back; they are kept as lucid.db.damaged-*." }
+                        if restored {
+                            ""
+                        } else {
+                            " Some files could not be put back; they are kept as lucid.db.damaged-*."
+                        }
                     ));
                 }
             }
@@ -346,9 +456,22 @@ fn run_pending(dir: &Path, stop_after: Option<u8>, startup: bool) -> Result<bool
             }
         }
         // From here the recovery is the user's decision carried out: a later start may finish it.
-        if let Err(e) = rewrite_marker(dir, &Pending { phase: "aside".into(), ..pending.clone() }) {
+        if let Err(e) = rewrite_marker(
+            dir,
+            &Pending {
+                phase: "aside".into(),
+                ..pending.clone()
+            },
+        ) {
             let restored = rollback(dir, &pending);
-            return Err(format!("Couldn't record the recovery ({e}). Nothing was changed.{}", if restored { "" } else { " Some files are kept as lucid.db.damaged-*." }));
+            return Err(format!(
+                "Couldn't record the recovery ({e}). Nothing was changed.{}",
+                if restored {
+                    ""
+                } else {
+                    " Some files are kept as lucid.db.damaged-*."
+                }
+            ));
         }
     } else if !main_aside.exists() {
         // The note says the old files are aside but they are not: it is not ours to continue.
@@ -362,7 +485,10 @@ fn run_pending(dir: &Path, stop_after: Option<u8>, startup: bool) -> Result<bool
     if pending.action == "restore" {
         let target = dir.join(DB_NAME);
         if !target.exists() {
-            let source = pending.source.as_deref().ok_or("The recovery note names no copy")?;
+            let source = pending
+                .source
+                .as_deref()
+                .ok_or("The recovery note names no copy")?;
             let tmp = dir.join(RESTORE_TMP);
             let _ = fs::remove_file(&tmp);
             // 2. A whole, consistent copy next to its destination.
@@ -378,7 +504,10 @@ fn run_pending(dir: &Path, stop_after: Option<u8>, startup: bool) -> Result<bool
             if let Err(e) = fs::rename(&tmp, &target) {
                 let _ = fs::remove_file(&tmp);
                 rollback(dir, &pending);
-                return Err(format!("Couldn't put the copy in place ({}). The old files were put back.", plain_io(&e)));
+                return Err(format!(
+                    "Couldn't put the copy in place ({}). The old files were put back.",
+                    plain_io(&e)
+                ));
             }
             if stopped(3) {
                 return Err("stopped".into());
@@ -411,7 +540,10 @@ fn rollback(dir: &Path, pending: &Pending) -> bool {
     } else {
         // Files are still aside: the note stays out of the way (so no later start acts on it)
         // and the run reports it.
-        let _ = fs::rename(dir.join(MARKER), dir.join(format!("{MARKER}.bad-{}", stamp_now())));
+        let _ = fs::rename(
+            dir.join(MARKER),
+            dir.join(format!("{MARKER}.bad-{}", stamp_now())),
+        );
     }
     all
 }
@@ -422,12 +554,21 @@ fn copy_whole(source: &Path, dest: &Path) -> Result<(), String> {
         return Err("it is not a whole database".to_string());
     }
     {
-        let conn = Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX).map_err(|e| e.to_string())?;
+        let conn = Connection::open_with_flags(
+            source,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(|e| e.to_string())?;
         conn.busy_timeout(PROBE_WAIT).map_err(|e| e.to_string())?;
-        conn.execute("VACUUM INTO ?1", [dest.to_string_lossy().as_ref()]).map_err(|e| e.to_string())?;
+        conn.execute("VACUUM INTO ?1", [dest.to_string_lossy().as_ref()])
+            .map_err(|e| e.to_string())?;
     }
     // Flushed to disk before it is renamed into place (a write handle: Windows needs one to flush).
-    fs::OpenOptions::new().write(true).open(dest).and_then(|f| f.sync_all()).map_err(|e| e.to_string())?;
+    fs::OpenOptions::new()
+        .write(true)
+        .open(dest)
+        .and_then(|f| f.sync_all())
+        .map_err(|e| e.to_string())?;
     if inspect(dest).is_none() {
         return Err("the copy did not check out".to_string());
     }
@@ -453,15 +594,25 @@ mod tests {
     /// A real database file with `n` meetings (no WAL), at `user_version`.
     fn make_db(path: &Path, meetings: i64, version: i64) {
         let conn = Connection::open(path).unwrap();
-        conn.execute_batch("CREATE TABLE meetings (id TEXT PRIMARY KEY, title TEXT, pad TEXT)").unwrap();
+        conn.execute_batch("CREATE TABLE meetings (id TEXT PRIMARY KEY, title TEXT, pad TEXT)")
+            .unwrap();
         for i in 0..meetings {
-            conn.execute("INSERT INTO meetings VALUES (?1, 't', ?2)", rusqlite::params![format!("m{i}"), "x".repeat(2000)]).unwrap();
+            conn.execute(
+                "INSERT INTO meetings VALUES (?1, 't', ?2)",
+                rusqlite::params![format!("m{i}"), "x".repeat(2000)],
+            )
+            .unwrap();
         }
-        conn.execute_batch(&format!("PRAGMA user_version = {version}")).unwrap();
+        conn.execute_batch(&format!("PRAGMA user_version = {version}"))
+            .unwrap();
     }
 
     fn names(dir: &Path) -> Vec<String> {
-        let mut v: Vec<String> = fs::read_dir(dir).unwrap().filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        let mut v: Vec<String> = fs::read_dir(dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
         v.sort();
         v
     }
@@ -472,7 +623,10 @@ mod tests {
         let path = d.join(DB_NAME);
         assert!(probe(&path).is_ok(), "a first start");
         fs::write(&path, b"").unwrap();
-        assert!(probe(&path).is_ok(), "an empty file is a valid empty database");
+        assert!(
+            probe(&path).is_ok(),
+            "an empty file is a valid empty database"
+        );
         fs::remove_file(&path).unwrap();
         make_db(&path, 3, 15);
         let before = fs::read(&path).unwrap();
@@ -487,7 +641,9 @@ mod tests {
     fn random_bytes_a_wrong_header_and_a_truncated_file_are_unreadable() {
         let d = dir("bad");
         let path = d.join(DB_NAME);
-        let noise: Vec<u8> = (0..8192u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect();
+        let noise: Vec<u8> = (0..8192u32)
+            .map(|i| (i.wrapping_mul(2654435761) >> 13) as u8)
+            .collect();
         fs::write(&path, &noise).unwrap();
         assert_eq!(probe(&path).unwrap_err().0, ProblemKind::Unreadable);
         // Too short to hold a header.
@@ -567,8 +723,15 @@ mod tests {
         let offered: Vec<String> = list_backups(&d).into_iter().map(|b| b.name).collect();
         let mut sorted = offered.clone();
         sorted.sort();
-        assert_eq!(sorted, vec!["nexq-backup-2026.db", "nexq-before-workspaces.db"], "{offered:?}");
-        let info = list_backups(&d).into_iter().find(|b| b.name == "nexq-before-workspaces.db").unwrap();
+        assert_eq!(
+            sorted,
+            vec!["nexq-backup-2026.db", "nexq-before-workspaces.db"],
+            "{offered:?}"
+        );
+        let info = list_backups(&d)
+            .into_iter()
+            .find(|b| b.name == "nexq-before-workspaces.db")
+            .unwrap();
         assert_eq!(info.meetings, Some(7));
         assert!(info.bytes > 0 && info.created_at > 0);
         // No copies at all: nothing offered.
@@ -583,18 +746,39 @@ mod tests {
         fs::write(d.join("lucid.db-wal"), b"damaged wal").unwrap();
         fs::write(d.join("lucid.db-shm"), b"damaged shm").unwrap();
         make_db(&d.join("nexq-before-workspaces.db"), 5, 8);
-        restore_copy(&d, "nexq-before-workspaces.db", 1234, ProblemKind::Unreadable).unwrap();
+        restore_copy(
+            &d,
+            "nexq-before-workspaces.db",
+            1234,
+            ProblemKind::Unreadable,
+        )
+        .unwrap();
         // The old files are all kept, under one stamp.
-        assert_eq!(fs::read(d.join("lucid.db.damaged-1234")).unwrap(), b"damaged main");
-        assert_eq!(fs::read(d.join("lucid.db.damaged-1234-wal")).unwrap(), b"damaged wal");
-        assert_eq!(fs::read(d.join("lucid.db.damaged-1234-shm")).unwrap(), b"damaged shm");
+        assert_eq!(
+            fs::read(d.join("lucid.db.damaged-1234")).unwrap(),
+            b"damaged main"
+        );
+        assert_eq!(
+            fs::read(d.join("lucid.db.damaged-1234-wal")).unwrap(),
+            b"damaged wal"
+        );
+        assert_eq!(
+            fs::read(d.join("lucid.db.damaged-1234-shm")).unwrap(),
+            b"damaged shm"
+        );
         assert!(!d.join("lucid.db-wal").exists() && !d.join("lucid.db-shm").exists());
         // The copy is in as lucid.db, whole, and the source copy is still there.
         assert!(probe(&d.join(DB_NAME)).is_ok());
-        let meetings: i64 = Connection::open(d.join(DB_NAME)).unwrap().query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0)).unwrap();
+        let meetings: i64 = Connection::open(d.join(DB_NAME))
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(meetings, 5);
         assert!(d.join("nexq-before-workspaces.db").exists());
-        assert!(!d.join(MARKER).exists() && !d.join(RESTORE_TMP).exists(), "nothing half done is left");
+        assert!(
+            !d.join(MARKER).exists() && !d.join(RESTORE_TMP).exists(),
+            "nothing half done is left"
+        );
         let _ = fs::remove_dir_all(d);
     }
 
@@ -603,8 +787,18 @@ mod tests {
         let d = dir("names");
         fs::write(d.join(DB_NAME), b"damaged").unwrap();
         make_db(&d.join("nexq-before-workspaces.db"), 1, 8);
-        for bad in ["../nexq-before-workspaces.db", "nexq-before-nothing.db", "lucid.db", "C:\\Windows\\x.db", "", "nexq-before-workspaces.db/.."] {
-            assert!(restore_copy(&d, bad, 1, ProblemKind::Unreadable).is_err(), "{bad:?}");
+        for bad in [
+            "../nexq-before-workspaces.db",
+            "nexq-before-nothing.db",
+            "lucid.db",
+            "C:\\Windows\\x.db",
+            "",
+            "nexq-before-workspaces.db/..",
+        ] {
+            assert!(
+                restore_copy(&d, bad, 1, ProblemKind::Unreadable).is_err(),
+                "{bad:?}"
+            );
         }
         // A damaged copy is refused too, and the damaged file stayed where it was.
         fs::write(d.join("nexq-backup-bad.db"), b"junk").unwrap();
@@ -621,16 +815,41 @@ mod tests {
             fs::write(d.join(DB_NAME), b"damaged main").unwrap();
             fs::write(d.join("lucid.db-wal"), b"damaged wal").unwrap();
             make_db(&d.join("nexq-before-workspaces.db"), 4, 8);
-            write_marker(&d, &Pending { action: "restore".into(), source: Some("nexq-before-workspaces.db".into()), stamp: 99, phase: planned() }).unwrap();
-            assert!(run_pending(&d, Some(stop), false).is_err(), "stopped after step {stop}");
+            write_marker(
+                &d,
+                &Pending {
+                    action: "restore".into(),
+                    source: Some("nexq-before-workspaces.db".into()),
+                    stamp: 99,
+                    phase: planned(),
+                },
+            )
+            .unwrap();
+            assert!(
+                run_pending(&d, Some(stop), false).is_err(),
+                "stopped after step {stop}"
+            );
             // The next start finishes it, and finishing again changes nothing.
             assert_eq!(resume_pending(&d), Ok(true));
             assert_eq!(resume_pending(&d), Ok(false));
-            let count: i64 = Connection::open(d.join(DB_NAME)).unwrap().query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0)).unwrap();
+            let count: i64 = Connection::open(d.join(DB_NAME))
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0))
+                .unwrap();
             assert_eq!(count, 4, "stop {stop}");
-            assert_eq!(fs::read(d.join("lucid.db.damaged-99")).unwrap(), b"damaged main", "stop {stop}");
-            assert_eq!(fs::read(d.join("lucid.db.damaged-99-wal")).unwrap(), b"damaged wal");
-            let asides = names(&d).into_iter().filter(|n| n.contains(".damaged-")).count();
+            assert_eq!(
+                fs::read(d.join("lucid.db.damaged-99")).unwrap(),
+                b"damaged main",
+                "stop {stop}"
+            );
+            assert_eq!(
+                fs::read(d.join("lucid.db.damaged-99-wal")).unwrap(),
+                b"damaged wal"
+            );
+            let asides = names(&d)
+                .into_iter()
+                .filter(|n| n.contains(".damaged-"))
+                .count();
             assert_eq!(asides, 2, "put aside once, never twice (stop {stop})");
             assert!(!d.join(MARKER).exists() && !d.join(RESTORE_TMP).exists());
             let _ = fs::remove_dir_all(d);
@@ -642,11 +861,24 @@ mod tests {
         let d = dir("gone");
         fs::write(d.join(DB_NAME), b"damaged main").unwrap();
         make_db(&d.join("nexq-before-workspaces.db"), 2, 8);
-        write_marker(&d, &Pending { action: "restore".into(), source: Some("nexq-before-workspaces.db".into()), stamp: 5, phase: planned() }).unwrap();
+        write_marker(
+            &d,
+            &Pending {
+                action: "restore".into(),
+                source: Some("nexq-before-workspaces.db".into()),
+                stamp: 5,
+                phase: planned(),
+            },
+        )
+        .unwrap();
         assert!(run_pending(&d, Some(1), false).is_err());
         fs::remove_file(d.join("nexq-before-workspaces.db")).unwrap();
         assert!(resume_pending(&d).is_err());
-        assert_eq!(fs::read(d.join(DB_NAME)).unwrap(), b"damaged main", "back where it was");
+        assert_eq!(
+            fs::read(d.join(DB_NAME)).unwrap(),
+            b"damaged main",
+            "back where it was"
+        );
         assert!(!d.join(MARKER).exists() && !d.join("lucid.db.damaged-5").exists());
         let _ = fs::remove_dir_all(d);
     }
@@ -658,14 +890,29 @@ mod tests {
         fs::write(d.join("lucid.db-shm"), b"shm").unwrap();
         start_new(&d, 321, ProblemKind::Unreadable).unwrap();
         assert!(!d.join(DB_NAME).exists() && !d.join("lucid.db-shm").exists());
-        assert_eq!(fs::read(d.join("lucid.db.damaged-321")).unwrap(), b"damaged main");
-        assert_eq!(fs::read(d.join("lucid.db.damaged-321-shm")).unwrap(), b"shm");
+        assert_eq!(
+            fs::read(d.join("lucid.db.damaged-321")).unwrap(),
+            b"damaged main"
+        );
+        assert_eq!(
+            fs::read(d.join("lucid.db.damaged-321-shm")).unwrap(),
+            b"shm"
+        );
         assert!(!d.join(MARKER).exists());
         // A stop in the middle is finished the same way.
         let e = dir("new-cut");
         fs::write(e.join(DB_NAME), b"main").unwrap();
         fs::write(e.join("lucid.db-wal"), b"wal").unwrap();
-        write_marker(&e, &Pending { action: "new".into(), source: None, stamp: 8, phase: planned() }).unwrap();
+        write_marker(
+            &e,
+            &Pending {
+                action: "new".into(),
+                source: None,
+                stamp: 8,
+                phase: planned(),
+            },
+        )
+        .unwrap();
         assert!(run_pending(&e, Some(1), false).is_err());
         assert_eq!(resume_pending(&e), Ok(true));
         assert!(!e.join(DB_NAME).exists() && e.join("lucid.db.damaged-8-wal").exists());
@@ -681,8 +928,10 @@ mod tests {
         {
             // A write that only lives in the copy's -wal (named like its aside set).
             let conn = Connection::open(&copy).unwrap();
-            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;").unwrap();
-            conn.execute("INSERT INTO meetings VALUES ('late', 't', '')", []).unwrap();
+            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;")
+                .unwrap();
+            conn.execute("INSERT INTO meetings VALUES ('late', 't', '')", [])
+                .unwrap();
             std::mem::forget(conn); // leave the -wal in place, as a crash would
         }
         let shown = list_backups(&d);
@@ -690,7 +939,10 @@ mod tests {
         assert_eq!(shown[0].meetings, Some(2), "the copy is read with its -wal");
         fs::write(d.join(DB_NAME), b"damaged").unwrap();
         restore_copy(&d, "lucid.db.damaged-1", 2, ProblemKind::Unreadable).unwrap();
-        let n: i64 = Connection::open(d.join(DB_NAME)).unwrap().query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0)).unwrap();
+        let n: i64 = Connection::open(d.join(DB_NAME))
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(n, 2);
         let _ = fs::remove_dir_all(d);
     }
@@ -702,9 +954,15 @@ mod tests {
         make_db(&db, 40, top_version());
         let len = fs::metadata(&db).unwrap().len();
         assert!(header_problem(&db, len).is_none());
-        assert!(header_problem(&db, len - 4096).is_some(), "short with no wal");
+        assert!(
+            header_problem(&db, len - 4096).is_some(),
+            "short with no wal"
+        );
         fs::write(d.join(format!("{DB_NAME}-wal")), [1u8; 64]).unwrap();
-        assert!(header_problem(&db, len - 4096).is_none(), "its missing pages may be in the wal");
+        assert!(
+            header_problem(&db, len - 4096).is_none(),
+            "its missing pages may be in the wal"
+        );
     }
 
     #[test]
@@ -713,13 +971,22 @@ mod tests {
         fs::write(d.join(DB_NAME), b"garbage").unwrap();
         start_new(&d, 7, ProblemKind::Unreadable).unwrap();
         // the note came back (its removal was lost) and the new database has a wal by now
-        let note = serde_json::to_string(&Pending { action: "new".into(), source: None, stamp: 7, phase: "aside".into() }).unwrap();
+        let note = serde_json::to_string(&Pending {
+            action: "new".into(),
+            source: None,
+            stamp: 7,
+            phase: "aside".into(),
+        })
+        .unwrap();
         fs::write(d.join(MARKER), &note).unwrap();
         fs::write(d.join(DB_NAME), b"new").unwrap();
         fs::write(d.join(format!("{DB_NAME}-wal")), b"new wal").unwrap();
         assert_eq!(resume_pending(&d), Ok(true));
         assert_eq!(fs::read(d.join(DB_NAME)).unwrap(), b"new");
-        assert_eq!(fs::read(d.join(format!("{DB_NAME}-wal"))).unwrap(), b"new wal");
+        assert_eq!(
+            fs::read(d.join(format!("{DB_NAME}-wal"))).unwrap(),
+            b"new wal"
+        );
     }
 
     #[test]
@@ -737,7 +1004,10 @@ mod tests {
         fs::write(d.join(DB_NAME), b"").unwrap();
         assert!(probe(&d.join(DB_NAME)).is_ok());
         make_db(&d.join("nexq-before-workspaces.db"), 3, top_version());
-        assert_eq!(probe(&d.join(DB_NAME)).unwrap_err().0, ProblemKind::Unreadable);
+        assert_eq!(
+            probe(&d.join(DB_NAME)).unwrap_err().0,
+            ProblemKind::Unreadable
+        );
     }
 
     // QA round 3: a locked file is never "damaged", and a failed recovery changes nothing.
@@ -746,13 +1016,25 @@ mod tests {
     #[cfg(windows)]
     fn hold(path: &Path) -> fs::File {
         use std::os::windows::fs::OpenOptionsExt;
-        fs::OpenOptions::new().read(true).share_mode(0).open(path).unwrap()
+        fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(path)
+            .unwrap()
     }
 
     fn untouched(d: &Path, main: &[u8]) {
-        assert_eq!(fs::read(d.join(DB_NAME)).unwrap(), main, "the database file is as it was");
+        assert_eq!(
+            fs::read(d.join(DB_NAME)).unwrap(),
+            main,
+            "the database file is as it was"
+        );
         assert!(!d.join(MARKER).exists(), "no note left for the next start");
-        assert!(!names(d).iter().any(|n| n.contains(".damaged-")), "nothing was put aside: {:?}", names(d));
+        assert!(
+            !names(d).iter().any(|n| n.contains(".damaged-")),
+            "nothing was put aside: {:?}",
+            names(d)
+        );
     }
 
     #[cfg(windows)]
@@ -764,7 +1046,10 @@ mod tests {
         let held = hold(&d.join(DB_NAME));
         let (kind, why) = probe(&d.join(DB_NAME)).unwrap_err();
         assert_eq!(kind, ProblemKind::Locked, "{why}");
-        assert!(!why.contains("too short") && !why.contains("Uncategorized"), "{why}");
+        assert!(
+            !why.contains("too short") && !why.contains("Uncategorized"),
+            "{why}"
+        );
         assert!(why.contains("another program"), "plain words: {why}");
         for kind in [ProblemKind::Locked, ProblemKind::Unreadable] {
             assert!(start_new(&d, 5, kind).is_err());
@@ -787,8 +1072,16 @@ mod tests {
             assert!(err.contains("Nothing was changed"), "{err}");
             drop(held);
             untouched(&d, b"damaged main");
-            assert_eq!(fs::read(d.join("lucid.db-wal")).unwrap(), b"wal", "held {held_suffix}");
-            assert_eq!(fs::read(d.join("lucid.db-shm")).unwrap(), b"shm", "held {held_suffix}");
+            assert_eq!(
+                fs::read(d.join("lucid.db-wal")).unwrap(),
+                b"wal",
+                "held {held_suffix}"
+            );
+            assert_eq!(
+                fs::read(d.join("lucid.db-shm")).unwrap(),
+                b"shm",
+                "held {held_suffix}"
+            );
             // the next start does nothing either
             assert_eq!(resume_pending(&d), Ok(false));
             untouched(&d, b"damaged main");
@@ -801,7 +1094,16 @@ mod tests {
         fs::write(d.join(DB_NAME), b"damaged main").unwrap();
         fs::write(d.join("lucid.db-wal"), b"wal").unwrap();
         // the copy named in the note is gone when the restore wants it
-        write_marker(&d, &Pending { action: "restore".into(), source: Some("nexq-gone.db".into()), stamp: 3, phase: planned() }).unwrap();
+        write_marker(
+            &d,
+            &Pending {
+                action: "restore".into(),
+                source: Some("nexq-gone.db".into()),
+                stamp: 3,
+                phase: planned(),
+            },
+        )
+        .unwrap();
         let err = run_pending(&d, None, false).unwrap_err();
         assert!(err.contains("Couldn't restore"), "{err}");
         untouched(&d, b"damaged main");
@@ -816,13 +1118,30 @@ mod tests {
             fs::write(d.join(DB_NAME), b"healthy main").unwrap();
             fs::write(d.join("lucid.db-wal"), b"wal").unwrap();
             fs::write(d.join("lucid.db-shm"), b"shm").unwrap();
-            write_marker(&d, &Pending { action: "new".into(), source: None, stamp: 4, phase: planned() }).unwrap();
+            write_marker(
+                &d,
+                &Pending {
+                    action: "new".into(),
+                    source: None,
+                    stamp: 4,
+                    phase: planned(),
+                },
+            )
+            .unwrap();
             assert!(run_pending(&d, Some(cut), false).is_err());
             // Not every file is aside yet: the next start puts back what moved, and continues nothing.
             assert_eq!(resume_pending(&d), Ok(false), "cut {cut}");
             untouched(&d, b"healthy main");
-            assert_eq!(fs::read(d.join("lucid.db-wal")).unwrap(), b"wal", "cut {cut}");
-            assert_eq!(fs::read(d.join("lucid.db-shm")).unwrap(), b"shm", "cut {cut}");
+            assert_eq!(
+                fs::read(d.join("lucid.db-wal")).unwrap(),
+                b"wal",
+                "cut {cut}"
+            );
+            assert_eq!(
+                fs::read(d.join("lucid.db-shm")).unwrap(),
+                b"shm",
+                "cut {cut}"
+            );
         }
     }
 
@@ -834,7 +1153,12 @@ mod tests {
                 make_db(&d.join(DB_NAME), 5, top_version());
                 make_db(&d.join("nexq-before-workspaces.db"), 2, 8);
                 let before = fs::read(d.join(DB_NAME)).unwrap();
-                let note = Pending { action: action.into(), source: Some("nexq-before-workspaces.db".into()), stamp: 1, phase: phase.into() };
+                let note = Pending {
+                    action: action.into(),
+                    source: Some("nexq-before-workspaces.db".into()),
+                    stamp: 1,
+                    phase: phase.into(),
+                };
                 fs::write(d.join(MARKER), serde_json::to_string(&note).unwrap()).unwrap();
                 assert_eq!(resume_pending(&d), Ok(false), "{phase} {action}");
                 untouched(&d, &before);
@@ -849,7 +1173,12 @@ mod tests {
         fs::write(d.join(DB_NAME), b"main now").unwrap();
         // an attempt long ago moved the -wal and stopped
         fs::write(d.join("lucid.db.damaged-1-wal"), b"old wal").unwrap();
-        let note = Pending { action: "new".into(), source: None, stamp: 1, phase: planned() };
+        let note = Pending {
+            action: "new".into(),
+            source: None,
+            stamp: 1,
+            phase: planned(),
+        };
         fs::write(d.join(MARKER), serde_json::to_string(&note).unwrap()).unwrap();
         assert_eq!(resume_pending(&d), Ok(false));
         assert_eq!(fs::read(d.join(DB_NAME)).unwrap(), b"main now");
@@ -868,7 +1197,13 @@ mod tests {
         assert!(restore_copy(&d, "nexq-before-workspaces.db", 6, ProblemKind::Unreadable).is_err());
         untouched(&d, &before);
         // A file that opens but whose upgrade failed is exactly what a restore is for.
-        restore_copy(&d, "nexq-before-workspaces.db", 6, ProblemKind::UpgradeFailed).unwrap();
+        restore_copy(
+            &d,
+            "nexq-before-workspaces.db",
+            6,
+            ProblemKind::UpgradeFailed,
+        )
+        .unwrap();
         assert!(d.join("lucid.db.damaged-6").exists());
     }
 
@@ -877,19 +1212,33 @@ mod tests {
         let d = dir("early");
         let db = d.join(DB_NAME);
         make_db(&db, 40, top_version());
-        assert!(!open_needs_early_check(&db), "a whole file waits for the daily check");
+        assert!(
+            !open_needs_early_check(&db),
+            "a whole file waits for the daily check"
+        );
         let whole = fs::read(&db).unwrap();
         fs::write(&db, &whole[..whole.len() / 2]).unwrap();
-        assert!(!open_needs_early_check(&db), "cut short with no -wal is reported as damaged instead");
+        assert!(
+            !open_needs_early_check(&db),
+            "cut short with no -wal is reported as damaged instead"
+        );
         fs::write(d.join(format!("{DB_NAME}-wal")), [1u8; 64]).unwrap();
-        assert!(open_needs_early_check(&db), "SQLite decides here, so look right after the open");
+        assert!(
+            open_needs_early_check(&db),
+            "SQLite decides here, so look right after the open"
+        );
     }
 
     #[test]
     fn io_failures_are_said_in_plain_words() {
-        assert_eq!(plain_io(&std::io::Error::from_raw_os_error(32)), "it is open in another program");
+        assert_eq!(
+            plain_io(&std::io::Error::from_raw_os_error(32)),
+            "it is open in another program"
+        );
         let other = std::io::Error::new(std::io::ErrorKind::Other, "disk said no");
         assert_eq!(plain_io(&other), "disk said no");
-        assert!(!plain_io(&std::io::Error::from(std::io::ErrorKind::TimedOut)).contains("os error"));
+        assert!(
+            !plain_io(&std::io::Error::from(std::io::ErrorKind::TimedOut)).contains("os error")
+        );
     }
 }
