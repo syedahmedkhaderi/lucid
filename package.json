@@ -2,10 +2,12 @@
   "name": "lucid",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "license:inventory": "node scripts/generate-license-inventory.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "release": "node scripts/release.js",

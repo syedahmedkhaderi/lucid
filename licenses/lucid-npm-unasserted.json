@@ -1,0 +1,688 @@
+[
+  {
+    "name": "@types/debug",
+    "version": "4.1.12",
+    "licenseFiles": [
+      "node_modules/@types/debug/LICENSE"
+    ]
+  },
+  {
+    "name": "@types/estree-jsx",
+    "version": "1.0.5",
+    "licenseFiles": [
+      "node_modules/@types/estree-jsx/LICENSE"
+    ]
+  },
+  {
+    "name": "@types/hast",
+    "version": "3.0.4",
+    "licenseFiles": [
+      "node_modules/@types/hast/LICENSE"
+    ]
+  },
+  {
+    "name": "@types/mdast",
+    "version": "4.0.4",
+    "licenseFiles": [
+      "node_modules/@types/mdast/LICENSE"
+    ]
+  },
+  {
+    "name": "@types/ms",
+    "version": "2.1.0",
+    "licenseFiles": [
+      "node_modules/@types/ms/LICENSE"
+    ]
+  },
+  {
+    "name": "@types/unist",
+    "version": "3.0.3",
+    "licenseFiles": [
+      "node_modules/@types/unist/LICENSE"
+    ]
+  },
+  {
+    "name": "@ungap/structured-clone",
+    "version": "1.3.0",
+    "licenseFiles": [
+      "node_modules/@ungap/structured-clone/LICENSE"
+    ]
+  },
+  {
+    "name": "bail",
+    "version": "2.0.2",
+    "licenseFiles": [
+      "node_modules/bail/license"
+    ]
+  },
+  {
+    "name": "ccount",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/ccount/license"
+    ]
+  },
+  {
+    "name": "character-entities",
+    "version": "2.0.2",
+    "licenseFiles": [
+      "node_modules/character-entities/license"
+    ]
+  },
+  {
+    "name": "character-entities-html4",
+    "version": "2.1.0",
+    "licenseFiles": [
+      "node_modules/character-entities-html4/license"
+    ]
+  },
+  {
+    "name": "character-entities-legacy",
+    "version": "3.0.0",
+    "licenseFiles": [
+      "node_modules/character-entities-legacy/license"
+    ]
+  },
+  {
+    "name": "character-reference-invalid",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/character-reference-invalid/license"
+    ]
+  },
+  {
+    "name": "class-variance-authority",
+    "version": "0.7.1",
+    "licenseFiles": [
+      "node_modules/class-variance-authority/LICENSE"
+    ]
+  },
+  {
+    "name": "clsx",
+    "version": "2.1.1",
+    "licenseFiles": [
+      "node_modules/clsx/license"
+    ]
+  },
+  {
+    "name": "comma-separated-tokens",
+    "version": "2.0.3",
+    "licenseFiles": [
+      "node_modules/comma-separated-tokens/license"
+    ]
+  },
+  {
+    "name": "debug",
+    "version": "4.4.3",
+    "licenseFiles": [
+      "node_modules/debug/LICENSE"
+    ]
+  },
+  {
+    "name": "decode-named-character-reference",
+    "version": "1.3.0",
+    "licenseFiles": [
+      "node_modules/decode-named-character-reference/license"
+    ]
+  },
+  {
+    "name": "devlop",
+    "version": "1.1.0",
+    "licenseFiles": [
+      "node_modules/devlop/license"
+    ]
+  },
+  {
+    "name": "escape-string-regexp",
+    "version": "5.0.0",
+    "licenseFiles": [
+      "node_modules/escape-string-regexp/license"
+    ]
+  },
+  {
+    "name": "estree-util-is-identifier-name",
+    "version": "3.0.0",
+    "licenseFiles": [
+      "node_modules/estree-util-is-identifier-name/license"
+    ]
+  },
+  {
+    "name": "extend",
+    "version": "3.0.2",
+    "licenseFiles": [
+      "node_modules/extend/LICENSE"
+    ]
+  },
+  {
+    "name": "hast-util-to-jsx-runtime",
+    "version": "2.3.6",
+    "licenseFiles": [
+      "node_modules/hast-util-to-jsx-runtime/license"
+    ]
+  },
+  {
+    "name": "hast-util-whitespace",
+    "version": "3.0.0",
+    "licenseFiles": [
+      "node_modules/hast-util-whitespace/license"
+    ]
+  },
+  {
+    "name": "html-url-attributes",
+    "version": "3.0.1",
+    "licenseFiles": [
+      "node_modules/html-url-attributes/license"
+    ]
+  },
+  {
+    "name": "inline-style-parser",
+    "version": "0.2.7",
+    "licenseFiles": [
+      "node_modules/inline-style-parser/LICENSE"
+    ]
+  },
+  {
+    "name": "is-hexadecimal",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/is-hexadecimal/license"
+    ]
+  },
+  {
+    "name": "is-plain-obj",
+    "version": "4.1.0",
+    "licenseFiles": [
+      "node_modules/is-plain-obj/license"
+    ]
+  },
+  {
+    "name": "longest-streak",
+    "version": "3.1.0",
+    "licenseFiles": [
+      "node_modules/longest-streak/license"
+    ]
+  },
+  {
+    "name": "lucide-react",
+    "version": "0.400.0",
+    "licenseFiles": [
+      "node_modules/lucide-react/LICENSE"
+    ]
+  },
+  {
+    "name": "markdown-table",
+    "version": "3.0.4",
+    "licenseFiles": [
+      "node_modules/markdown-table/license"
+    ]
+  },
+  {
+    "name": "mdast-util-find-and-replace",
+    "version": "3.0.2",
+    "licenseFiles": [
+      "node_modules/mdast-util-find-and-replace/license"
+    ]
+  },
+  {
+    "name": "mdast-util-from-markdown",
+    "version": "2.0.3",
+    "licenseFiles": [
+      "node_modules/mdast-util-from-markdown/license"
+    ]
+  },
+  {
+    "name": "mdast-util-gfm",
+    "version": "3.1.0",
+    "licenseFiles": [
+      "node_modules/mdast-util-gfm/license"
+    ]
+  },
+  {
+    "name": "mdast-util-gfm-autolink-literal",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/mdast-util-gfm-autolink-literal/license"
+    ]
+  },
+  {
+    "name": "mdast-util-gfm-footnote",
+    "version": "2.1.0",
+    "licenseFiles": [
+      "node_modules/mdast-util-gfm-footnote/license"
+    ]
+  },
+  {
+    "name": "mdast-util-gfm-strikethrough",
+    "version": "2.0.0",
+    "licenseFiles": [
+      "node_modules/mdast-util-gfm-strikethrough/license"
+    ]
+  },
+  {
+    "name": "mdast-util-gfm-table",
+    "version": "2.0.0",
+    "licenseFiles": [
+      "node_modules/mdast-util-gfm-table/license"
+    ]
+  },
+  {
+    "name": "mdast-util-gfm-task-list-item",
+    "version": "2.0.0",
+    "licenseFiles": [
+      "node_modules/mdast-util-gfm-task-list-item/license"
+    ]
+  },
+  {
+    "name": "mdast-util-mdx-expression",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/mdast-util-mdx-expression/license"
+    ]
+  },
+  {
+    "name": "mdast-util-mdx-jsx",
+    "version": "3.2.0",
+    "licenseFiles": [
+      "node_modules/mdast-util-mdx-jsx/license"
+    ]
+  },
+  {
+    "name": "mdast-util-mdxjs-esm",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/mdast-util-mdxjs-esm/license"
+    ]
+  },
+  {
+    "name": "mdast-util-phrasing",
+    "version": "4.1.0",
+    "licenseFiles": [
+      "node_modules/mdast-util-phrasing/license"
+    ]
+  },
+  {
+    "name": "mdast-util-to-hast",
+    "version": "13.2.1",
+    "licenseFiles": [
+      "node_modules/mdast-util-to-hast/license"
+    ]
+  },
+  {
+    "name": "mdast-util-to-markdown",
+    "version": "2.1.2",
+    "licenseFiles": [
+      "node_modules/mdast-util-to-markdown/license"
+    ]
+  },
+  {
+    "name": "mdast-util-to-string",
+    "version": "4.0.0",
+    "licenseFiles": [
+      "node_modules/mdast-util-to-string/license"
+    ]
+  },
+  {
+    "name": "micromark",
+    "version": "4.0.2",
+    "licenseFiles": [
+      "node_modules/micromark/license"
+    ]
+  },
+  {
+    "name": "micromark-core-commonmark",
+    "version": "2.0.3",
+    "licenseFiles": [
+      "node_modules/micromark-core-commonmark/license"
+    ]
+  },
+  {
+    "name": "micromark-extension-gfm",
+    "version": "3.0.0",
+    "licenseFiles": [
+      "node_modules/micromark-extension-gfm/license"
+    ]
+  },
+  {
+    "name": "micromark-extension-gfm-autolink-literal",
+    "version": "2.1.0",
+    "licenseFiles": [
+      "node_modules/micromark-extension-gfm-autolink-literal/license"
+    ]
+  },
+  {
+    "name": "micromark-extension-gfm-footnote",
+    "version": "2.1.0",
+    "licenseFiles": [
+      "node_modules/micromark-extension-gfm-footnote/license"
+    ]
+  },
+  {
+    "name": "micromark-extension-gfm-strikethrough",
+    "version": "2.1.0",
+    "licenseFiles": [
+      "node_modules/micromark-extension-gfm-strikethrough/license"
+    ]
+  },
+  {
+    "name": "micromark-extension-gfm-table",
+    "version": "2.1.1",
+    "licenseFiles": [
+      "node_modules/micromark-extension-gfm-table/license"
+    ]
+  },
+  {
+    "name": "micromark-extension-gfm-tagfilter",
+    "version": "2.0.0",
+    "licenseFiles": [
+      "node_modules/micromark-extension-gfm-tagfilter/license"
+    ]
+  },
+  {
+    "name": "micromark-extension-gfm-task-list-item",
+    "version": "2.1.0",
+    "licenseFiles": [
+      "node_modules/micromark-extension-gfm-task-list-item/license"
+    ]
+  },
+  {
+    "name": "micromark-factory-destination",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-factory-destination/license"
+    ]
+  },
+  {
+    "name": "micromark-factory-label",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-factory-label/license"
+    ]
+  },
+  {
+    "name": "micromark-factory-space",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-factory-space/license"
+    ]
+  },
+  {
+    "name": "micromark-factory-title",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-factory-title/license"
+    ]
+  },
+  {
+    "name": "micromark-factory-whitespace",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-factory-whitespace/license"
+    ]
+  },
+  {
+    "name": "micromark-util-character",
+    "version": "2.1.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-character/license"
+    ]
+  },
+  {
+    "name": "micromark-util-chunked",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-chunked/license"
+    ]
+  },
+  {
+    "name": "micromark-util-classify-character",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-classify-character/license"
+    ]
+  },
+  {
+    "name": "micromark-util-combine-extensions",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-combine-extensions/license"
+    ]
+  },
+  {
+    "name": "micromark-util-decode-numeric-character-reference",
+    "version": "2.0.2",
+    "licenseFiles": [
+      "node_modules/micromark-util-decode-numeric-character-reference/license"
+    ]
+  },
+  {
+    "name": "micromark-util-decode-string",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-decode-string/license"
+    ]
+  },
+  {
+    "name": "micromark-util-encode",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-encode/license"
+    ]
+  },
+  {
+    "name": "micromark-util-html-tag-name",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-html-tag-name/license"
+    ]
+  },
+  {
+    "name": "micromark-util-normalize-identifier",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-normalize-identifier/license"
+    ]
+  },
+  {
+    "name": "micromark-util-resolve-all",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-resolve-all/license"
+    ]
+  },
+  {
+    "name": "micromark-util-sanitize-uri",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-sanitize-uri/license"
+    ]
+  },
+  {
+    "name": "micromark-util-subtokenize",
+    "version": "2.1.0",
+    "licenseFiles": [
+      "node_modules/micromark-util-subtokenize/license"
+    ]
+  },
+  {
+    "name": "micromark-util-symbol",
+    "version": "2.0.1",
+    "licenseFiles": [
+      "node_modules/micromark-util-symbol/license"
+    ]
+  },
+  {
+    "name": "micromark-util-types",
+    "version": "2.0.2",
+    "licenseFiles": [
+      "node_modules/micromark-util-types/license"
+    ]
+  },
+  {
+    "name": "ms",
+    "version": "2.1.3",
+    "licenseFiles": [
+      "node_modules/ms/license.md"
+    ]
+  },
+  {
+    "name": "parse-entities",
+    "version": "4.0.2",
+    "licenseFiles": [
+      "node_modules/parse-entities/license"
+    ]
+  },
+  {
+    "name": "@types/unist",
+    "version": "2.0.11",
+    "licenseFiles": [
+      "node_modules/@types/unist/LICENSE"
+    ]
+  },
+  {
+    "name": "property-information",
+    "version": "7.1.0",
+    "licenseFiles": [
+      "node_modules/property-information/license"
+    ]
+  },
+  {
+    "name": "remark-gfm",
+    "version": "4.0.1",
+    "licenseFiles": [
+      "node_modules/remark-gfm/license"
+    ]
+  },
+  {
+    "name": "remark-parse",
+    "version": "11.0.0",
+    "licenseFiles": [
+      "node_modules/remark-parse/license"
+    ]
+  },
+  {
+    "name": "remark-rehype",
+    "version": "11.1.2",
+    "licenseFiles": [
+      "node_modules/remark-rehype/license"
+    ]
+  },
+  {
+    "name": "remark-stringify",
+    "version": "11.0.0",
+    "licenseFiles": [
+      "node_modules/remark-stringify/license"
+    ]
+  },
+  {
+    "name": "space-separated-tokens",
+    "version": "2.0.2",
+    "licenseFiles": [
+      "node_modules/space-separated-tokens/license"
+    ]
+  },
+  {
+    "name": "stringify-entities",
+    "version": "4.0.4",
+    "licenseFiles": [
+      "node_modules/stringify-entities/license"
+    ]
+  },
+  {
+    "name": "style-to-js",
+    "version": "1.1.21",
+    "licenseFiles": [
+      "node_modules/style-to-js/LICENSE"
+    ]
+  },
+  {
+    "name": "style-to-object",
+    "version": "1.0.14",
+    "licenseFiles": [
+      "node_modules/style-to-object/LICENSE"
+    ]
+  },
+  {
+    "name": "tailwindcss-animate",
+    "version": "1.0.7",
+    "licenseFiles": [
+      "node_modules/tailwindcss-animate/LICENSE"
+    ]
+  },
+  {
+    "name": "trim-lines",
+    "version": "3.0.1",
+    "licenseFiles": [
+      "node_modules/trim-lines/license"
+    ]
+  },
+  {
+    "name": "trough",
+    "version": "2.2.0",
+    "licenseFiles": [
+      "node_modules/trough/license"
+    ]
+  },
+  {
+    "name": "unified",
+    "version": "11.0.5",
+    "licenseFiles": [
+      "node_modules/unified/license"
+    ]
+  },
+  {
+    "name": "unist-util-is",
+    "version": "6.0.1",
+    "licenseFiles": [
+      "node_modules/unist-util-is/license"
+    ]
+  },
+  {
+    "name": "unist-util-position",
+    "version": "5.0.0",
+    "licenseFiles": [
+      "node_modules/unist-util-position/license"
+    ]
+  },
+  {
+    "name": "unist-util-stringify-position",
+    "version": "4.0.0",
+    "licenseFiles": [
+      "node_modules/unist-util-stringify-position/license"
+    ]
+  },
+  {
+    "name": "unist-util-visit",
+    "version": "5.1.0",
+    "licenseFiles": [
+      "node_modules/unist-util-visit/license"
+    ]
+  },
+  {
+    "name": "unist-util-visit-parents",
+    "version": "6.0.2",
+    "licenseFiles": [
+      "node_modules/unist-util-visit-parents/license"
+    ]
+  },
+  {
+    "name": "vfile",
+    "version": "6.0.3",
+    "licenseFiles": [
+      "node_modules/vfile/license"
+    ]
+  },
+  {
+    "name": "vfile-message",
+    "version": "4.0.3",
+    "licenseFiles": [
+      "node_modules/vfile-message/license"
+    ]
+  },
+  {
+    "name": "zwitch",
+    "version": "2.0.4",
+    "licenseFiles": [
+      "node_modules/zwitch/license"
+    ]
+  }
+]
