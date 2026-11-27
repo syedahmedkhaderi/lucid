@@ -1,7 +1,7 @@
 //! Folder crawler. Finds the files of a user's notes folder that may be
 //! indexed and lists the ones that were skipped, with the reason.
 //!
-//! Rules (spec section 4): `.md .txt .pdf .docx` only; no hidden or system
+//! Rules (spec section 4): `.md .txt .pdf .docx .pptx` only; no hidden or system
 //! entries, no `node_modules`; no secret-looking names (`.env*`, `*.pem`,
 //! `*.key`, `id_*`, names holding credential, secret, token or password);
 //! files over 2 MB skipped; at most 5,000 files; symbolic links, reparse
@@ -11,7 +11,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const SUPPORTED_EXTENSIONS: &[&str] = &["md", "txt", "pdf", "docx"];
+pub const SUPPORTED_EXTENSIONS: &[&str] = &["md", "txt", "pdf", "docx", "pptx"];
 
 #[derive(Debug, Clone)]
 pub struct CrawlOptions {
@@ -320,6 +320,7 @@ mod tests {
         write(&root, "notes/a.md", "# A");
         write(&root, "notes/deep/b.TXT", "b");
         write(&root, "c.docx", "not really");
+        write(&root, "d.pptx", "not really");
         write(&root, "image.png", "x");
         write(&root, ".hidden/d.md", "hidden dir");
         write(&root, "node_modules/pkg/readme.md", "x");
@@ -331,7 +332,7 @@ mod tests {
         write(&root, "secrets/inside.md", "x");
         write(&root, "ok.md", "ok");
         let r = crawl(&root);
-        assert_eq!(rels(&r), vec!["c.docx", "notes/a.md", "notes/deep/b.TXT", "ok.md"]);
+        assert_eq!(rels(&r), vec!["c.docx", "d.pptx", "notes/a.md", "notes/deep/b.TXT", "ok.md"]);
         let reasons: Vec<_> = r.skipped.iter().map(|s| (s.rel_path.as_str(), s.reason.as_str())).collect();
         for name in [".env", "id_rsa", "server.pem", "my-credentials.md", "API Token notes.txt", "secrets"] {
             assert!(reasons.iter().any(|(p, _)| *p == name), "{name} not listed: {reasons:?}");

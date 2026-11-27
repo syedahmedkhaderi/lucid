@@ -4,6 +4,7 @@ pub mod resource_cache;
 pub mod token_counter;
 
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -36,6 +37,7 @@ pub const STATUS_READY: &str = "ready";
 pub const STATUS_LOADING: &str = "loading";
 /// Status of a document that can't be read.
 pub const STATUS_MISSING: &str = "missing";
+pub const MAX_CONTEXT_FILE_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Reads a document's text from its copied file.
 pub fn extract_text(file_type: &str, file_path: &str) -> Result<String, String> {
@@ -43,6 +45,7 @@ pub fn extract_text(file_type: &str, file_path: &str) -> Result<String, String> 
         "pdf" => pdf_extractor::extract_text_from_pdf(file_path),
         "txt" | "md" | NOTE_TYPE => file_loader::load_text_file(file_path),
         "docx" => crate::rag::file_processor::extract_docx_text(file_path),
+        "pptx" => crate::rag::pptx::extract_pptx_text(file_path),
         _ => Ok(String::new()),
     }
 }
@@ -185,6 +188,15 @@ impl ContextManager {
         if !source_path.exists() {
             return Err(format!("File not found: {}", file_path));
         }
+        let source_size = fs::metadata(source_path)
+            .map_err(|e| format!("Failed to inspect file: {}", e))?
+            .len();
+        if source_size == 0 {
+            return Err("This file is empty".to_string());
+        }
+        if source_size > MAX_CONTEXT_FILE_BYTES {
+            return Err("This file is larger than the 50 MB per-file limit".to_string());
+        }
 
         // Determine file type from extension
         let extension = source_path
@@ -198,9 +210,10 @@ impl ContextManager {
             "txt" => "txt",
             "md" => "md",
             "docx" => "docx",
+            "pptx" => "pptx",
             _ => {
                 return Err(format!(
-                    "Unsupported file type: .{}. Supported: .pdf, .txt, .md, .docx",
+                    "Unsupported file type: .{}. Supported: .pdf, .txt, .md, .docx, .pptx",
                     extension
                 ))
             }
@@ -220,8 +233,23 @@ impl ContextManager {
         let dest_filename = format!("{}_{}", resource_id, file_name);
         let dest_path = self.context_dir.join(&dest_filename);
 
-        fs::copy(source_path, &dest_path)
+        let mut source = fs::File::open(source_path)
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+        let mut dest = fs::File::create(&dest_path)
             .map_err(|e| format!("Failed to copy file to context directory: {}", e))?;
+        let copied = std::io::copy(
+            &mut source.by_ref().take(MAX_CONTEXT_FILE_BYTES + 1),
+            &mut dest,
+        );
+        drop(dest);
+        let copied = copied.map_err(|e| {
+            let _ = fs::remove_file(&dest_path);
+            format!("Failed to copy file to context directory: {}", e)
+        })?;
+        if copied > MAX_CONTEXT_FILE_BYTES {
+            let _ = fs::remove_file(&dest_path);
+            return Err("This file is larger than the 50 MB per-file limit".to_string());
+        }
 
         // Get file size
         let size_bytes = fs::metadata(&dest_path)
@@ -239,6 +267,7 @@ impl ContextManager {
             "docx" => crate::rag::file_processor::extract_docx_text(
                 dest_path.to_str().unwrap_or(file_path),
             ),
+            "pptx" => crate::rag::pptx::extract_pptx_text(dest_path.to_str().unwrap_or(file_path)),
             _ => Ok(String::new()),
         }
         .map_err(|e| {
@@ -768,6 +797,37 @@ fn points_sections(ctx: &ScopedContext) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::workspace::talking_points::PointText;
+
+    #[test]
+    fn rejects_empty_and_over_limit_uploads_before_copying() {
+        let root = std::env::temp_dir().join(format!("lucid-context-limits-{}", Uuid::new_v4()));
+        let context_dir = root.join("context");
+        fs::create_dir_all(&context_dir).unwrap();
+        let mut manager = ContextManager {
+            context_dir: context_dir.clone(),
+            resources: Vec::new(),
+            cache: ResourceCache::new(),
+            custom_instructions: String::new(),
+            wrapped: Default::default(),
+            capped: Default::default(),
+            revision: 0,
+        };
+        let empty = root.join("empty.txt");
+        fs::write(&empty, b"").unwrap();
+        assert_eq!(manager.load_file(empty.to_str().unwrap()).unwrap_err(), "This file is empty");
+
+        let oversized = root.join("oversized.txt");
+        fs::File::create(&oversized)
+            .unwrap()
+            .set_len(MAX_CONTEXT_FILE_BYTES + 1)
+            .unwrap();
+        assert!(manager
+            .load_file(oversized.to_str().unwrap())
+            .unwrap_err()
+            .contains("50 MB"));
+        assert_eq!(fs::read_dir(context_dir).unwrap().count(), 0);
+        fs::remove_dir_all(root).ok();
+    }
 
     fn manager_with(docs: &[(&str, &str)]) -> ContextManager {
         let mut m = ContextManager {

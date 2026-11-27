@@ -391,6 +391,8 @@ fn read_file(file: &CrawlFile, canon_root: &std::path::Path, max_bytes: u64) -> 
         .map_err(|_| "could not read this PDF".to_string())??,
         "docx" => catch_unwind(AssertUnwindSafe(|| crate::rag::file_processor::extract_docx_text_bytes(bytes)))
             .map_err(|_| "could not read this Word file".to_string())??,
+        "pptx" => catch_unwind(AssertUnwindSafe(|| crate::rag::pptx::extract_pptx_text_bytes(bytes)))
+            .map_err(|_| "could not read this PowerPoint file".to_string())??,
         other => return Err(format!("unsupported type .{other}")),
     };
     let text = crate::workspace_search::cjk::truncate_chars(&text, MAX_SOURCE_CHARS);
@@ -1542,6 +1544,45 @@ mod tests {
             zip.finish().unwrap();
         }
         buf.into_inner()
+    }
+
+    fn pptx_bytes(xml: &[u8]) -> Vec<u8> {
+        use std::io::Write;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            zip.start_file("ppt/slides/slide1.xml", options).unwrap();
+            zip.write_all(xml).unwrap();
+            zip.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    #[test]
+    fn pptx_slide_text_is_indexed_and_searchable_from_an_opted_in_folder() {
+        let root = temp_dir("idx-pptx");
+        fs::write(
+            root.join("launch.pptx"),
+            pptx_bytes(br#"<p:sld><a:p><a:r><a:t>The quasar launch ships in August.</a:t></a:r></a:p></p:sld>"#),
+        )
+        .unwrap();
+        let prov = Prov::new();
+        prov.folders.lock().unwrap().push(FolderInput {
+            id: "pptx-folder".into(),
+            path: root.clone(),
+            index_enabled: true,
+        });
+        let mut conn = mem_db();
+        let report = run(&mut conn, prov.as_ref());
+        assert_eq!(report.files_indexed, 1);
+        let scope = SearchScope {
+            folder_ids: vec!["pptx-folder".into()],
+            ..Default::default()
+        };
+        assert_eq!(q(&conn, &scope, "quasar launch"), vec!["pptx-folder"]);
+        fs::remove_dir_all(&root).ok();
     }
 
     #[test]

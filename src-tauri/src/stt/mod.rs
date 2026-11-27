@@ -10,6 +10,7 @@ pub mod word_diff;
 pub mod azure_mai_streaming;
 pub mod azure_speech;
 pub mod cartesia;
+pub mod gemini_live;
 pub mod groq_whisper;
 pub mod whisper_api;
 // STT Engine Overhaul: New streaming providers
@@ -126,6 +127,8 @@ pub struct STTRouter {
     pub(crate) groq_config: groq_whisper::GroqConfig,
     /// Cartesia API key (cached from credential store)
     pub(crate) cartesia_api_key: Option<String>,
+    /// Gemini Live API key (cached from credential store)
+    pub(crate) gemini_live_api_key: Option<String>,
     /// Counter for generating unique segment IDs
     segment_counter: u64,
     /// Reference to the Tauri app handle for emitting events
@@ -151,6 +154,7 @@ impl STTRouter {
             groq_whisper_api_key: None,
             groq_config: groq_whisper::GroqConfig::default(),
             cartesia_api_key: None,
+            gemini_live_api_key: None,
             segment_counter: 0,
             app_handle: None,
         }
@@ -249,6 +253,14 @@ impl STTRouter {
             STTProviderType::Cartesia => {
                 let mut p = cartesia::CartesiaSTT::new();
                 if let Some(ref key) = self.cartesia_api_key {
+                    p.set_api_key(key);
+                }
+                p.set_language(&self.language);
+                Box::new(p)
+            }
+            STTProviderType::GeminiLive => {
+                let mut p = gemini_live::GeminiLiveSTT::new();
+                if let Some(ref key) = self.gemini_live_api_key {
                     p.set_api_key(key);
                 }
                 p.set_language(&self.language);
@@ -523,6 +535,16 @@ impl STTRouter {
         }
     }
 
+    /// Set the Gemini Live API key.
+    pub fn set_gemini_live_api_key(&mut self, key: &str) {
+        self.gemini_live_api_key = Some(key.to_string());
+        if self.active_type == Some(STTProviderType::GeminiLive) {
+            let mut provider = gemini_live::GeminiLiveSTT::with_api_key(key);
+            provider.set_language(&self.language);
+            self.active_provider = Some(Box::new(provider));
+        }
+    }
+
     /// Test the connection for a given provider type.
     pub async fn test_provider_connection(
         &self,
@@ -600,6 +622,18 @@ impl STTRouter {
                     .as_deref()
                     .ok_or("No Cartesia API key configured")?;
                 let provider = cartesia::CartesiaSTT::with_api_key(key);
+                provider
+                    .test_connection()
+                    .await
+                    .map_err(|e| format!("Connection test failed: {}", e))
+            }
+            STTProviderType::GeminiLive => {
+                let key = self
+                    .gemini_live_api_key
+                    .as_deref()
+                    .ok_or("No Gemini API key configured")?;
+                let mut provider = gemini_live::GeminiLiveSTT::with_api_key(key);
+                provider.set_language(&self.language);
                 provider
                     .test_connection()
                     .await

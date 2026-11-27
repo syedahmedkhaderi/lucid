@@ -18,7 +18,7 @@ export default defineConfig(async () => ({
     // The colour guard (src/lib/contrast.test.ts) reads index.css and talkingPoints.css as text; other CSS stays blank in tests.
     css: { include: [/src\/index\.css/, /src\/talking-points\/talkingPoints\.css/] },
     // Agent worktrees hold full copies of the repo.
-    exclude: ["**/node_modules/**", "**/dist/**", ".claude/**"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/work/**", ".claude/**"],
   },
   build: {
     // Vite 6's defaults. Vite 8's need Safari 16.4, but we support macOS 11.

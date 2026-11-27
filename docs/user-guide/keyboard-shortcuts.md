@@ -1,6 +1,6 @@
 # Keyboard Shortcuts
 
-NexQ has two levels of keyboard shortcuts: **global shortcuts** that work even when the app is not focused, and **meeting shortcuts** that work during an active meeting when the NexQ window is focused.
+Lucid has two levels of keyboard shortcuts: **global shortcuts** that work even when the app is not focused, and **meeting shortcuts** that work during an active meeting when the Lucid window is focused.
 
 ## Hotkey Configuration
 
@@ -15,15 +15,15 @@ These shortcuts are registered system-wide and work regardless of which applicat
 | Shortcut | Action | Description |
 |----------|--------|-------------|
 | `Ctrl+M` | Start / End Meeting | Starts a new meeting if none is active; ends the current meeting if one is running |
-| `Ctrl+B` | Switch between overlay and dashboard | Switches between the launcher (dashboard) and the overlay (meeting) window. With no meeting running, it brings the dashboard back. In a NexQ text editor, such as the talking points editor, it makes the selection bold instead |
+| `Ctrl+B` | Switch between overlay and dashboard | Switches between the launcher (dashboard) and the overlay (meeting) window. With no meeting running, it brings the dashboard back. In a Lucid text editor, such as the talking points editor, it makes the selection bold instead |
 | `Ctrl+,` | Open / Close Settings | Toggles the settings panel |
 | `Ctrl+Shift+H` | Hide from screen share | Turns stealth mode on or off. Change it in Settings > General |
-| `Ctrl+Shift+Space` | Assist from any app | During a meeting, generates AI Assist without switching to NexQ. Stops an automatic answer that's running. Change it in Settings > General |
+| `Ctrl+Shift+Space` | Assist from any app | During a meeting, generates AI Assist without switching to Lucid. Stops an automatic answer that's running. Change it in Settings > General |
 | `Ctrl+Shift+S` | Capture screen into Ask | During a meeting with Claude (subscription), attaches a picture of the screen your mouse is on to the Ask box, opens it and puts the cursor there; press Enter to send. Windows only for now. Not used with other providers, so the key stays free for your other apps. Change it in Settings > General |
 
 ## Meeting Shortcuts
 
-These shortcuts work when a meeting is active and the NexQ window (launcher or overlay) is focused. They do not trigger when typing in input fields, text areas, or dropdowns.
+These shortcuts work when a meeting is active and the Lucid window (launcher or overlay) is focused. They do not trigger when typing in input fields, text areas, or dropdowns.
 
 | Shortcut | Action | AI Mode |
 |----------|--------|---------|
@@ -47,7 +47,7 @@ These overlay keys are fixed (they can't be rebound in Settings > Hotkeys) and n
 
 `Ctrl+Shift+L` shows or hides the Dev Log panel.
 
-> In the Ask box, `Ctrl+V` attaches a copied screenshot (Claude subscription only). `Ctrl+Shift+S` captures the screen for you; see [Asking about something on screen](claude-subscription.md#asking-about-something-on-screen). Screenshots can include other people's video or documents and go to Anthropic with your question; NexQ doesn't save them.
+> In the Ask box, `Ctrl+V` attaches a copied screenshot (Claude subscription only). `Ctrl+Shift+S` captures the screen for you; see [Asking about something on screen](claude-subscription.md#asking-about-something-on-screen). Screenshots can include other people's video or documents and go to Anthropic with your question; Lucid doesn't save them.
 
 > **Note:** The number keys (`1`--`5`) work with both the main keyboard and the numpad. They only trigger when no modifier keys (Ctrl, Alt, Meta, Shift) are held, and the same goes for the other action keys.
 
@@ -114,18 +114,18 @@ In the editor: `Ctrl+B`, `Ctrl+I` and `Ctrl+U` for bold, italic and underline, `
 
 ## System Tray
 
-NexQ lives in the Windows system tray. Interaction patterns:
+Lucid lives in the Windows system tray. Interaction patterns:
 
 | Action | Result |
 |--------|--------|
-| Click tray icon | Bring NexQ back: the meeting overlay during a meeting, otherwise the dashboard |
+| Click tray icon | Bring Lucid back: the meeting overlay during a meeting, otherwise the dashboard |
 | Middle-click tray icon | Toggle microphone mute |
 | Right-click tray icon | Open the context menu: Open Dashboard (and Show Overlay during a meeting) first, then start/stop meeting, quick copy, settings and quit |
 
-With **Hide from screen share** on, NexQ has no taskbar button, so the tray icon and `Ctrl+B` are the way back to it. On macOS, clicking the menu-bar icon opens the menu.
+With **Hide from screen share** on, Lucid has no taskbar button, so the tray icon and `Ctrl+B` are the way back to it. On macOS, clicking the menu-bar icon opens the menu.
 
 ## Tips
 
 - **Overlay during meetings**: Use `Ctrl+B` to bring up the always-on-top overlay while your meeting app (Zoom, Teams, etc.) is in the foreground. The overlay is transparent and stays above other windows.
-- **Quick AI assist**: During a meeting, press `Ctrl+Shift+Space` from any app (your meeting app included) to get an instant AI answer without switching to NexQ, which matters when you're sharing your screen. `Space` does the same while the NexQ window is focused.
+- **Quick AI assist**: During a meeting, press `Ctrl+Shift+Space` from any app (your meeting app included) to get an instant AI answer without switching to Lucid, which matters when you're sharing your screen. `Space` does the same while the Lucid window is focused.
 - **Mute sources independently**: You can mute "You" (mic) or "Them" (system audio) STT independently from the overlay controls. This pauses transcription for that source without stopping audio capture or recording.

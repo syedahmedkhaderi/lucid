@@ -62,6 +62,11 @@ pub async fn set_stt_provider(app: AppHandle, provider: String) -> Result<(), St
                         router.set_cartesia_api_key(&key);
                     }
                 }
+                STTProviderType::GeminiLive => {
+                    if let Ok(Some(key)) = cred.get_key("gemini_transcribe_live") {
+                        router.set_gemini_live_api_key(&key);
+                    }
+                }
                 STTProviderType::WindowsNative | STTProviderType::WhisperCpp => {
                     // No API key needed for local providers
                 }
@@ -146,6 +151,11 @@ pub async fn test_stt_connection(app: AppHandle, provider: String) -> Result<boo
                 STTProviderType::Cartesia => {
                     if let Ok(Some(key)) = cred.get_key("cartesia") {
                         router.set_cartesia_api_key(&key);
+                    }
+                }
+                STTProviderType::GeminiLive => {
+                    if let Ok(Some(key)) = cred.get_key("gemini_transcribe_live") {
+                        router.set_gemini_live_api_key(&key);
                     }
                 }
                 STTProviderType::WindowsNative | STTProviderType::WhisperCpp => {}

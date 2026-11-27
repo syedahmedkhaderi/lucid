@@ -174,6 +174,8 @@ function getTypeConfig(fileType: string): { color: string } {
       return { color: "hsl(var(--info))" };
     case "docx":
       return { color: "hsl(var(--primary))" };
+    case "pptx":
+      return { color: "hsl(var(--primary))" };
     case "txt":
     default:
       return { color: "hsl(var(--muted-foreground))" };

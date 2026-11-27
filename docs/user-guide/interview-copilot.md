@@ -1,12 +1,12 @@
-# How to Use NexQ as Your Interview Copilot
+# How to Use Lucid as Your Interview Copilot
 
-![NexQ Interview Copilot overlay](../../website/public/screenshots/Interview.png)
+![Lucid Interview Copilot overlay](../../website/public/screenshots/Interview.png)
 
-NexQ can act as your real-time interview copilot -- transcribing both sides of the conversation, surfacing AI-powered suggestions, and referencing your resume or job description on the fly.
+Lucid can act as your real-time interview copilot -- transcribing both sides of the conversation, surfacing AI-powered suggestions, and referencing your resume or job description on the fly.
 
 ## Prerequisites
 
-- NexQ installed and running ([Getting Started](getting-started.md))
+- Lucid installed and running ([Getting Started](getting-started.md))
 - An STT provider configured ([AI Providers Guide](ai-providers.md))
 - An LLM provider configured ([AI Providers Guide](ai-providers.md))
 - Headphones (required to prevent echo)
@@ -34,7 +34,7 @@ Open Settings > LLM and configure one of these:
 
 ![AI Scenarios settings panel](../../website/public/screenshots/Setting/Setting-AI%20Scenarios.png)
 
-In NexQ Settings, select the **Interview** scenario. This configures the AI prompts to focus on interview-specific assistance: follow-up suggestions, answer framing, and conversational guidance.
+In Lucid Settings, select the **Interview** scenario. This configures the AI prompts to focus on interview-specific assistance: follow-up suggestions, answer framing, and conversational guidance.
 
 ### 4. Load Your Resume and Job Description
 
@@ -57,13 +57,13 @@ When the meeting starts, the overlay window (500x700, always-on-top, transparent
 - Place it **near your webcam** but slightly to the side, so glancing at it looks natural
 - Resize it to a comfortable reading size -- you should be able to read suggestions without squinting
 - The overlay is transparent -- **only you can see it**. It will not appear in screen shares
-- Turn on **Hide from screen share** (`Ctrl+Shift+H`, `⌘⇧H` on macOS) before the call. Besides keeping NexQ out of the share, the overlay's cursor stays a plain arrow, and NexQ leaves the taskbar (Windows) or the Dock and Cmd+Tab (macOS). On macOS 14 and later, run a test share first: some recorders can still capture NexQ. Turn it off afterwards from the dashboard header
+- Turn on **Hide from screen share** (`Ctrl+Shift+H`, `⌘⇧H` on macOS) before the call. Besides keeping Lucid out of the share, the overlay's cursor stays a plain arrow, and Lucid leaves the taskbar (Windows) or the Dock and Cmd+Tab (macOS). On macOS 14 and later, run a test share first: some recorders can still capture Lucid. Turn it off afterwards from the dashboard header
 - Use `Ctrl+B` to toggle between the launcher and overlay windows
 
 ## During the Interview
 
 1. **Start the meeting** with `Ctrl+M` before the interview begins
-2. NexQ transcribes both sides in real-time -- your mic captures your voice, and system audio captures the interviewer
+2. Lucid transcribes both sides in real-time -- your mic captures your voice, and system audio captures the interviewer
 3. **AI suggestions appear automatically** as the conversation flows. The AI analyzes the dialogue and provides contextual help
 4. Press **Space** to manually trigger AI Assist at any moment for an instant analysis of the current conversation
 5. Use the number keys for specific AI modes:
@@ -77,7 +77,7 @@ Question detection recognizes `?` and `？`, common Chinese question words (such
 
 Detected questions appear as cards in the overlay. Click the card you need to get an answer. To have the newest question answered automatically, turn on **Auto-Answer** in Settings > AI Actions.
 
-For the fastest automatic answers, transcribe the interviewer with Cartesia or Deepgram Flux. Both tell NexQ when the interviewer has finished, so the answer starts right away instead of after 1.5 seconds of quiet. If the interviewer keeps going after a pause, NexQ drops the answer it started and answers the complete question. Press `Space`, or click a question or an action, at any time to get your own answer instead.
+For the fastest automatic answers, transcribe the interviewer with Cartesia or Deepgram Flux. Both tell Lucid when the interviewer has finished, so the answer starts right away instead of after 1.5 seconds of quiet. If the interviewer keeps going after a pause, Lucid drops the answer it started and answers the complete question. Press `Space`, or click a question or an action, at any time to get your own answer instead.
 
 **Important**: Do not stare at the overlay. Glance at it naturally, the way you would glance at notes. Maintain eye contact with your camera.
 

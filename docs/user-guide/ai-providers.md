@@ -1,12 +1,12 @@
 # Choosing AI Providers
 
-NexQ uses two types of AI providers: **Speech-to-Text (STT)** for transcription and **Large Language Models (LLM)** for AI assistance. This guide compares all available providers and helps you choose the right ones for your use case.
+Lucid uses two types of AI providers: **Speech-to-Text (STT)** for transcription and **Large Language Models (LLM)** for AI assistance. This guide compares all available providers and helps you choose the right ones for your use case.
 
 ## STT Provider Comparison
 
 ![STT Providers settings panel](../../website/public/screenshots/Setting/Setting-STT%20Providers.png)
 
-NexQ supports 12 STT providers. Each channel ("You" and "Them") can use a different provider.
+Lucid supports 14 STT providers. Each channel ("You" and "Them") can use a different provider.
 
 | Provider | Type | Cost | Accuracy | Speed | Best For |
 |----------|------|------|----------|-------|----------|
@@ -22,6 +22,7 @@ NexQ supports 12 STT providers. Each channel ("You" and "Them") can use a differ
 | Parakeet TDT | Local | Free | Very Good | Medium | High-quality local option |
 | Azure Speech | Cloud | Pay per use | Excellent | Batched (~5s) | Existing Azure Speech REST transcription |
 | Azure MAI Streaming | Cloud | [Azure pricing](https://azure.microsoft.com/en-us/pricing/details/speech/) | Not yet rated (preview) | Real-time streaming | Multilingual live transcription; interim updates and Azure finals |
+| Gemini Live Transcribe | Cloud | Check Google's current [pricing](https://ai.google.dev/gemini-api/docs/pricing) | Not yet rated here | Real-time streaming | Multilingual live transcription with automatic language detection |
 | Windows Speech | Built-in, online (no key) | Free | Fair | Real-time | No-key fallback for your mic on Windows |
 
 **Azure Speech** and **Azure MAI Streaming** are separate providers. Azure Speech remains the REST-based, batched option; Azure MAI Streaming uses Microsoft's `mai-transcribe-2-streaming` model for live incremental transcripts. See [Azure MAI Streaming setup](#azure-mai-streaming-public-preview) below.
@@ -30,19 +31,21 @@ NexQ supports 12 STT providers. Each channel ("You" and "Them") can use a differ
 
 **Start with Web Speech API** if you want zero-setup transcription. It works out of the box, costs nothing, and handles long sessions well.
 
-**Use Deepgram or Groq** if you need higher accuracy. Deepgram's Nova-3 model is the most accurate real-time option. Groq offers excellent accuracy on a free tier. If you rely on **Auto-Answer**, choose Deepgram's **Flux** model (Settings > STT Providers > Deepgram > Model): Flux decides when a speaker has finished, so NexQ answers a question as soon as it's asked instead of waiting 1.5 seconds of quiet, and can start on a likely finish. Choose **Flux** for English or **Flux Multilingual** for English, Spanish, French, German, Hindi, Russian, Portuguese, Japanese, Italian and Dutch. Flux doesn't tell speakers apart, so in-person meetings on Flux show a single "Room" speaker. NexQ streams silence to Flux, which needs it to hear where a turn ends, so quiet time counts toward your Deepgram usage; with Nova, NexQ skips long silence. Muting a channel closes its Flux stream, so muted time costs nothing.
+**Use Deepgram or Groq** if you need higher accuracy. Deepgram's Nova-3 model is the most accurate real-time option. Groq offers excellent accuracy on a free tier. If you rely on **Auto-Answer**, choose Deepgram's **Flux** model (Settings > STT Providers > Deepgram > Model): Flux decides when a speaker has finished, so Lucid answers a question as soon as it's asked instead of waiting 1.5 seconds of quiet, and can start on a likely finish. Choose **Flux** for English or **Flux Multilingual** for English, Spanish, French, German, Hindi, Russian, Portuguese, Japanese, Italian and Dutch. Flux doesn't tell speakers apart, so in-person meetings on Flux show a single "Room" speaker. Lucid streams silence to Flux, which needs it to hear where a turn ends, so quiet time counts toward your Deepgram usage; with Nova, Lucid skips long silence. Muting a channel closes its Flux stream, so muted time costs nothing.
 
 **Use Cartesia** if you want each transcript line to end where the speaker actually finishes a thought. Cartesia's ink-2 model decides where each turn ends from what is being said, not only from pauses. It transcribes English, French, Hindi, Japanese and Spanish, and detects which one is spoken. Cartesia bills every second of audio it receives while a channel is unmuted, silence included: about 3 credits per second for each channel that uses it. Muting a channel closes its Cartesia stream, so muted time costs nothing. To halve the cost, use Cartesia for "Them" and Web Speech for "You".
 
 **Use a local provider** if privacy is critical or you need offline capability. Whisper with the large-v3 model provides the best local accuracy, but requires significant CPU/RAM. Smaller models (tiny, base) are faster but less accurate.
 
+**Use Gemini Live Transcribe** for Google's real-time multilingual transcription with automatic language detection. It streams microphone or system audio to Google's cloud service. This integration has only been verified with local mock-server tests; it has not been tested with a real Gemini account or meeting audio. Google's pricing page says free-tier content may be used to improve its products, so do not send confidential meeting audio to the free tier. See [Getting Started](getting-started.md#speech-providers) for privacy and quota notes.
+
 **For Ukrainian transcription**, select **Ukrainian** under Settings > STT Providers > Transcription language. For offline transcription, use Parakeet TDT 0.6B v3 or a multilingual Whisper.cpp model such as Whisper Small. Cloud options include Deepgram Nova-3, Azure Speech, Azure MAI Streaming, Groq Whisper, and the OpenAI Whisper API. Start a new meeting after changing the language. A side with its own language (see [A different language for each side](#a-different-language-for-each-side)) ignores this setting.
 
 **For Vietnamese transcription**, select **Vietnamese** under Settings > STT Providers > Transcription language. Deepgram Nova-3, Azure Speech, Azure MAI Streaming, and multilingual Whisper models support Vietnamese; choose a model that supports the language for each channel. The included Parakeet models do not support Vietnamese. A language change takes effect when the STT provider reconnects, so start a new meeting after changing it. A side with its own language ignores this setting.
 
-**To detect the spoken language**, choose **Auto-detect** under Settings > STT Providers > Transcription language or Audio & Devices > Transcription language. Choose a provider that can detect the language for each side set to Auto-detect: Deepgram Nova-3 or Flux Multilingual, Azure MAI Streaming, Parakeet TDT 0.6B v3, Groq Whisper, Whisper API, or Cartesia. The languages detected depend on the model. Start a new meeting after changing the language.
+**To detect the spoken language**, choose **Auto-detect** under Settings > STT Providers > Transcription language or Audio & Devices > Transcription language. Choose a provider that can detect the language for each side set to Auto-detect: Deepgram Nova-3 or Flux Multilingual, Azure MAI Streaming, Gemini Live Transcribe, Parakeet TDT 0.6B v3, Groq Whisper, Whisper API, or Cartesia. The languages detected depend on the model. Start a new meeting after changing the language.
 
-These can't detect the language: Web Speech, Windows Speech, Azure Speech, Sherpa-ONNX, ORT Streaming and Parakeet CTC 110M. If a side set to Auto-detect uses one, NexQ shows a warning in settings, and when a meeting starts that side isn't transcribed (a mid-meeting switch to one of them is refused, except for Web Speech, which stops with a notice). Pick a language or change the provider for that side.
+These can't detect the language: Web Speech, Windows Speech, Azure Speech, Sherpa-ONNX, ORT Streaming and Parakeet CTC 110M. If a side set to Auto-detect uses one, Lucid shows a warning in settings, and when a meeting starts that side isn't transcribed (a mid-meeting switch to one of them is refused, except for Web Speech, which stops with a notice). Pick a language or change the provider for that side.
 
 **For speech that switches languages mid-sentence**, such as Ukrainian with English technical terms, use **Deepgram Nova-3** with **Auto-detect**. This combination enables [Nova-3 multilingual transcription](https://developers.deepgram.com/docs/nova-3-language-prompting), which Deepgram bills at a higher rate than single-language Nova-3 (see [Deepgram's pricing](https://deepgram.com/pricing)).
 
@@ -60,26 +63,26 @@ The **Whisper API** provider can send audio to any server that speaks OpenAI's `
 What to know:
 
 - **Your OpenAI key stays separate.** With an endpoint set, the key field is "API key for this server (optional)" and is saved on its own. The OpenAI key is never sent to a custom server. Clear the Endpoint field to go back to OpenAI and your saved OpenAI key.
-- **Empty means OpenAI.** With Endpoint and Model empty, NexQ uses `https://api.openai.com/v1` and `whisper-1`, which needs an OpenAI key. You can also set only **Model** (for example `gpt-4o-transcribe`) to stay on OpenAI with another model.
+- **Empty means OpenAI.** With Endpoint and Model empty, Lucid uses `https://api.openai.com/v1` and `whisper-1`, which needs an OpenAI key. You can also set only **Model** (for example `gpt-4o-transcribe`) to stay on OpenAI with another model.
 - **Not live streaming.** Whisper API sends the audio in batches of about 5 seconds, so text appears a few seconds after it is spoken. For word-by-word text, use Deepgram, Cartesia or a local streaming engine.
 - **Save & Test** sends half a second of silence to the server's transcription endpoint, so a server that can't transcribe fails the test instead of passing it.
-- **`http://` to another machine** sends the key unencrypted. NexQ warns about it when a key is set. Use `https://` or keep the server on this computer.
+- **`http://` to another machine** sends the key unencrypted. Lucid warns about it when a key is set. Use `https://` or keep the server on this computer.
 
 ### Azure MAI Streaming (public preview)
 
-**Azure MAI Streaming** is a separate provider (`azure_mai_streaming`) that uses Microsoft's `mai-transcribe-2-streaming` model. It is not the existing **Azure Speech** provider (`azure_speech`), which still sends short audio batches to the Azure Speech REST API. The new provider uses the [official Azure Speech SDK for JavaScript](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming-speech-sdk), bundled with NexQ; you do not need to install Node.js, the SDK, or another runtime.
+**Azure MAI Streaming** is a separate provider (`azure_mai_streaming`) that uses Microsoft's `mai-transcribe-2-streaming` model. It is not the existing **Azure Speech** provider (`azure_speech`), which still sends short audio batches to the Azure Speech REST API. The new provider uses the [official Azure Speech SDK for JavaScript](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming-speech-sdk), bundled with Lucid; you do not need to install Node.js, the SDK, or another runtime.
 
-The model streams **interim** text that updates while someone is speaking, followed by Azure **final** results for confirmed segments. It defaults to multilingual language auto-detection; you can instead set an explicit supported locale for each side. It does **not** diarize speakers. NexQ still keeps your microphone ("You") and system audio ("Them") on separate channels, but this provider will not identify multiple speakers within one channel. This model is in public preview; Microsoft currently notes that preview features have no SLA and are not recommended for production workloads. Check Microsoft's [overview](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming) for current availability and preview limitations.
+The model streams **interim** text that updates while someone is speaking, followed by Azure **final** results for confirmed segments. It defaults to multilingual language auto-detection; you can instead set an explicit supported locale for each side. It does **not** diarize speakers. Lucid still keeps your microphone ("You") and system audio ("Them") on separate channels, but this provider will not identify multiple speakers within one channel. This model is in public preview; Microsoft currently notes that preview features have no SLA and are not recommended for production workloads. Check Microsoft's [overview](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming) for current availability and preview limitations.
 
 #### Set up Azure MAI Streaming
 
 1. Open the [Azure portal](https://portal.azure.com/), then go to [Azure AI Services Resources](https://portal.azure.com/#browse/Microsoft.CognitiveServices%2Faccounts).
 2. Create a **Speech** resource in one of the model's supported serving regions: `swedencentral`, `centralus`, `eastus2`, or `southeastasia`. See Microsoft's [serving-region information](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming#availability-and-regions).
 3. Open the resource's **Keys and Endpoint** page. Copy a Speech resource key and note its region identifier. The key and region must come from the same resource.
-4. In NexQ, open **Settings > STT Providers**, select **Azure MAI Streaming**, enter the key and region, then click **Save & Test**.
+4. In Lucid, open **Settings > STT Providers**, select **Azure MAI Streaming**, enter the key and region, then click **Save & Test**.
 5. In **Settings > Audio & Devices**, choose **Azure MAI Streaming** for **You**, **Them**, or both. Set each side's language to **Auto-detect** or to a supported locale.
 
-The [Azure Speech SDK integration](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming-speech-sdk) is the path NexQ uses. Microsoft's separate [Foundry Realtime API](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming-realtime) uses an OpenAI-compatible WebSocket integration and requires a Foundry model deployment. You do **not** need to create a Foundry deployment or configure that Realtime API to use Azure MAI Streaming in NexQ.
+The [Azure Speech SDK integration](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming-speech-sdk) is the path Lucid uses. Microsoft's separate [Foundry Realtime API](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe-2-streaming-realtime) uses an OpenAI-compatible WebSocket integration and requires a Foundry model deployment. You do **not** need to create a Foundry deployment or configure that Realtime API to use Azure MAI Streaming in Lucid.
 
 #### Verify live transcription
 
@@ -100,7 +103,7 @@ Changing a side's language during a meeting briefly restarts transcription, the 
 
 ![LLM Providers settings panel](../../website/public/screenshots/Setting/Setting-LLM%20Providers.png)
 
-NexQ supports 9 LLM providers. The LLM powers all AI features: Assist, What to Say, Shorten, Follow-Up, Recap, Ask Question, Meeting Summary, and Action Items.
+Lucid supports 9 LLM providers. The LLM powers all AI features: Assist, What to Say, Shorten, Follow-Up, Recap, Ask Question, Meeting Summary, and Action Items.
 
 | Provider | Type | Cost | Speed | Best For |
 |----------|------|------|-------|----------|
@@ -118,7 +121,7 @@ NexQ supports 9 LLM providers. The LLM powers all AI features: Assist, What to S
 
 ### Choosing an LLM Provider
 
-**Start with Ollama** if you want free, private AI assistance. Install Ollama, pull a model, and NexQ connects automatically.
+**Start with Ollama** if you want free, private AI assistance. Install Ollama, pull a model, and Lucid connects automatically.
 
 **Use OpenAI (GPT-4o)** if you want the best quality suggestions. GPT-4o provides the most accurate and contextually aware responses.
 
@@ -126,7 +129,7 @@ NexQ supports 9 LLM providers. The LLM powers all AI features: Assist, What to S
 
 **Use Claude (subscription, Beta)** if you already pay for Claude Pro or Max and want to use it without an API key. See the [Claude subscription guide](claude-subscription.md).
 
-**Use Antigravity or Codex (subscription, Beta)** the same way if you pay for Google AI or ChatGPT. Install the CLI (Antigravity from antigravity.google, Codex with `npm i -g @openai/codex`), sign in once with the Log in button in Settings > LLM Providers, then pick Fast and Deep models there. NexQ fetches each CLI's current model list every time it starts. Notes folders and MCP servers from Personal Sources work with all three. Antigravity and Codex read your notes only through NexQ's own read-only notes tool, and they can't run commands, write files or search the web. Image attachments still need Claude.
+**Use Antigravity or Codex (subscription, Beta)** the same way if you pay for Google AI or ChatGPT. Install the CLI (Antigravity from antigravity.google, Codex with `npm i -g @openai/codex`), sign in once with the Log in button in Settings > LLM Providers, then pick Fast and Deep models there. Lucid fetches each CLI's current model list every time it starts. Notes folders and MCP servers from Personal Sources work with all three. Antigravity and Codex read your notes only through Lucid's own read-only notes tool, and they can't run commands, write files or search the web. Image attachments still need Claude.
 
 **Use Anthropic (Claude)** if you prefer nuanced, well-reasoned responses, especially for complex or sensitive topics.
 
@@ -140,7 +143,7 @@ Live answers use the provider you set above. Three newer features can use a diff
 
 None of them switches to another provider if yours fails. They say what failed and let you choose. A live answer always goes first: on a local server (Ollama, LM Studio or a local custom server) it can stop a chat answer or hold back notes that use the same server.
 
-Only the subscription providers (Claude, Codex, Antigravity) can read folders and use tools in a chat. Claude asks before a tool that could change something (version 2.1.328 or newer); Codex and Antigravity can't ask yet, so those tools are off for them. API and local models answer from the passages NexQ finds and can't use tools.
+Only the subscription providers (Claude, Codex, Antigravity) can read folders and use tools in a chat. Claude asks before a tool that could change something (version 2.1.328 or newer); Codex and Antigravity can't ask yet, so those tools are off for them. API and local models answer from the passages Lucid finds and can't use tools.
 
 ## Local vs Cloud Tradeoffs
 
@@ -158,7 +161,7 @@ Only the subscription providers (Claude, Codex, Antigravity) can read folders an
 
 ## Setting Up Ollama (Local LLM)
 
-Ollama is the easiest way to run a local LLM. NexQ auto-detects it on startup.
+Ollama is the easiest way to run a local LLM. Lucid auto-detects it on startup.
 
 1. Download and install Ollama from [ollama.ai](https://ollama.ai)
 2. Open a terminal and pull a model:
@@ -169,7 +172,7 @@ Ollama is the easiest way to run a local LLM. NexQ auto-detects it on startup.
    ```
    ollama list
    ```
-4. Launch NexQ -- it auto-detects Ollama at `http://localhost:11434`
+4. Launch Lucid -- it auto-detects Ollama at `http://localhost:11434`
 5. Open Settings > LLM to verify the connection and select your model
 
 ### Recommended Ollama Models
@@ -219,28 +222,28 @@ All cloud providers require an API key. Here is where to get them:
 | Azure Speech | [portal.azure.com](https://portal.azure.com) | Cognitive Services > Speech |
 | Azure MAI Streaming | [Azure portal](https://portal.azure.com/) | Speech resource > Keys and Endpoint; see [setup steps](#set-up-azure-mai-streaming) |
 
-### Entering API Keys in NexQ
+### Entering API Keys in Lucid
 
 1. Open Settings (`Ctrl+,`)
 2. Navigate to the provider section (STT or LLM)
 3. Select the provider from the dropdown
 4. Paste your API key into the API Key field
 5. Click **Test Connection** to verify
-6. The key is stored securely in **Windows Credential Manager** -- not in config files or plain text
+6. After a successful test, the key is stored in the operating system credential store, not in the app's plain-text configuration files
 
 ### API Key Security
 
-- Keys are stored in Windows Credential Manager, scoped to your Windows user account
+- Keys are stored through the operating system credential store
 - Keys persist across app updates
 - To remove a key: Settings > Provider > Remove API Key
-- You can also manage keys through Windows Settings > Credential Manager
+- Do not paste keys into source files, logs, or support reports
 
 ## Any OpenAI-compatible API (DeepSeek example)
 
 The Custom provider talks to any service that follows the OpenAI API, not only local servers. DeepSeek is one example:
 
 1. Open Settings > LLM Providers and choose **Custom**.
-2. Set **Base URL** to `https://api.deepseek.com`. NexQ adds `/chat/completions` and `/models` itself, so don't include them.
+2. Set **Base URL** to `https://api.deepseek.com`. Lucid adds `/chat/completions` and `/models` itself, so don't include them.
 3. Set **Auth Type** to **Bearer Token** and paste your API key into the **Token** field. Cloud APIs refuse requests without it (a 401 or 403 from **Test Connection** usually means this is wrong).
 4. Click **Test Connection**, then **Load Models** and pick a model from the list.
 5. Click **Use Custom for AI responses**.

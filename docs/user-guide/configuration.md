@@ -1,6 +1,6 @@
 # Configuration Guide
 
-NexQ supports multiple STT and LLM providers, configurable audio devices, and local RAG for document context. All settings are accessible via **Settings** (`Ctrl+,`).
+Lucid supports multiple STT and LLM providers, configurable audio devices, and local RAG for document context. All settings are accessible via **Settings** (`Ctrl+,`).
 
 ## General Settings
 
@@ -11,15 +11,15 @@ The General settings panel controls app-wide behavior and preferences. Here you 
 - **App behavior** -- startup options, system tray behavior, and window preferences
 - **Theme and appearance** -- light/dark mode and visual customization. A theme change reaches the open meeting window at once. The default transcript and answer text colours follow the theme, so they stay readable in the light theme; a colour you picked yourself is used as chosen
 - **Language** -- interface language selection
-- **Update preferences** -- NexQ downloads updates quietly in the background and shows an "Update ready" button in the footer. Click it to see what's new and install when convenient, or it installs when you quit (never during a meeting). You always get the newest version, even if several came out since your last update. Turn this off under Settings > About > Automatic updates
-- **Window positions** -- NexQ remembers where the dashboard and the meeting window were, for each set of monitors. **Reset window positions** puts both back on your main screen (see [Meeting Window Layout](meeting-layout.md))
+- **Update preferences** -- Lucid downloads updates quietly in the background and shows an "Update ready" button in the footer. Click it to see what's new and install when convenient, or it installs when you quit (never during a meeting). You always get the newest version, even if several came out since your last update. Turn this off under Settings > About > Automatic updates
+- **Window positions** -- Lucid remembers where the dashboard and the meeting window were, for each set of monitors. **Reset window positions** puts both back on your main screen (see [Meeting Window Layout](meeting-layout.md))
 - **Data management** -- storage location and cleanup options
 
 ## Speech-to-Text (STT) Providers
 
 ![STT Providers settings panel](../../website/public/screenshots/Setting/Setting-STT%20Providers.png)
 
-NexQ uses a two-party audio model: **"You"** (microphone) and **"Them"** (system audio) each have independent STT providers, devices, and mute controls. See the [AI Providers Guide](ai-providers.md) for a detailed comparison of all STT providers and help choosing the right one.
+Lucid uses a two-party audio model: **"You"** (microphone) and **"Them"** (system audio) each have independent STT providers, devices, and mute controls. See the [AI Providers Guide](ai-providers.md) for a detailed comparison of all STT providers and help choosing the right one.
 
 ### Web Speech API (Built-in)
 
@@ -36,7 +36,7 @@ NexQ uses a two-party audio model: **"You"** (microphone) and **"Them"** (system
 - **Runs Locally**: No (cloud)
 - **Best For**: High-accuracy real-time transcription
 - **Models**: nova-3 (recommended), nova-2, nova, enhanced, base; Flux and Flux Multilingual for Auto-Answer
-- **Flux**: tells NexQ when a speaker has finished, so Auto-Answer replies at once. It doesn't tell speakers apart. Quiet time counts toward Deepgram usage; muted time doesn't, since muting closes the stream
+- **Flux**: tells Lucid when a speaker has finished, so Auto-Answer replies at once. It doesn't tell speakers apart. Quiet time counts toward Deepgram usage; muted time doesn't, since muting closes the stream
 - **Configuration Options** (Flux uses only numerals, the profanity filter and key terms):
   - Smart formatting, punctuation, numerals
   - Endpointing threshold (silence detection)
@@ -70,11 +70,11 @@ NexQ uses a two-party audio model: **"You"** (microphone) and **"Them"** (system
 
 - **Provider ID**: `azure_mai_streaming` (a separate provider from `azure_speech`)
 - **Model**: `mai-transcribe-2-streaming`
-- **SDK**: Official Microsoft Azure Speech SDK for JavaScript, bundled with NexQ; no separate runtime or SDK installation is needed
+- **SDK**: Official Microsoft Azure Speech SDK for JavaScript, bundled with Lucid; no separate runtime or SDK installation is needed
 - **Setup**: Use a Speech resource key and its matching region. The model is available in `swedencentral`, `centralus`, `eastus2`, and `southeastasia`
 - **Live results**: Interim transcript updates while speaking, followed by Azure final results
 - **Languages**: Multilingual auto-detection by default, or choose a supported explicit locale per side
-- **Diarization**: Not supported. NexQ keeps "You" and "Them" on separate audio channels, but Azure does not label multiple speakers within one channel
+- **Diarization**: Not supported. Lucid keeps "You" and "Them" on separate audio channels, but Azure does not label multiple speakers within one channel
 - **Existing Azure Speech**: Remains a separate REST-based provider that submits short audio batches; it is not this streaming model
 
 See [Choosing AI Providers](ai-providers.md#azure-mai-streaming-public-preview) for portal setup, the exact setup steps, and a live verification checklist.
@@ -107,7 +107,7 @@ The LLM provider powers all AI features: Assist, What to Say, Shorten, Follow-Up
 - **Setup**:
   1. Download and install from [ollama.ai](https://ollama.ai)
   2. Pull a model: `ollama pull llama3.2` (or `mistral`, `gemma2`, etc.)
-  3. NexQ auto-detects Ollama on startup at `http://localhost:11434`
+  3. Lucid auto-detects Ollama on startup at `http://localhost:11434`
 - **Requires API Key**: No
 - **Runs Locally**: Yes
 - **Best For**: Privacy, no usage costs, offline capability
@@ -146,7 +146,7 @@ The LLM provider powers all AI features: Assist, What to Say, Shorten, Follow-Up
 - **Setup**:
   1. Download from [lmstudio.ai](https://lmstudio.ai)
   2. Download a model and start the local server
-  3. NexQ connects to LM Studio's OpenAI-compatible API
+  3. Lucid connects to LM Studio's OpenAI-compatible API
 - **Requires API Key**: No
 - **Runs Locally**: Yes
 
@@ -160,13 +160,13 @@ The LLM provider powers all AI features: Assist, What to Say, Shorten, Follow-Up
 
 ## API Key Management
 
-All API keys are stored securely in **Windows Credential Manager** (not in config files or plain text). NexQ uses the Windows `CredentialManager` API to:
+API keys are stored through the operating system credential store, not in the app's plain-text configuration files. Lucid uses the platform credential store to:
 
 - Store keys: `Settings > [Provider] > API Key > Save`
 - Test keys: `Settings > [Provider] > Test Connection`
 - Delete keys: `Settings > [Provider] > Remove API Key`
 
-Keys are scoped to your Windows user account and persist across app updates.
+On Windows, keys are scoped to your Windows user account; on macOS, they are stored in Keychain. Keys persist across app updates.
 
 ## Audio Device Configuration
 
@@ -194,7 +194,7 @@ Enable **Recording** to save meeting audio as WAV files alongside the transcript
 
 ![Context Strategy settings panel](../../website/public/screenshots/Setting/Setting-Context%20Strategy.png)
 
-NexQ supports loading documents (PDF, TXT, MD, DOCX) as context for AI responses. When RAG is enabled, the AI uses relevant document chunks to provide more informed answers. See [Using Context Intelligence (RAG)](rag-context.md) for a complete guide to loading documents, best practices by use case, and optimization tips.
+Lucid supports loading documents (PDF, TXT, MD, DOCX) as context for AI responses. When RAG is enabled, the AI uses relevant document chunks to provide more informed answers. See [Using Context Intelligence (RAG)](rag-context.md) for a complete guide to loading documents, best practices by use case, and optimization tips.
 
 ### Setup
 
@@ -224,7 +224,7 @@ Meetings, chats and files are kept in [workspaces](workspaces.md). Most workspac
 
 ![AI Actions settings panel](../../website/public/screenshots/Setting/Setting-AI%20Actions.png)
 
-The AI Actions panel configures how NexQ's AI assistance behaves during meetings. Key options include:
+The AI Actions panel configures how Lucid's AI assistance behaves during meetings. Key options include:
 
 - **Action types** -- enable or disable specific AI modes (Assist, What to Say, Shorten, Follow-Up, Recap, Ask Question)
 - **Question Detection** -- show questions from the other party as cards in the overlay; click a card to get an answer to that question
@@ -249,7 +249,7 @@ Select a scenario in Settings before starting a meeting to get the most relevant
 
 ![Confidence display settings panel](../../website/public/screenshots/Setting/Setting-Confidence.png)
 
-The Confidence settings control how NexQ displays transcription confidence indicators. Configure:
+The Confidence settings control how Lucid displays transcription confidence indicators. Configure:
 
 - **Confidence threshold** -- set the minimum confidence level for displaying transcribed text
 - **Visual indicators** -- toggle color-coded confidence highlighting on transcript segments
@@ -261,7 +261,7 @@ Higher confidence thresholds filter out uncertain transcriptions, giving you a c
 
 ![Hotkey settings panel](../../website/public/screenshots/Setting/Setting-Hotkey.png)
 
-Settings > Hotkeys lists the in-meeting keys and the other shortcuts NexQ uses.
+Settings > Hotkeys lists the in-meeting keys and the other shortcuts Lucid uses.
 
 - **Rebindable here** -- Assist (`Space`) and the five action keys: What to Say (`1`), Shorten (`2`), Follow-Up (`3`), Recap (`4`) and Ask Question (`5`). Click a binding and press the new key. Reset to Defaults brings the originals back
 - **Fixed** -- `Ctrl+M` (start or end a meeting), `Ctrl+B` (overlay or dashboard), `Ctrl+,` (Settings), and in the overlay `Escape`, `B`, `S`, `K`, `M` and `N` (update the live notes). These are listed in the editor but can't be changed

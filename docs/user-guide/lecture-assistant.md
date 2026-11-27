@@ -1,12 +1,12 @@
-# How to Use NexQ as Your Lecture Assistant
+# How to Use Lucid as Your Lecture Assistant
 
-![NexQ Lecture Assistant overlay](../../website/public/screenshots/Lecture.png)
+![Lucid Lecture Assistant overlay](../../website/public/screenshots/Lecture.png)
 
-NexQ can transcribe lectures in real-time, automatically detect topics and extract action items, and let you bookmark key moments for later review.
+Lucid can transcribe lectures in real-time, automatically detect topics and extract action items, and let you bookmark key moments for later review.
 
 ## Prerequisites
 
-- NexQ installed and running ([Getting Started](getting-started.md))
+- Lucid installed and running ([Getting Started](getting-started.md))
 - An STT provider configured ([AI Providers Guide](ai-providers.md))
 - An LLM provider configured ([AI Providers Guide](ai-providers.md))
 
@@ -29,7 +29,7 @@ Open Settings > LLM:
 
 ### 3. Select the Lecture Scenario
 
-In NexQ Settings, select the **Lecture** scenario. This tunes the AI to focus on educational content: summarization, key concept extraction, and study-relevant assistance.
+In Lucid Settings, select the **Lecture** scenario. This tunes the AI to focus on educational content: summarization, key concept extraction, and study-relevant assistance.
 
 ## Audio Setup for Lectures
 
@@ -44,7 +44,7 @@ The audio setup depends on whether the lecture is in-person or virtual.
 
 ### Virtual Lectures (Zoom, Teams, Google Meet)
 
-- NexQ captures system audio automatically via WASAPI loopback
+- Lucid captures system audio automatically via WASAPI loopback
 - Set the **"Them" channel** to the audio output device your meeting app uses
 - The lecturer's audio is captured through system audio -- no extra configuration needed
 - Set the "You" channel to your mic if you want to capture your own questions
@@ -55,7 +55,7 @@ See [Audio Setup Guide](audio-setup.md) for detailed device configuration.
 
 ### Real-Time Transcription
 
-Start the meeting with `Ctrl+M` before the lecture begins. NexQ transcribes continuously with speaker labels ("You" and "Them").
+Start the meeting with `Ctrl+M` before the lecture begins. Lucid transcribes continuously with speaker labels ("You" and "Them").
 
 ### Bookmarking Key Moments
 
@@ -67,11 +67,11 @@ When the lecturer says something important:
 
 ### Topic Detection
 
-NexQ automatically segments the lecture into topics as the conversation progresses. Each topic section gets a label based on the content discussed, making it easy to navigate the transcript later.
+Lucid automatically segments the lecture into topics as the conversation progresses. Each topic section gets a label based on the content discussed, making it easy to navigate the transcript later.
 
 ### Action Item Extraction
 
-NexQ listens for actionable content and extracts it automatically:
+Lucid listens for actionable content and extracts it automatically:
 
 - Homework assignments
 - Reading assignments
