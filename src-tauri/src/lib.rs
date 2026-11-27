@@ -1,38 +1,38 @@
 pub mod ai_runs;
 pub mod app_paths;
 pub mod audio;
-pub mod store_guard;
 pub mod commands;
+pub mod context;
 #[cfg(test)]
 mod contract;
-pub mod context;
 pub mod credentials;
 pub mod db;
 pub mod intelligence;
-pub mod logging;
-pub mod rag;
-pub mod sources;
 pub mod live_brief;
 pub mod live_common;
 pub mod live_eval;
 pub mod live_notes;
 pub mod live_runtime;
-pub mod prompt_data;
 pub mod llm;
+pub mod logging;
 pub mod meeting_detect;
 pub mod nav_guard;
-pub mod privacy;
 pub mod notes_mcp;
 pub mod ort_runtime;
+pub mod privacy;
+pub mod prompt_data;
+pub mod rag;
+pub mod sources;
 pub mod state;
-pub mod text_kit;
+pub mod store_guard;
 pub mod stt;
+pub mod text_kit;
 pub mod translation;
 pub mod tray;
 pub mod workspace;
 pub mod workspace_chat;
-pub mod workspace_search;
 pub mod workspace_memory;
+pub mod workspace_search;
 
 use state::AppState;
 use std::sync::{Arc, Mutex};
@@ -55,8 +55,8 @@ use commands::context_commands;
 // == MODULE COMMANDS: credentials ==
 use commands::credential_commands;
 // == MODULE COMMANDS: meetings ==
-use commands::meeting_commands;
 use commands::meeting_chat_commands;
+use commands::meeting_commands;
 // == MODULE COMMANDS: settings ==
 use commands::settings_commands;
 // == MODULE COMMANDS: personal sources ==
@@ -87,8 +87,8 @@ use commands::cli_agent_commands;
 // == MODULE COMMANDS: database recovery ==
 use commands::db_recovery_commands;
 // == MODULE COMMANDS: workspaces ==
-use commands::workspace_chat_commands;
 use commands::live_commands;
+use commands::workspace_chat_commands;
 use commands::workspace_commands;
 
 /// Show the launcher window and hide the overlay window.
@@ -156,14 +156,19 @@ fn read_documents_in_background(
             Ok(text) => {
                 let tokens = context::token_counter::count_tokens(&text) as i64;
                 if let Ok(db) = db_arc.lock() {
-                    let _ = workspace::documents::store_text(db.connection(), &doc.id, &text, tokens);
+                    let _ =
+                        workspace::documents::store_text(db.connection(), &doc.id, &text, tokens);
                 }
                 if let Ok(mut ctx) = ctx_arc.lock() {
                     ctx.finish_extraction(&doc.id, text);
                 }
             }
             Err(e) => {
-                log::warn!("Context document {} can't be read, marking it missing: {}", doc.name, e);
+                log::warn!(
+                    "Context document {} can't be read, marking it missing: {}",
+                    doc.name,
+                    e
+                );
                 if let Ok(db) = db_arc.lock() {
                     let _ = workspace::documents::mark_missing(db.connection(), &doc.id, &e);
                 }
@@ -193,7 +198,9 @@ fn startup_gate<R: tauri::Runtime>(
         let handler = handler.clone();
         tauri::async_runtime::spawn(async move {
             let started = std::time::Instant::now();
-            while !STATE_READY.load(std::sync::atomic::Ordering::SeqCst) && started.elapsed() < std::time::Duration::from_secs(60) {
+            while !STATE_READY.load(std::sync::atomic::Ordering::SeqCst)
+                && started.elapsed() < std::time::Duration::from_secs(60)
+            {
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
             handler(invoke);
@@ -255,7 +262,8 @@ pub fn run() {
             let setup_started = std::time::Instant::now();
             log_commands::start(app.handle());
             // Private mcp-config files a crashed run left behind hold secrets.
-            let stale = sources::private_files::cleanup_leftovers(&sources::private_files::private_dir());
+            let stale =
+                sources::private_files::cleanup_leftovers(&sources::private_files::private_dir());
             if stale > 0 {
                 log::info!("Removed {stale} leftover private session file(s)");
             }
@@ -276,13 +284,19 @@ pub fn run() {
                 .expect("Failed to resolve app data directory");
             match db::open_or_problem(app_data_dir.clone()) {
                 Ok(db_mgr) => {
-                    app_state.readers = Some(Arc::new(db::readers::ReaderPool::new(db_mgr.path().to_path_buf())));
+                    app_state.readers = Some(Arc::new(db::readers::ReaderPool::new(
+                        db_mgr.path().to_path_buf(),
+                    )));
                     app_state.database = Some(Arc::new(Mutex::new(db_mgr)));
                     log::info!("Database initialized successfully");
                 }
                 Err(problem) => {
                     // Nothing was created or changed: the UI shows why and the copies to restore.
-                    log::error!("The database did not open ({:?}): {}", problem.kind, problem.message);
+                    log::error!(
+                        "The database did not open ({:?}): {}",
+                        problem.kind,
+                        problem.message
+                    );
                     app_state.db_problem = Some(problem);
                 }
             }
@@ -319,8 +333,10 @@ pub fn run() {
             if let (Some(db_arc), Some(ctx_arc)) = (&app_state.database, &app_state.context) {
                 let (stored, saved) = match db_arc.lock() {
                     Ok(db_guard) => (
-                        db::context::list_context_resources(db_guard.connection()).unwrap_or_default(),
-                        workspace::documents::saved_texts(db_guard.connection()).unwrap_or_default(),
+                        db::context::list_context_resources(db_guard.connection())
+                            .unwrap_or_default(),
+                        workspace::documents::saved_texts(db_guard.connection())
+                            .unwrap_or_default(),
                     ),
                     Err(_) => (Vec::new(), Default::default()),
                 };
@@ -339,7 +355,9 @@ pub fn run() {
                             status: context::STATUS_READY.to_string(),
                         };
                         match saved.get(&res.id) {
-                            Some(t) if t.status == "ready" => ctx.restore_resource(res, Some(t.text.clone())),
+                            Some(t) if t.status == "ready" => {
+                                ctx.restore_resource(res, Some(t.text.clone()))
+                            }
                             Some(_) => {
                                 let id = res.id.clone();
                                 ctx.restore_resource(res, None);
@@ -351,11 +369,16 @@ pub fn run() {
                             }
                         }
                     }
-                    log::info!("Restored {} context resource(s) from DB", ctx.list_resources().len());
+                    log::info!(
+                        "Restored {} context resource(s) from DB",
+                        ctx.list_resources().len()
+                    );
                 }
                 if !to_read.is_empty() {
                     let (db_arc, ctx_arc) = (db_arc.clone(), ctx_arc.clone());
-                    std::thread::spawn(move || read_documents_in_background(to_read, db_arc, ctx_arc));
+                    std::thread::spawn(move || {
+                        read_documents_in_background(to_read, db_arc, ctx_arc)
+                    });
                 }
             }
 
@@ -419,11 +442,14 @@ pub fn run() {
             // -- CLI agent session manager (Claude / Antigravity / Codex; sessions start lazily) --
             app_state.agent_sessions = Arc::new(llm::cli_agent::manager::AgentSessionManager::new(
                 Arc::new(llm::cli_agent::spawner::CliSpawner),
-                Arc::new(llm::cli_agent::manager::TauriStatusSink(app.handle().clone())),
+                Arc::new(llm::cli_agent::manager::TauriStatusSink(
+                    app.handle().clone(),
+                )),
                 app_state.cli_settings.clone(),
             ));
             // Workspace chats ask the user before a tool runs (events + command).
-            llm::cli_agent::approval::WorkspaceApprovals::global().install_app(app.handle().clone());
+            llm::cli_agent::approval::WorkspaceApprovals::global()
+                .install_app(app.handle().clone());
             tauri::async_runtime::spawn(llm::cli_agent::manager::run_idle_reaper(
                 app_state.agent_sessions.clone(),
             ));
@@ -469,7 +495,10 @@ pub fn run() {
                 loop {
                     tokio::time::sleep(store_guard::BACKUP_EVERY).await;
                     let dir = backup_dir.clone();
-                    let _ = tokio::task::spawn_blocking(move || store_guard::refresh_backups(&dir, std::time::SystemTime::now())).await;
+                    let _ = tokio::task::spawn_blocking(move || {
+                        store_guard::refresh_backups(&dir, std::time::SystemTime::now())
+                    })
+                    .await;
                 }
             });
             workspace_chat::runtime::attach(app.handle());
@@ -481,8 +510,13 @@ pub fn run() {
                     data_dir.clone(),
                     move || {
                         let state = busy_app.state::<AppState>();
-                        state.meeting_active.load(std::sync::atomic::Ordering::SeqCst)
-                            || state.recording_jobs.load(std::sync::atomic::Ordering::SeqCst) > 0
+                        state
+                            .meeting_active
+                            .load(std::sync::atomic::Ordering::SeqCst)
+                            || state
+                                .recording_jobs
+                                .load(std::sync::atomic::Ordering::SeqCst)
+                                > 0
                     },
                     move |finding| {
                         use tauri::Emitter;
@@ -557,7 +591,10 @@ pub fn run() {
                     log::info!("TrayManager initialized successfully");
                 }
                 Err(e) => {
-                    log::error!("Failed to initialize TrayManager: {}. Tray will use defaults.", e);
+                    log::error!(
+                        "Failed to initialize TrayManager: {}. Tray will use defaults.",
+                        e
+                    );
                 }
             }
 
@@ -657,7 +694,10 @@ pub fn run() {
                 #[cfg(windows)]
                 let _ = tray_icon.set_show_menu_on_left_click(false);
                 tray_icon.on_tray_icon_event(move |_tray, event| match event {
-                    TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } => {
+                    TrayIconEvent::DoubleClick {
+                        button: MouseButton::Left,
+                        ..
+                    } => {
                         tray::click::handle_left_click(&tray_app);
                     }
                     #[cfg(windows)]
@@ -728,7 +768,10 @@ pub fn run() {
                 stealth_commands::float_over_full_screen(&overlay.as_ref().window());
             }
 
-            log::info!("Lucid initialized successfully (setup took {} ms)", setup_started.elapsed().as_millis());
+            log::info!(
+                "Lucid initialized successfully (setup took {} ms)",
+                setup_started.elapsed().as_millis()
+            );
             Ok(())
         })
         .invoke_handler(startup_gate(tauri::generate_handler![
@@ -794,9 +837,14 @@ pub fn run() {
             context_commands::get_token_budget,
             // == COMMANDS: credentials ==
             credential_commands::store_api_key,
-            credential_commands::get_api_key,
+            credential_commands::get_credential_setting,
             credential_commands::delete_api_key,
             credential_commands::has_api_key,
+            credential_commands::add_credential_profile,
+            credential_commands::list_credential_profiles,
+            credential_commands::activate_credential_profile,
+            credential_commands::set_credential_profile_enabled,
+            credential_commands::delete_credential_profile,
             // == COMMANDS: meetings ==
             meeting_commands::start_meeting,
             meeting_commands::end_meeting,
@@ -1024,14 +1072,22 @@ pub fn run() {
         .run(|app, event| {
             // How Lucid ends up quitting, for bug reports (a window closing,
             // an exit request, or the OS terminating the app).
-            if let tauri::RunEvent::WindowEvent { label, event: tauri::WindowEvent::Destroyed, .. } = &event {
+            if let tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Destroyed,
+                ..
+            } = &event
+            {
                 log::info!("Window '{label}' closed");
             }
             // Tray Quit (`app.exit(0)`) and any other exit request: install a
             // downloaded update first (exits inside the call on success), or
             // defer the quit while the last recording is still saving.
             if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
-                let meeting_active = app.state::<AppState>().meeting_active.load(std::sync::atomic::Ordering::SeqCst);
+                let meeting_active = app
+                    .state::<AppState>()
+                    .meeting_active
+                    .load(std::sync::atomic::Ordering::SeqCst);
                 log::info!("Exit requested (code {code:?}, meeting active: {meeting_active})");
                 if *code != Some(tauri::RESTART_EXIT_CODE) {
                     updater_commands::on_exit_requested(app, api);
@@ -1041,7 +1097,10 @@ pub fn run() {
             // process exits elsewhere (e.g. inside an update install), the
             // children still see stdin EOF and exit on their own.
             if let tauri::RunEvent::Exit = &event {
-                let meeting_active = app.state::<AppState>().meeting_active.load(std::sync::atomic::Ordering::SeqCst);
+                let meeting_active = app
+                    .state::<AppState>()
+                    .meeting_active
+                    .load(std::sync::atomic::Ordering::SeqCst);
                 log::info!("Lucid is exiting (meeting active: {meeting_active})");
                 // Running notes and briefs are saved as interrupted (resumable).
                 if let Some(rt) = live_runtime::global() {

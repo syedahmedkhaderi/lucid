@@ -1,6 +1,6 @@
 # Develop Lucid
 
-The repository currently builds on Apple Silicon macOS. A Windows host is still required to verify Windows audio capture and the installer.
+The one-command bootstrap is `npm run setup`. On macOS it installs the app in `/Applications`; on Windows it builds the NSIS installer. Windows runtime and audio still need testing on a Windows machine.
 
 ## macOS prerequisites
 
@@ -9,6 +9,14 @@ The repository currently builds on Apple Silicon macOS. A Windows host is still 
 - Optional: Ninja
 
 ## Commands
+
+```sh
+npm run setup
+```
+
+The setup command checks the host toolchain, installs the locked Node dependencies, stages ONNX Runtime, and builds the platform app. `npm run setup -- --dry-run` checks prerequisites and prints the commands without building.
+
+For frontend/backend development after setup:
 
 ```sh
 npm ci
@@ -20,11 +28,11 @@ npx tauri dev
 ./build-mac.sh --no-install --bundles app
 ```
 
-`npm run build` creates the frontend bundle in `dist/`. A Tauri build additionally stages the pinned ONNX Runtime and compiles native dependencies. The command above creates `src-tauri/target/release/bundle/macos/Lucid.app` without installing it into `/Applications`. A standalone macOS DMG is also available in the project root. The release script is maintainer-oriented; do not cut or publish releases from this working copy.
+`npm run build` creates the frontend bundle in `dist/`. A Tauri build additionally stages the pinned ONNX Runtime and compiles native dependencies. The final command creates `src-tauri/target/release/bundle/macos/Lucid.app` without installing it into `/Applications`. The verified macOS DMG is under `src-tauri/target/release/bundle/dmg/`. The release script is maintainer-oriented; do not cut or publish releases from this working copy.
 
 ## Windows
 
-Use Node.js 22.22.2+ or 24.15.0+, stable Rust with Visual Studio C++ build tools, WebView2, CMake, Ninja, and LLVM. Then run `npm ci`, `npm test`, `npm run build`, `cargo test --lib` from `src-tauri`, and `npx tauri build`. No Windows build has yet been run from this macOS host.
+Use Node.js 22.22.2+ or 24.15.0+, stable x86_64 MSVC Rust, Visual Studio C++ build tools, WebView2, CMake, Ninja, and LLVM. Run `npm run setup` to produce the NSIS installer. No Windows build has yet been run from this macOS host.
 
 ## Secrets and sample data
 

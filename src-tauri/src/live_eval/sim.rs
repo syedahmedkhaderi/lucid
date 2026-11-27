@@ -3,7 +3,9 @@
 //! have a realistic size. They measure how many tokens an hour costs and check
 //! the rules on every single run.
 
-use crate::live_brief::engine::{BriefConfig, BriefEngine, BriefLine, NullBriefSink, NullBriefStore};
+use crate::live_brief::engine::{
+    BriefConfig, BriefEngine, BriefLine, NullBriefSink, NullBriefStore,
+};
 use crate::live_brief::search::Passage;
 use crate::live_common::{estimate_tokens, FakeClock, LlmCall, LlmError, LlmReply, LlmRequest};
 use crate::live_eval::scripted::{conversation, topic_words, Lang};
@@ -23,7 +25,10 @@ pub struct SynthNotesLlm {
 
 impl SynthNotesLlm {
     pub fn new(detail: Detail) -> Self {
-        Self { detail, calls: AtomicU32::new(0) }
+        Self {
+            detail,
+            calls: AtomicU32::new(0),
+        }
     }
 }
 
@@ -65,8 +70,14 @@ impl LlmCall for SynthNotesLlm {
         let mut ops = Vec::new();
         if k % 4 == 0 {
             if let Some((t, text)) = lines.first() {
-                let title: String = text.split_whitespace().take(5).collect::<Vec<_>>().join(" ");
-                ops.push(serde_json::json!({"op":"add","id":"nt","type":"topic","text":title,"t":t}));
+                let title: String = text
+                    .split_whitespace()
+                    .take(5)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                ops.push(
+                    serde_json::json!({"op":"add","id":"nt","type":"topic","text":title,"t":t}),
+                );
             }
         }
         for i in 0..n_ops.min(lines.len().max(1)) {
@@ -76,7 +87,9 @@ impl LlmCall for SynthNotesLlm {
             let (t, text) = &lines[i * lines.len() / n_ops.max(1) % lines.len()];
             let mut text: String = text.chars().take(140).collect();
             text = format!("{} #{}", text.trim_end_matches('.'), k * 20 + i as u32);
-            ops.push(serde_json::json!({"op":"add","type":kinds[i % kinds.len()],"text":text,"t":t}));
+            ops.push(
+                serde_json::json!({"op":"add","type":kinds[i % kinds.len()],"text":text,"t":t}),
+            );
         }
         let body = serde_json::json!({ "ops": ops }).to_string();
         let sys = estimate_tokens(&req.system);
@@ -108,21 +121,42 @@ pub struct NotesSim {
 /// 150 wpm for one hour: 15-word lines every 6 s (4 s of speech, 2 s pause).
 pub fn simulate_notes(detail: Detail, seed: u64, hours_secs: u64) -> NotesSim {
     let topics = [0usize, 1, 2, 3];
-    let blocks: Vec<(usize, u64)> = (0..(hours_secs / 240 + 1)).map(|i| (topics[i as usize % 4], 240)).collect();
+    let blocks: Vec<(usize, u64)> = (0..(hours_secs / 240 + 1))
+        .map(|i| (topics[i as usize % 4], 240))
+        .collect();
     let utt = conversation(Lang::En, seed, &blocks, 6, 15);
     let clock = FakeClock::new(0);
-    let cfg = NotesConfig { prompt: crate::live_notes::prompts::NotesPromptOptions { detail, ..Default::default() }, ..Default::default() };
+    let cfg = NotesConfig {
+        prompt: crate::live_notes::prompts::NotesPromptOptions {
+            detail,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
     let limits = cfg.reduce.clone();
-    let mut e = NotesEngine::new(SynthNotesLlm::new(detail), clock.clone(), cfg, Arc::new(NullSink), Arc::new(NullStore));
+    let mut e = NotesEngine::new(
+        SynthNotesLlm::new(detail),
+        clock.clone(),
+        cfg,
+        Arc::new(NullSink),
+        Arc::new(NullStore),
+    );
     let synth = SynthNotesLlm::new(detail);
     let mut sim = NotesSim::default();
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     rt.block_on(async {
         for u in utt.iter().filter(|u| u.ms < hours_secs * 1000) {
             for (offset, feed) in [(4_000u64, true), (6_000u64, false)] {
                 clock.set(u.ms + offset);
                 if feed {
-                    e.feed(TranscriptLine { ms: u.ms, speaker: "Them".into(), text: u.text.clone() });
+                    e.feed(TranscriptLine {
+                        ms: u.ms,
+                        speaker: "Them".into(),
+                        text: u.text.clone(),
+                    });
                 }
                 while let Decision::Run(reason) = e.poll() {
                     let before = e.doc().clone();
@@ -145,7 +179,15 @@ pub fn simulate_notes(detail: Detail, seed: u64, hours_secs: u64) -> NotesSim {
                         sim.applied_ops += r.applied();
                         sim.dropped_ops += r.dropped_total();
                     }
-                    let v = check_invariants(&before, e.doc(), ReduceCtx { range_start_ms: from, range_end_ms: to }, &limits);
+                    let v = check_invariants(
+                        &before,
+                        e.doc(),
+                        ReduceCtx {
+                            range_start_ms: from,
+                            range_end_ms: to,
+                        },
+                        &limits,
+                    );
                     sim.violations.extend(v);
                 }
             }
@@ -179,13 +221,18 @@ impl LlmCall for SynthBriefLlm {
                 next_is_text = false;
                 let first: String = l.split('.').next().unwrap_or(l).chars().take(110).collect();
                 if facts.len() < 4 && !first.trim().is_empty() {
-                    facts.push(serde_json::json!({"text": first.trim(), "source": label}));
+                    facts.push(serde_json::json!({"text": first.trim(), "source": label, "evidence": first.trim()}));
                 }
             }
         }
         let body = serde_json::json!({"now":"Discussion in progress","facts":facts,"earlier":["Earlier topic"]}).to_string();
         let sys = estimate_tokens(&req.system);
-        Ok(LlmReply { input_tokens: Some(sys + estimate_tokens(&req.user)), cached_input_tokens: Some(sys), output_tokens: Some(estimate_tokens(&body)), text: body })
+        Ok(LlmReply {
+            input_tokens: Some(sys + estimate_tokens(&req.user)),
+            cached_input_tokens: Some(sys),
+            output_tokens: Some(estimate_tokens(&body)),
+            text: body,
+        })
     }
 }
 
@@ -204,18 +251,27 @@ fn passage_for(topic: usize, i: usize) -> Passage {
     let words = topic_words(Lang::En, topic);
     let mut text = format!("Summary {i} of the notes. ");
     for s in 0..8 {
-        let sent: Vec<&str> = (0..12).map(|k| words[(i * 7 + s * 5 + k) % words.len()]).collect();
+        let sent: Vec<&str> = (0..12)
+            .map(|k| words[(i * 7 + s * 5 + k) % words.len()])
+            .collect();
         text.push_str(&sent.join(" "));
         text.push_str(". ");
     }
-    Passage { id: format!("t{topic}p{i}"), title: format!("Doc {topic}-{i}"), text, start_ms: None }
+    Passage {
+        id: format!("t{topic}p{i}"),
+        title: format!("Doc {topic}-{i}"),
+        text,
+        start_ms: None,
+    }
 }
 
 /// `drift_every`: the index returns a slightly different top list every N
 /// searches (new documents arriving, wording changing); 0 = never.
 pub fn simulate_brief(seed: u64, hours_secs: u64, drift_every: u32) -> BriefSim {
     let topics = [0usize, 1, 2, 3];
-    let blocks: Vec<(usize, u64)> = (0..(hours_secs / 240 + 1)).map(|i| (topics[i as usize % 4], 240)).collect();
+    let blocks: Vec<(usize, u64)> = (0..(hours_secs / 240 + 1))
+        .map(|i| (topics[i as usize % 4], 240))
+        .collect();
     let utt = conversation(Lang::En, seed, &blocks, 5, 12);
     let clock = FakeClock::new(0);
     let current = Arc::new(AtomicU32::new(0));
@@ -224,17 +280,36 @@ pub fn simulate_brief(seed: u64, hours_secs: u64, drift_every: u32) -> BriefSim 
     let search = move |_q: &str, _t: u32, _m: usize| -> Vec<Passage> {
         let n = cnt2.fetch_add(1, Ordering::SeqCst);
         let topic = cur2.load(Ordering::SeqCst) as usize;
-        let drift = if drift_every == 0 { 0 } else { (n / drift_every) as usize };
+        let drift = if drift_every == 0 {
+            0
+        } else {
+            (n / drift_every) as usize
+        };
         (0..6).map(|i| passage_for(topic, i + drift)).collect()
     };
-    let mut e = BriefEngine::new(SynthBriefLlm, clock.clone(), search, "ws", BriefConfig::default(), Arc::new(NullBriefSink), Arc::new(NullBriefStore));
+    let mut e = BriefEngine::new(
+        SynthBriefLlm,
+        clock.clone(),
+        search,
+        "ws",
+        BriefConfig::default(),
+        Arc::new(NullBriefSink),
+        Arc::new(NullBriefStore),
+    );
     let mut sim = BriefSim::default();
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     rt.block_on(async {
         for u in utt.iter().filter(|u| u.ms < hours_secs * 1000) {
             current.store(blocks[u.topic].0 as u32, Ordering::SeqCst);
             clock.set(u.ms + 4_000);
-            e.feed(BriefLine { start_ms: u.ms, end_ms: Some(u.ms + 4_000), text: u.text.clone() });
+            e.feed(BriefLine {
+                start_ms: u.ms,
+                end_ms: Some(u.ms + 4_000),
+                text: u.text.clone(),
+            });
             let t = e.tick().await;
             if t.topic_changed {
                 sim.topic_changes += 1;

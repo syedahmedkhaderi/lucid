@@ -1,8 +1,9 @@
 // Guard: the app's AI provider (and its model) change only when the user says
 // so (footer picker, Settings, the first-run wizard, the CLI agents' "Use"
 // button) and when a window loads its saved settings. No workspace, chat,
-// notes, brief, meeting or model-refresh code may call these. A new caller
-// has to be added here on purpose.
+// notes, brief, meeting or model-refresh code may call these. Credential
+// Profiles is listed because its explicit "Use this" action switches keys.
+// A new caller has to be added here on purpose.
 
 import { describe, expect, it } from "vitest";
 
@@ -30,6 +31,7 @@ describe("who may change the global AI provider or model", () => {
       "components/wizard/LLMSetupStep.tsx",
       "lib/ipc.ts",
       "settings/CliAgentSettings.tsx",
+      "settings/CredentialProfiles.tsx",
       "settings/LLMSettings.tsx",
       "settings/PrivacySettings.tsx",
       "stores/configStore.ts",

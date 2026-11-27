@@ -8,6 +8,9 @@ use super::store::{self, borrowed_of, get_workspace, home_of, now_ms};
 use super::types::*;
 use crate::db::meetings::MeetingSummary;
 
+/// A meeting can draw from at most ten selected library documents.
+pub const MAX_MEETING_DOCUMENTS: usize = 10;
+
 fn err(what: &str, e: rusqlite::Error) -> String {
     format!("{what}: {e}")
 }
@@ -15,38 +18,133 @@ fn err(what: &str, e: rusqlite::Error) -> String {
 /// Creates a meeting and files it in `home` in one transaction: if filing
 /// fails, no meeting row is left behind. `None`: workspaces are unavailable and
 /// the meeting is created as before.
-pub fn create_meeting_in(conn: &Connection, title: &str, home: Option<&str>) -> Result<crate::db::meetings::Meeting, String> {
+pub fn create_meeting_in(
+    conn: &Connection,
+    title: &str,
+    home: Option<&str>,
+) -> Result<crate::db::meetings::Meeting, String> {
     let tx = crate::db::immediate_tx(conn).map_err(|e| err("Couldn't start the meeting", e))?;
-    let mut meeting = crate::db::meetings::create_meeting(&tx, title).map_err(|e| format!("Failed to create meeting: {e}"))?;
+    let mut meeting = crate::db::meetings::create_meeting(&tx, title)
+        .map_err(|e| format!("Failed to create meeting: {e}"))?;
     if let Some(home) = home {
         set_home(&tx, &meeting.id, home)?;
         meeting.workspace_id = home.to_string();
     }
-    tx.commit().map_err(|e| err("Couldn't start the meeting", e))?;
+    tx.commit()
+        .map_err(|e| err("Couldn't start the meeting", e))?;
     Ok(meeting)
 }
 
-/// A new meeting filed in no workspace (see [`super::types::unfiled_home`]).
-pub fn create_meeting_unfiled(conn: &Connection, title: &str) -> Result<crate::db::meetings::Meeting, String> {
+/// Creates a meeting with its home, borrowed workspaces and selected documents
+/// committed together. The AI runtime cannot observe a broader scope while the
+/// meeting is starting.
+pub fn create_meeting_configured(
+    conn: &Connection,
+    title: &str,
+    home: &str,
+    borrowed_ids: &[String],
+    selected_document_ids: Option<&[String]>,
+) -> Result<crate::db::meetings::Meeting, String> {
     let tx = crate::db::immediate_tx(conn).map_err(|e| err("Couldn't start the meeting", e))?;
-    let mut meeting = crate::db::meetings::create_meeting(&tx, title).map_err(|e| format!("Failed to create meeting: {e}"))?;
+    let mut meeting = crate::db::meetings::create_meeting(&tx, title)
+        .map_err(|e| format!("Failed to create meeting: {e}"))?;
+    set_home(&tx, &meeting.id, home)?;
+    meeting.workspace_id = home.to_string();
+
+    let home_workspace = get_workspace(&tx, home)?;
+    let mut wanted = Vec::new();
+    for id in borrowed_ids {
+        if wanted.iter().any(|seen| seen == id) {
+            continue;
+        }
+        let other = get_workspace(&tx, id)?;
+        rules::may_borrow(&home_workspace, &other)?;
+        wanted.push(other.id);
+    }
+    let added_at = now_ms();
+    for id in &wanted {
+        tx.execute(
+            "INSERT INTO meeting_borrowed (meeting_id, workspace_id, added_at, removed_at)
+             VALUES (?1, ?2, ?3, NULL)",
+            params![meeting.id, id, added_at],
+        )
+        .map_err(|e| err("Couldn't save the meeting's workspace scope", e))?;
+    }
+
+    if let Some(selected) = selected_document_ids {
+        let scope = super::scope::scope_for_home(&tx, home, &wanted)?;
+        save_document_selection(&tx, &meeting.id, &scope.document_ids, selected)?;
+    }
+
+    tx.commit()
+        .map_err(|e| err("Couldn't start the meeting", e))?;
+    Ok(meeting)
+}
+
+fn save_document_selection(
+    conn: &Connection,
+    meeting_id: &str,
+    available: &[String],
+    selected: &[String],
+) -> Result<(), String> {
+    let mut unique = Vec::with_capacity(selected.len());
+    for id in selected {
+        if !unique.contains(id) {
+            unique.push(id.clone());
+        }
+    }
+    if unique.len() > MAX_MEETING_DOCUMENTS {
+        return Err(format!(
+            "A meeting can use at most {MAX_MEETING_DOCUMENTS} documents"
+        ));
+    }
+    for id in &unique {
+        if !available.iter().any(|available| available == id) {
+            return Err("One of the selected documents is no longer available in this meeting's workspace scope".to_string());
+        }
+    }
+    let selected_json = serde_json::to_string(&unique)
+        .map_err(|e| format!("Couldn't save the document selection: {e}"))?;
+    conn.execute(
+        "INSERT INTO meeting_document_scope (meeting_id, selected_json, updated_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(meeting_id) DO UPDATE SET selected_json = excluded.selected_json, updated_at = excluded.updated_at",
+        params![meeting_id, selected_json, now_ms()],
+    )
+    .map(|_| ())
+    .map_err(|e| err("Couldn't save the meeting's document selection", e))
+}
+
+/// A new meeting filed in no workspace (see [`super::types::unfiled_home`]).
+pub fn create_meeting_unfiled(
+    conn: &Connection,
+    title: &str,
+) -> Result<crate::db::meetings::Meeting, String> {
+    let tx = crate::db::immediate_tx(conn).map_err(|e| err("Couldn't start the meeting", e))?;
+    let mut meeting = crate::db::meetings::create_meeting(&tx, title)
+        .map_err(|e| format!("Failed to create meeting: {e}"))?;
     let home = super::types::unfiled_home(&meeting.id);
     set_home(&tx, &meeting.id, &home)?;
     meeting.workspace_id = home;
-    tx.commit().map_err(|e| err("Couldn't start the meeting", e))?;
+    tx.commit()
+        .map_err(|e| err("Couldn't start the meeting", e))?;
     Ok(meeting)
 }
 
 /// Files a new meeting in `home`.
 pub fn set_home(conn: &Connection, meeting_id: &str, home: &str) -> Result<(), String> {
-    conn.execute("UPDATE meetings SET workspace_id = ?2 WHERE id = ?1", params![meeting_id, home])
-        .map(|_| ())
-        .map_err(|e| err("Couldn't file the meeting", e))
+    conn.execute(
+        "UPDATE meetings SET workspace_id = ?2 WHERE id = ?1",
+        params![meeting_id, home],
+    )
+    .map(|_| ())
+    .map_err(|e| err("Couldn't file the meeting", e))
 }
 
 /// A meeting's home and what it borrows, with every workspace whose material it uses.
 pub fn get_meeting_scope(conn: &Connection, meeting_id: &str) -> Result<MeetingScope, String> {
-    let home = home_of(conn, meeting_id)?.ok_or_else(|| "This meeting no longer exists".to_string())?;
+    let home =
+        home_of(conn, meeting_id)?.ok_or_else(|| "This meeting no longer exists".to_string())?;
     let borrowed = borrowed_of(conn, meeting_id)?;
     let scope = super::scope::scope_for_home(conn, &home, &borrowed)?;
     Ok(MeetingScope {
@@ -60,11 +158,19 @@ pub fn get_meeting_scope(conn: &Connection, meeting_id: &str) -> Result<MeetingS
 /// Replaces the workspaces a meeting borrows. A workspace taken out is "not
 /// used from now on" (its row is kept with the time). Refuses a combination
 /// where either side is kept separate, saying which.
-pub fn set_meeting_scope(conn: &Connection, meeting_id: &str, borrowed: &[String]) -> Result<MeetingScope, String> {
-    let home_id = home_of(conn, meeting_id)?.ok_or_else(|| "This meeting no longer exists".to_string())?;
+pub fn set_meeting_scope(
+    conn: &Connection,
+    meeting_id: &str,
+    borrowed: &[String],
+) -> Result<MeetingScope, String> {
+    let home_id =
+        home_of(conn, meeting_id)?.ok_or_else(|| "This meeting no longer exists".to_string())?;
     if super::types::is_unfiled(&home_id) {
         if !borrowed.is_empty() {
-            return Err("File this meeting in a workspace first. Until then it uses none of them".to_string());
+            return Err(
+                "File this meeting in a workspace first. Until then it uses none of them"
+                    .to_string(),
+            );
         }
         return get_meeting_scope(conn, meeting_id);
     }
@@ -124,7 +230,8 @@ pub fn end_borrows_involving(conn: &Connection, workspace_id: &str) -> Result<()
 ///
 /// Not atomic by itself: call it inside a transaction, or use [`move_meeting_atomic`].
 pub fn move_meeting(conn: &Connection, meeting_id: &str, workspace_id: &str) -> Result<(), String> {
-    let old = home_of(conn, meeting_id)?.ok_or_else(|| "This meeting no longer exists".to_string())?;
+    let old =
+        home_of(conn, meeting_id)?.ok_or_else(|| "This meeting no longer exists".to_string())?;
     let target = get_workspace(conn, workspace_id)?;
     if target.archived {
         return Err(format!("\"{}\" is archived", target.name));
@@ -136,7 +243,10 @@ pub fn move_meeting(conn: &Connection, meeting_id: &str, workspace_id: &str) -> 
     set_home(conn, meeting_id, workspace_id)?;
     // A borrow that is now the home, or that the new home may not have, ends.
     for id in borrowed_of(conn, meeting_id)? {
-        let keep = get_workspace(conn, &id).ok().map(|w| rules::may_borrow(&target, &w).is_ok()).unwrap_or(false);
+        let keep = get_workspace(conn, &id)
+            .ok()
+            .map(|w| rules::may_borrow(&target, &w).is_ok())
+            .unwrap_or(false);
         if !keep {
             conn.execute(
                 "UPDATE meeting_borrowed SET removed_at = ?3 WHERE meeting_id = ?1 AND workspace_id = ?2",
@@ -154,7 +264,11 @@ pub fn move_meeting(conn: &Connection, meeting_id: &str, workspace_id: &str) -> 
 }
 
 /// [`move_meeting`] in its own transaction.
-pub fn move_meeting_atomic(conn: &Connection, meeting_id: &str, workspace_id: &str) -> Result<(), String> {
+pub fn move_meeting_atomic(
+    conn: &Connection,
+    meeting_id: &str,
+    workspace_id: &str,
+) -> Result<(), String> {
     let tx = crate::db::immediate_tx(conn).map_err(|e| err("Couldn't move the meeting", e))?;
     move_meeting(&tx, meeting_id, workspace_id)?;
     tx.commit().map_err(|e| err("Couldn't move the meeting", e))
@@ -165,8 +279,12 @@ pub const UNFILED: &str = "unfiled";
 
 /// How many meetings are filed in no workspace.
 pub fn count_unfiled(conn: &Connection) -> Result<i64, String> {
-    conn.query_row("SELECT COUNT(*) FROM meetings WHERE workspace_id NOT IN (SELECT id FROM workspaces)", [], |r| r.get(0))
-        .map_err(|e| err("Couldn't count the meetings", e))
+    conn.query_row(
+        "SELECT COUNT(*) FROM meetings WHERE workspace_id NOT IN (SELECT id FROM workspaces)",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(|e| err("Couldn't count the meetings", e))
 }
 
 /// A page of the meetings filed in a workspace, newest first, with how many
@@ -178,17 +296,28 @@ pub fn list_workspace_meetings(
     limit: u32,
     offset: u32,
 ) -> Result<WorkspaceMeetingPage, String> {
-    let pattern = query.map(str::trim).filter(|q| !q.is_empty()).map(|q| format!("%{}%", escape_like(q)));
+    let pattern = query
+        .map(str::trim)
+        .filter(|q| !q.is_empty())
+        .map(|q| format!("%{}%", escape_like(q)));
     const FILTER: &str = "m.workspace_id = ?1
                AND (?2 IS NULL
                     OR m.title LIKE ?2 ESCAPE '\\'
                     OR m.summary LIKE ?2 ESCAPE '\\'
                     OR EXISTS (SELECT 1 FROM transcript_segments ts WHERE ts.meeting_id = m.id AND ts.text LIKE ?2 ESCAPE '\\'))";
     // `UNFILED`: the meetings whose home is no workspace that exists any more
-    let home_clause = if workspace_id == UNFILED { "(?1 IS NOT NULL AND m.workspace_id NOT IN (SELECT id FROM workspaces))" } else { "m.workspace_id = ?1" };
+    let home_clause = if workspace_id == UNFILED {
+        "(?1 IS NOT NULL AND m.workspace_id NOT IN (SELECT id FROM workspaces))"
+    } else {
+        "m.workspace_id = ?1"
+    };
     let filter = FILTER.replacen("m.workspace_id = ?1", home_clause, 1);
     let total: i64 = conn
-        .query_row(&format!("SELECT COUNT(*) FROM meetings m WHERE {filter}"), params![workspace_id, pattern], |row| row.get(0))
+        .query_row(
+            &format!("SELECT COUNT(*) FROM meetings m WHERE {filter}"),
+            params![workspace_id, pattern],
+            |row| row.get(0),
+        )
         .map_err(|e| err("Couldn't list the meetings", e))?;
     let mut stmt = conn
         .prepare(&format!(
@@ -204,30 +333,43 @@ pub fn list_workspace_meetings(
         ))
         .map_err(|e| err("Couldn't list the meetings", e))?;
     let rows = stmt
-        .query_map(params![workspace_id, pattern, limit.min(500), offset], |row| {
-            Ok(MeetingSummary {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                start_time: row.get(2)?,
-                end_time: row.get(3)?,
-                duration_seconds: row.get(4)?,
-                segment_count: row.get(5)?,
-                has_summary: row.get::<_, i32>(6)? != 0,
-                audio_mode: row.get::<_, String>(7).unwrap_or_else(|_| "online".to_string()),
-                ai_scenario: row.get::<_, String>(8).unwrap_or_else(|_| "team_meeting".to_string()),
-                workspace_id: row.get(9)?,
-                has_recap: row.get::<_, i32>(10)? != 0,
-            })
-        })
+        .query_map(
+            params![workspace_id, pattern, limit.min(500), offset],
+            |row| {
+                Ok(MeetingSummary {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    start_time: row.get(2)?,
+                    end_time: row.get(3)?,
+                    duration_seconds: row.get(4)?,
+                    segment_count: row.get(5)?,
+                    has_summary: row.get::<_, i32>(6)? != 0,
+                    audio_mode: row
+                        .get::<_, String>(7)
+                        .unwrap_or_else(|_| "online".to_string()),
+                    ai_scenario: row
+                        .get::<_, String>(8)
+                        .unwrap_or_else(|_| "team_meeting".to_string()),
+                    workspace_id: row.get(9)?,
+                    has_recap: row.get::<_, i32>(10)? != 0,
+                })
+            },
+        )
         .map_err(|e| err("Couldn't list the meetings", e))?;
-    let meetings = rows.collect::<Result<Vec<_>, _>>().map_err(|e| err("Couldn't list the meetings", e))?;
+    let meetings = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| err("Couldn't list the meetings", e))?;
     Ok(WorkspaceMeetingPage { meetings, total })
 }
 
 /// SQL for "an AI recap exists" (0 when the search tables are not there yet).
 fn recap_column(conn: &Connection) -> &'static str {
     let has_table: bool = conn
-        .query_row("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meeting_cards'", [], |_| Ok(()))
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meeting_cards'",
+            [],
+            |_| Ok(()),
+        )
         .is_ok();
     if has_table {
         "EXISTS (SELECT 1 FROM meeting_cards c WHERE c.meeting_id = m.id AND c.origin = 'ai')"
@@ -237,7 +379,62 @@ fn recap_column(conn: &Connection) -> &'static str {
 }
 
 fn escape_like(text: &str) -> String {
-    text.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+    text.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+#[cfg(test)]
+mod document_scope_tests {
+    use super::*;
+    use crate::workspace::test_support::*;
+
+    #[test]
+    fn configured_meeting_stores_its_borrow_and_document_selection_before_commit() {
+        let conn = memory_db();
+        let home = new_ws(&conn, "Home", false, false);
+        let borrowed = new_ws(&conn, "Borrowed", false, false);
+        file(&conn, &home, "document", "home-doc");
+        file(&conn, &borrowed, "document", "borrowed-doc");
+
+        let meeting = create_meeting_configured(
+            &conn,
+            "Review",
+            &home,
+            &[borrowed.clone()],
+            Some(&["borrowed-doc".to_string()]),
+        )
+        .unwrap();
+        let scope = super::super::scope::scope_for(
+            &conn,
+            super::super::scope::ScopeOwner::Meeting(&meeting.id),
+        )
+        .unwrap();
+        assert_eq!(scope.document_ids, vec!["borrowed-doc"]);
+        assert_eq!(borrowed_of(&conn, &meeting.id).unwrap(), vec![borrowed]);
+    }
+
+    #[test]
+    fn an_invalid_or_over_limit_selection_rolls_back_meeting_creation() {
+        let conn = memory_db();
+        let home = new_ws(&conn, "Home", false, false);
+        file(&conn, &home, "document", "known");
+        let too_many: Vec<String> = (0..=MAX_MEETING_DOCUMENTS)
+            .map(|n| format!("doc-{n}"))
+            .collect();
+        let err =
+            create_meeting_configured(&conn, "Too many", &home, &[], Some(&too_many)).unwrap_err();
+        assert!(err.contains("at most 10"));
+
+        let err =
+            create_meeting_configured(&conn, "Unknown", &home, &[], Some(&["missing".to_string()]))
+                .unwrap_err();
+        assert!(err.contains("no longer available"));
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM meetings", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
 }
 
 #[cfg(test)]
@@ -265,13 +462,22 @@ mod tests {
             "CREATE TRIGGER refuse_filing BEFORE UPDATE OF workspace_id ON meetings BEGIN SELECT RAISE(ABORT, 'no'); END;",
         )
         .unwrap();
-        let before: i64 = conn.query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0)).unwrap();
+        let before: i64 = conn
+            .query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0))
+            .unwrap();
         assert!(create_meeting_in(&conn, "Second", Some(&a)).is_err());
-        let after: i64 = conn.query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0)).unwrap();
+        let after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM meetings", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(before, after);
         // Without workspaces it is created as before.
         conn.execute_batch("DROP TRIGGER refuse_filing").unwrap();
-        assert_eq!(create_meeting_in(&conn, "Plain", None).unwrap().workspace_id, "general");
+        assert_eq!(
+            create_meeting_in(&conn, "Plain", None)
+                .unwrap()
+                .workspace_id,
+            "general"
+        );
     }
 
     #[test]
@@ -298,7 +504,13 @@ mod tests {
         set_meeting_scope(&conn, "m", &[b.clone(), c.clone()]).unwrap();
         let s = set_meeting_scope(&conn, "m", &[c.clone()]).unwrap();
         assert_eq!(s.borrowed, vec![c.clone()]);
-        let removed: i64 = conn.query_row("SELECT COUNT(*) FROM meeting_borrowed WHERE removed_at IS NOT NULL", [], |r| r.get(0)).unwrap();
+        let removed: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM meeting_borrowed WHERE removed_at IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(removed, 1);
         let s = set_meeting_scope(&conn, "m", &[b.clone(), c.clone()]).unwrap();
         assert_eq!(s.borrowed.len(), 2);
@@ -336,10 +548,28 @@ mod tests {
         let chat = crate::workspace_chat::store::create_chat(&conn, &a, None, None, None).unwrap();
         conn.execute("UPDATE workspace_chats SET condensed = 'may quote the meeting', condensed_upto = 3 WHERE id = ?1", params![chat.id]).unwrap();
         move_meeting_atomic(&conn, "m", &b).unwrap();
-        let source: Option<String> = conn.query_row("SELECT source_meeting FROM workspace_memory WHERE id = 'i1'", [], |r| r.get(0)).unwrap();
-        assert_eq!(source, None, "the memory item keeps its text but no longer points at the meeting");
-        let summary: Option<String> = conn.query_row("SELECT condensed FROM workspace_chats WHERE id = ?1", params![chat.id], |r| r.get(0)).unwrap();
-        assert_eq!(summary, None, "the old workspace's chat summaries may quote the meeting and are dropped");
+        let source: Option<String> = conn
+            .query_row(
+                "SELECT source_meeting FROM workspace_memory WHERE id = 'i1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            source, None,
+            "the memory item keeps its text but no longer points at the meeting"
+        );
+        let summary: Option<String> = conn
+            .query_row(
+                "SELECT condensed FROM workspace_chats WHERE id = ?1",
+                params![chat.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            summary, None,
+            "the old workspace's chat summaries may quote the meeting and are dropped"
+        );
     }
 
     #[test]
@@ -356,10 +586,40 @@ mod tests {
         let all = list_workspace_meetings(&conn, &a, None, 50, 0).unwrap();
         assert_eq!((all.meetings.len(), all.total), (1, 1));
         assert_eq!(all.meetings[0].workspace_id, a);
-        assert_eq!(list_workspace_meetings(&conn, &a, Some("budget"), 50, 0).unwrap().meetings.len(), 1);
-        assert_eq!(list_workspace_meetings(&conn, &a, Some("50%"), 50, 0).unwrap().meetings.len(), 1);
-        assert_eq!(list_workspace_meetings(&conn, &a, Some("5_%"), 50, 0).unwrap().meetings.len(), 0);
-        assert_eq!(list_workspace_meetings(&conn, &a, Some("two"), 50, 0).unwrap().meetings.len(), 0);
-        assert_eq!(list_workspace_meetings(&conn, "general", None, 50, 0).unwrap().meetings.len(), 1);
+        assert_eq!(
+            list_workspace_meetings(&conn, &a, Some("budget"), 50, 0)
+                .unwrap()
+                .meetings
+                .len(),
+            1
+        );
+        assert_eq!(
+            list_workspace_meetings(&conn, &a, Some("50%"), 50, 0)
+                .unwrap()
+                .meetings
+                .len(),
+            1
+        );
+        assert_eq!(
+            list_workspace_meetings(&conn, &a, Some("5_%"), 50, 0)
+                .unwrap()
+                .meetings
+                .len(),
+            0
+        );
+        assert_eq!(
+            list_workspace_meetings(&conn, &a, Some("two"), 50, 0)
+                .unwrap()
+                .meetings
+                .len(),
+            0
+        );
+        assert_eq!(
+            list_workspace_meetings(&conn, "general", None, 50, 0)
+                .unwrap()
+                .meetings
+                .len(),
+            1
+        );
     }
 }

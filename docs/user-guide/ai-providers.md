@@ -229,12 +229,16 @@ All cloud providers require an API key. Here is where to get them:
 3. Select the provider from the dropdown
 4. Paste your API key into the API Key field
 5. Click **Test Connection** to verify
-6. After a successful test, the key is stored in the operating system credential store, not in the app's plain-text configuration files
+6. After a successful test, the key is stored in the operating system credential store, not in the app's plain-text configuration files. Saved keys appear only as a configured status; Lucid does not read them back into settings or the WebView. To replace a key, enter the new value and test it.
+
+For LLM providers, **Settings → LLM Providers → Credential profiles** can store more than one validated key. Enter a label and, when known, the project ID supplied by the provider; Lucid never infers a Google project from a key. For bulk import, paste one tab-separated row per key in the form `label<TAB>project ID<TAB>API key`. Blank project IDs are allowed. Lucid validates rows sequentially and clears the paste field when it finishes. The active profile changes only when you choose **Use this**. Rate limits and exhausted quotas never trigger a profile switch.
 
 ### API Key Security
 
 - Keys are stored through the operating system credential store
 - Keys persist across app updates
+- Saved profile labels, project IDs and masked key endings are stored as metadata; key values stay in the operating system credential store
+- Removing a profile deletes the local copy. Revoke an exposed key through the provider's own dashboard
 - To remove a key: Settings > Provider > Remove API Key
 - Do not paste keys into source files, logs, or support reports
 

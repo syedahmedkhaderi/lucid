@@ -83,7 +83,8 @@ CREATE TABLE IF NOT EXISTS meeting_cards (
 
 /// The same as a migration step on a plain connection (see `STEPS`).
 pub fn migrate_conn(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    conn.execute_batch(SCHEMA)
+    conn.execute_batch(SCHEMA)?;
+    super::facts::schema(conn)
 }
 
 /// v17: what the AI recaps remember: the meetings whose recap the user deleted, and the
@@ -102,7 +103,8 @@ pub fn migrate_recap_state(conn: &rusqlite::Connection) -> rusqlite::Result<()> 
 
 /// Creates every v10 object. Safe to run again.
 pub fn migrate_search(tx: &Transaction) -> rusqlite::Result<()> {
-    tx.execute_batch(SCHEMA)
+    tx.execute_batch(SCHEMA)?;
+    super::facts::schema(tx)
 }
 
 #[cfg(test)]
@@ -148,15 +150,43 @@ mod tests {
         )
         .unwrap();
         let hits = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap() };
-        assert_eq!(hits("SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'pricing'"), 1);
-        assert_eq!(hits("SELECT COUNT(*) FROM search_fts_tri WHERE search_fts_tri MATCH '\"契約更\"'"), 1);
-        conn.execute("UPDATE search_passages SET text = 'budget memo' WHERE ref_id = 'd1'", []).unwrap();
-        assert_eq!(hits("SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'pricing'"), 0);
-        assert_eq!(hits("SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'budget'"), 1);
-        conn.execute("DELETE FROM search_passages WHERE ref_id = 'd2'", []).unwrap();
-        assert_eq!(hits("SELECT COUNT(*) FROM search_fts_tri WHERE search_fts_tri MATCH '\"契約更\"'"), 0);
+        assert_eq!(
+            hits("SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'pricing'"),
+            1
+        );
+        assert_eq!(
+            hits("SELECT COUNT(*) FROM search_fts_tri WHERE search_fts_tri MATCH '\"契約更\"'"),
+            1
+        );
+        conn.execute(
+            "UPDATE search_passages SET text = 'budget memo' WHERE ref_id = 'd1'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            hits("SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'pricing'"),
+            0
+        );
+        assert_eq!(
+            hits("SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'budget'"),
+            1
+        );
+        conn.execute("DELETE FROM search_passages WHERE ref_id = 'd2'", [])
+            .unwrap();
+        assert_eq!(
+            hits("SELECT COUNT(*) FROM search_fts_tri WHERE search_fts_tri MATCH '\"契約更\"'"),
+            0
+        );
         // integrity of the external-content indexes
-        conn.execute("INSERT INTO search_fts(search_fts) VALUES('integrity-check')", []).unwrap();
-        conn.execute("INSERT INTO search_fts_tri(search_fts_tri) VALUES('integrity-check')", []).unwrap();
+        conn.execute(
+            "INSERT INTO search_fts(search_fts) VALUES('integrity-check')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO search_fts_tri(search_fts_tri) VALUES('integrity-check')",
+            [],
+        )
+        .unwrap();
     }
 }

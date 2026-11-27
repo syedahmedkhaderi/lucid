@@ -9,7 +9,6 @@ vi.mock("../lib/ipc", () => ({
   listModels: async () => [],
   cliAgentModels: async () => [],
   cliAgentStatus: async () => null,
-  getApiKey: async () => null,
   getWorkspace: async () => ({ brief_enabled: true }),
   getAutomaticModel: async () => h.automatic,
 }));

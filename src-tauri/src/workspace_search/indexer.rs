@@ -12,8 +12,8 @@ use super::cards::{build_card, card_is_current, card_key, put_card};
 use super::cjk::unit_count;
 use super::crawler::{crawl_folder, still_allowed, CrawlFile, CrawlOptions};
 use super::passages::{
-    build_markdown_passages, build_text_passages, build_transcript_passages, NewPassage, SegmentInput,
-    MAX_PASSAGES_PER_FILE, MAX_SOURCE_CHARS,
+    build_markdown_passages, build_text_passages, build_transcript_passages, NewPassage,
+    SegmentInput, MAX_PASSAGES_PER_FILE, MAX_SOURCE_CHARS,
 };
 use super::store::{self, sha_hex};
 use super::PassageKind;
@@ -32,6 +32,8 @@ pub struct DocInput {
     pub id: String,
     pub name: String,
     pub text: String,
+    /// Page-level extracted text for PDFs, with blank entries preserved.
+    pub pages: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -108,7 +110,10 @@ impl RunControl {
     }
     /// The control a full pass runs under: it gives way to targeted requests.
     pub fn for_full_pass(&self) -> RunControl {
-        RunControl { honor_priority: true, ..self.clone() }
+        RunControl {
+            honor_priority: true,
+            ..self.clone()
+        }
     }
     pub fn request_priority(&self) {
         self.priority.store(true, Ordering::SeqCst);
@@ -157,7 +162,8 @@ impl RunControl {
 /// A connection for search and indexing: WAL, 5 s busy timeout, normal sync.
 pub fn open_search_connection(path: &std::path::Path) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| format!("open search database: {e}"))?;
-    conn.busy_timeout(Duration::from_secs(5)).map_err(|e| e.to_string())?;
+    conn.busy_timeout(Duration::from_secs(5))
+        .map_err(|e| e.to_string())?;
     conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
         .map_err(|e| format!("search database pragmas: {e}"))?;
     Ok(conn)
@@ -175,7 +181,9 @@ struct MeetingRow {
 }
 
 fn parse_ms(s: &str) -> Option<i64> {
-    chrono::DateTime::parse_from_rfc3339(s).ok().map(|d| d.timestamp_millis())
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|d| d.timestamp_millis())
 }
 
 fn list_meetings(conn: &Connection) -> rusqlite::Result<Vec<MeetingRow>> {
@@ -234,8 +242,16 @@ fn has_speaker_tag(conn: &Connection) -> bool {
     .unwrap_or(false)
 }
 
-fn load_segments(conn: &Connection, id: &str, start: Option<i64>) -> rusqlite::Result<Vec<SegmentInput>> {
-    let tag = if has_speaker_tag(conn) { "speaker_tag" } else { "NULL" };
+fn load_segments(
+    conn: &Connection,
+    id: &str,
+    start: Option<i64>,
+) -> rusqlite::Result<Vec<SegmentInput>> {
+    let tag = if has_speaker_tag(conn) {
+        "speaker_tag"
+    } else {
+        "NULL"
+    };
     let sql = format!(
         "SELECT speaker, {tag}, text, timestamp_ms FROM transcript_segments
          WHERE meeting_id = ?1 AND is_final = 1 AND TRIM(text) != '' ORDER BY timestamp_ms, id"
@@ -245,10 +261,16 @@ fn load_segments(conn: &Connection, id: &str, start: Option<i64>) -> rusqlite::R
         let speaker: String = r.get(0)?;
         let tag: Option<String> = r.get(1)?;
         let label = match (speaker.as_str(), tag.as_deref()) {
-            ("Them", Some(t)) if !t.is_empty() => crate::db::meetings::default_remote_speaker_name(t),
+            ("Them", Some(t)) if !t.is_empty() => {
+                crate::db::meetings::default_remote_speaker_name(t)
+            }
             _ => speaker,
         };
-        Ok(SegmentInput { speaker: label, text: r.get(2)?, start_ms: r.get(3)? })
+        Ok(SegmentInput {
+            speaker: label,
+            text: r.get(2)?,
+            start_ms: r.get(3)?,
+        })
     })?;
     let mut segs = rows.collect::<rusqlite::Result<Vec<SegmentInput>>>()?;
     // times since the meeting started, whatever the speech provider stamped
@@ -285,19 +307,53 @@ fn index_meeting_row(conn: &mut Connection, m: &MeetingRow) -> Result<Outcome, S
     let e = |x: rusqlite::Error| x.to_string();
     let (count, len) = meeting_sig(conn, &m.id).map_err(e)?;
     let existing = store::get_source(conn, PassageKind::Transcript, &m.id, "").map_err(e)?;
-    let sig_same = existing.as_ref().map_or(false, |s| s.status == "ok" && s.mtime == count && s.size == len);
+    let sig_same = existing.as_ref().map_or(false, |s| {
+        s.status == "ok" && s.mtime == count && s.size == len
+    });
     let mut outcome = Outcome::Unchanged;
     let mut loaded: Option<Vec<SegmentInput>> = None;
     if !sig_same {
         let segs = load_segments(conn, &m.id, parse_ms(&m.start_time)).map_err(e)?;
         let hash = segments_hash(&segs);
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(e)?;
-        if existing.as_ref().map_or(false, |s| s.status == "ok" && s.content_hash == hash) {
-            store::upsert_source(&tx, PassageKind::Transcript, &m.id, "", &hash, count, len, "ok", None).map_err(e)?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(e)?;
+        if existing
+            .as_ref()
+            .map_or(false, |s| s.status == "ok" && s.content_hash == hash)
+        {
+            store::upsert_source(
+                &tx,
+                PassageKind::Transcript,
+                &m.id,
+                "",
+                &hash,
+                count,
+                len,
+                "ok",
+                None,
+            )
+            .map_err(e)?;
         } else {
             let total_ms = m.duration_s.map(|d| d * 1000);
-            let p = build_transcript_passages(&m.id, &m.title, parse_ms(&m.start_time), &segs, total_ms);
-            store::replace_source(&tx, PassageKind::Transcript, &m.id, None, &p, &hash, count, len).map_err(e)?;
+            let p = build_transcript_passages(
+                &m.id,
+                &m.title,
+                parse_ms(&m.start_time),
+                &segs,
+                total_ms,
+            );
+            store::replace_source(
+                &tx,
+                PassageKind::Transcript,
+                &m.id,
+                None,
+                &p,
+                &hash,
+                count,
+                len,
+            )
+            .map_err(e)?;
             outcome = Outcome::Indexed;
         }
         tx.commit().map_err(e)?;
@@ -356,12 +412,90 @@ fn index_text_source(
     let e = |x: rusqlite::Error| x.to_string();
     let hash = sha_hex(format!("{title}\u{1}{text}").as_bytes());
     let existing = store::get_source(conn, kind, id, "").map_err(e)?;
-    if existing.as_ref().map_or(false, |s| s.status == "ok" && s.content_hash == hash) {
+    if existing
+        .as_ref()
+        .map_or(false, |s| s.status == "ok" && s.content_hash == hash)
+    {
         return Ok(Outcome::Unchanged);
     }
     let p = build_text_passages(kind, id, None, title, text, None);
-    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(e)?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(e)?;
     store::replace_source(&tx, kind, id, None, &p, &hash, 0, text.len() as i64).map_err(e)?;
+    tx.commit().map_err(e)?;
+    Ok(Outcome::Indexed)
+}
+
+fn index_document_source(conn: &mut Connection, doc: &DocInput) -> Result<Outcome, String> {
+    let Some(pages) = doc
+        .pages
+        .as_ref()
+        .filter(|pages| pages.iter().any(|page| !page.trim().is_empty()))
+    else {
+        return index_text_source(conn, PassageKind::Document, &doc.id, &doc.name, &doc.text);
+    };
+    let e = |x: rusqlite::Error| x.to_string();
+    let nonempty = pages
+        .iter()
+        .enumerate()
+        .filter(|(_, text)| !text.trim().is_empty())
+        .map(|(index, text)| {
+            let sub_ref = format!("page:{}", index + 1);
+            let hash = sha_hex(format!("{}\u{1}{}\u{1}{}", doc.name, sub_ref, text).as_bytes());
+            (sub_ref, text, hash)
+        })
+        .collect::<Vec<_>>();
+    let existing = store::list_sub_refs(conn, PassageKind::Document, &doc.id).map_err(e)?;
+    if existing.len() == nonempty.len()
+        && nonempty.iter().all(|(sub_ref, _, hash)| {
+            existing.iter().any(|(stored_ref, row)| {
+                stored_ref == sub_ref && row.status == "ok" && row.content_hash == *hash
+            })
+        })
+    {
+        return Ok(Outcome::Unchanged);
+    }
+
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(e)?;
+    tx.execute(
+        "DELETE FROM search_passages WHERE kind = 'document' AND ref_id = ?1",
+        [&doc.id],
+    )
+    .map_err(e)?;
+    tx.execute(
+        "DELETE FROM source_facts WHERE kind = 'document' AND ref_id = ?1",
+        [&doc.id],
+    )
+    .map_err(e)?;
+    tx.execute(
+        "DELETE FROM search_sources WHERE kind = 'document' AND ref_id = ?1",
+        [&doc.id],
+    )
+    .map_err(e)?;
+    for (sub_ref, text, hash) in nonempty {
+        let passages = build_text_passages(
+            PassageKind::Document,
+            &doc.id,
+            Some(&sub_ref),
+            &doc.name,
+            text,
+            None,
+        );
+        store::replace_source(
+            &tx,
+            PassageKind::Document,
+            &doc.id,
+            Some(&sub_ref),
+            &passages,
+            &hash,
+            0,
+            text.len() as i64,
+        )
+        .map_err(e)?;
+    }
     tx.commit().map_err(e)?;
     Ok(Outcome::Indexed)
 }
@@ -379,8 +513,13 @@ fn decode_text(bytes: &[u8]) -> String {
 /// Read a file once without following links (it must lie inside
 /// `canon_root`), hash the bytes and extract the text from them. Extractor
 /// panics are caught; the text is cut at [`MAX_SOURCE_CHARS`].
-fn read_file(file: &CrawlFile, canon_root: &std::path::Path, max_bytes: u64) -> Result<(String, String), String> {
-    let read = crate::workspace_search::safe_open::read_confined(&file.abs_path, canon_root, max_bytes)?;
+fn read_file(
+    file: &CrawlFile,
+    canon_root: &std::path::Path,
+    max_bytes: u64,
+) -> Result<(String, String), String> {
+    let read =
+        crate::workspace_search::safe_open::read_confined(&file.abs_path, canon_root, max_bytes)?;
     let hash = sha_hex(&read.bytes);
     let bytes = &read.bytes;
     let text = match file.ext.as_str() {
@@ -389,10 +528,14 @@ fn read_file(file: &CrawlFile, canon_root: &std::path::Path, max_bytes: u64) -> 
             crate::context::pdf_extractor::extract_text_from_pdf_bytes(bytes, MAX_SOURCE_CHARS)
         }))
         .map_err(|_| "could not read this PDF".to_string())??,
-        "docx" => catch_unwind(AssertUnwindSafe(|| crate::rag::file_processor::extract_docx_text_bytes(bytes)))
-            .map_err(|_| "could not read this Word file".to_string())??,
-        "pptx" => catch_unwind(AssertUnwindSafe(|| crate::rag::pptx::extract_pptx_text_bytes(bytes)))
-            .map_err(|_| "could not read this PowerPoint file".to_string())??,
+        "docx" => catch_unwind(AssertUnwindSafe(|| {
+            crate::rag::file_processor::extract_docx_text_bytes(bytes)
+        }))
+        .map_err(|_| "could not read this Word file".to_string())??,
+        "pptx" => catch_unwind(AssertUnwindSafe(|| {
+            crate::rag::pptx::extract_pptx_text_bytes(bytes)
+        }))
+        .map_err(|_| "could not read this PowerPoint file".to_string())??,
         other => return Err(format!("unsupported type .{other}")),
     };
     let text = crate::workspace_search::cjk::truncate_chars(&text, MAX_SOURCE_CHARS);
@@ -444,17 +587,36 @@ pub(crate) fn index_folder_with(
     }
     rep.truncated = crawl.truncated;
     let existing: HashMap<String, store::SourceRow> =
-        store::list_sub_refs(conn, PassageKind::Folder, &folder.id).map_err(e)?.into_iter().collect();
+        store::list_sub_refs(conn, PassageKind::Folder, &folder.id)
+            .map_err(e)?
+            .into_iter()
+            .collect();
     let mut seen: HashSet<String> = HashSet::new();
     on_file("", crawl.files.len());
 
     for sk in &crawl.skipped {
         seen.insert(sk.rel_path.clone());
-        let unchanged = existing.get(&sk.rel_path).map_or(false, |r| r.status == "skipped" && r.error.as_deref() == Some(&sk.reason));
+        let unchanged = existing.get(&sk.rel_path).map_or(false, |r| {
+            r.status == "skipped" && r.error.as_deref() == Some(&sk.reason)
+        });
         if !unchanged {
-            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(e)?;
-            store::delete_passages(&tx, PassageKind::Folder, &folder.id, Some(&sk.rel_path)).map_err(e)?;
-            store::upsert_source(&tx, PassageKind::Folder, &folder.id, &sk.rel_path, "", 0, 0, "skipped", Some(&sk.reason)).map_err(e)?;
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(e)?;
+            store::delete_passages(&tx, PassageKind::Folder, &folder.id, Some(&sk.rel_path))
+                .map_err(e)?;
+            store::upsert_source(
+                &tx,
+                PassageKind::Folder,
+                &folder.id,
+                &sk.rel_path,
+                "",
+                0,
+                0,
+                "skipped",
+                Some(&sk.reason),
+            )
+            .map_err(e)?;
             tx.commit().map_err(e)?;
         }
         rep.skipped += 1;
@@ -474,7 +636,9 @@ pub(crate) fn index_folder_with(
             continue;
         }
         // Being read when the app died: do not read it again until it changes.
-        if prev.map_or(false, |r| (r.status == "in_progress" || r.status == "crashed") && same_stat(r)) {
+        if prev.map_or(false, |r| {
+            (r.status == "in_progress" || r.status == "crashed") && same_stat(r)
+        }) {
             store::upsert_source(
                 conn, PassageKind::Folder, &folder.id, &f.rel_path, "", f.mtime_ms, f.size as i64, "crashed",
                 Some("Lucid stopped while reading this file, so it is skipped until the file changes"),
@@ -484,43 +648,111 @@ pub(crate) fn index_folder_with(
             continue;
         }
         store::upsert_source(
-            conn, PassageKind::Folder, &folder.id, &f.rel_path, "", f.mtime_ms, f.size as i64, "in_progress",
+            conn,
+            PassageKind::Folder,
+            &folder.id,
+            &f.rel_path,
+            "",
+            f.mtime_ms,
+            f.size as i64,
+            "in_progress",
             Some("being read"),
         )
         .map_err(e)?;
-        let work = catch_unwind(AssertUnwindSafe(|| -> Result<Option<(String, Vec<NewPassage>)>, String> {
-            let (hash, text) = read_file(f, &crawl.canon_root, opts.max_file_bytes)?;
-            if prev.map_or(false, |r| r.status == "ok" && r.content_hash == hash) {
-                return Ok(None);
-            }
-            let stem = f.rel_path.rsplit('/').next().unwrap_or(&f.rel_path).to_string();
-            let mut p = if f.ext == "md" {
-                build_markdown_passages(&folder.id, &f.rel_path, &text, Some(f.mtime_ms))
-            } else {
-                build_text_passages(PassageKind::Folder, &folder.id, Some(&f.rel_path), &stem, &text, Some(f.mtime_ms))
-            };
-            p.truncate(MAX_PASSAGES_PER_FILE);
-            Ok(Some((hash, p)))
-        }));
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(e)?;
+        let work = catch_unwind(AssertUnwindSafe(
+            || -> Result<Option<(String, Vec<NewPassage>)>, String> {
+                let (hash, text) = read_file(f, &crawl.canon_root, opts.max_file_bytes)?;
+                if prev.map_or(false, |r| r.status == "ok" && r.content_hash == hash) {
+                    return Ok(None);
+                }
+                let stem = f
+                    .rel_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&f.rel_path)
+                    .to_string();
+                let mut p = if f.ext == "md" {
+                    build_markdown_passages(&folder.id, &f.rel_path, &text, Some(f.mtime_ms))
+                } else {
+                    build_text_passages(
+                        PassageKind::Folder,
+                        &folder.id,
+                        Some(&f.rel_path),
+                        &stem,
+                        &text,
+                        Some(f.mtime_ms),
+                    )
+                };
+                p.truncate(MAX_PASSAGES_PER_FILE);
+                Ok(Some((hash, p)))
+            },
+        ));
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(e)?;
         match work {
             Ok(Ok(Some((hash, passages)))) => {
-                store::replace_source(&tx, PassageKind::Folder, &folder.id, Some(&f.rel_path), &passages, &hash, f.mtime_ms, f.size as i64).map_err(e)?;
+                store::replace_source(
+                    &tx,
+                    PassageKind::Folder,
+                    &folder.id,
+                    Some(&f.rel_path),
+                    &passages,
+                    &hash,
+                    f.mtime_ms,
+                    f.size as i64,
+                )
+                .map_err(e)?;
                 rep.indexed += 1;
             }
             Ok(Ok(None)) => {
                 let hash = prev.map(|r| r.content_hash.clone()).unwrap_or_default();
-                store::upsert_source(&tx, PassageKind::Folder, &folder.id, &f.rel_path, &hash, f.mtime_ms, f.size as i64, "ok", None).map_err(e)?;
+                store::upsert_source(
+                    &tx,
+                    PassageKind::Folder,
+                    &folder.id,
+                    &f.rel_path,
+                    &hash,
+                    f.mtime_ms,
+                    f.size as i64,
+                    "ok",
+                    None,
+                )
+                .map_err(e)?;
                 rep.unchanged += 1;
             }
             Ok(Err(msg)) => {
-                store::delete_passages(&tx, PassageKind::Folder, &folder.id, Some(&f.rel_path)).map_err(e)?;
-                store::upsert_source(&tx, PassageKind::Folder, &folder.id, &f.rel_path, "", f.mtime_ms, f.size as i64, "error", Some(&msg)).map_err(e)?;
+                store::delete_passages(&tx, PassageKind::Folder, &folder.id, Some(&f.rel_path))
+                    .map_err(e)?;
+                store::upsert_source(
+                    &tx,
+                    PassageKind::Folder,
+                    &folder.id,
+                    &f.rel_path,
+                    "",
+                    f.mtime_ms,
+                    f.size as i64,
+                    "error",
+                    Some(&msg),
+                )
+                .map_err(e)?;
                 rep.failed += 1;
             }
             Err(_) => {
-                store::delete_passages(&tx, PassageKind::Folder, &folder.id, Some(&f.rel_path)).map_err(e)?;
-                store::upsert_source(&tx, PassageKind::Folder, &folder.id, &f.rel_path, "", f.mtime_ms, f.size as i64, "error", Some("could not read this file")).map_err(e)?;
+                store::delete_passages(&tx, PassageKind::Folder, &folder.id, Some(&f.rel_path))
+                    .map_err(e)?;
+                store::upsert_source(
+                    &tx,
+                    PassageKind::Folder,
+                    &folder.id,
+                    &f.rel_path,
+                    "",
+                    f.mtime_ms,
+                    f.size as i64,
+                    "error",
+                    Some("could not read this file"),
+                )
+                .map_err(e)?;
                 rep.failed += 1;
             }
         }
@@ -534,7 +766,9 @@ pub(crate) fn index_folder_with(
         if !remove {
             continue;
         }
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate).map_err(e)?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(e)?;
         store::delete_passages(&tx, PassageKind::Folder, &folder.id, Some(sub)).map_err(e)?;
         tx.execute(
             "DELETE FROM search_sources WHERE kind = 'folder' AND ref_id = ?1 AND sub_ref = ?2",
@@ -582,16 +816,36 @@ pub struct PassScope {
 
 impl PassScope {
     pub fn all() -> Self {
-        PassScope { meetings: true, documents: true, points: true, folders: FolderSel::All }
+        PassScope {
+            meetings: true,
+            documents: true,
+            points: true,
+            folders: FolderSel::All,
+        }
     }
     pub fn documents() -> Self {
-        PassScope { meetings: false, documents: true, points: false, folders: FolderSel::None }
+        PassScope {
+            meetings: false,
+            documents: true,
+            points: false,
+            folders: FolderSel::None,
+        }
     }
     pub fn points() -> Self {
-        PassScope { meetings: false, documents: false, points: true, folders: FolderSel::None }
+        PassScope {
+            meetings: false,
+            documents: false,
+            points: true,
+            folders: FolderSel::None,
+        }
     }
     pub fn folder(id: &str) -> Self {
-        PassScope { meetings: false, documents: false, points: false, folders: FolderSel::One(id.to_string()) }
+        PassScope {
+            meetings: false,
+            documents: false,
+            points: false,
+            folders: FolderSel::One(id.to_string()),
+        }
     }
 }
 
@@ -677,13 +931,21 @@ pub fn run_pass_scoped(
     let mut total = meetings.len() + docs.len() + points.len() + folders.len();
     let mut skipped = 0usize;
     let tick = |done: usize, total: usize, current: &str, skipped: usize| {
-        progress(IndexProgress { done, total, current: current.to_string(), skipped });
+        progress(IndexProgress {
+            done,
+            total,
+            current: current.to_string(),
+            skipped,
+        });
     };
 
     // stale sources: only when the list they are compared with was read
     let stale = |conn: &Connection, kind: PassageKind, keep: &HashSet<&str>| -> Vec<String> {
         match store::list_refs(conn, kind) {
-            Ok(refs) => refs.into_iter().filter(|r| !keep.contains(r.as_str())).collect(),
+            Ok(refs) => refs
+                .into_iter()
+                .filter(|r| !keep.contains(r.as_str()))
+                .collect(),
             Err(_) => Vec::new(),
         }
     };
@@ -711,7 +973,11 @@ pub fn run_pass_scoped(
             }
         }
     }
-    let folder_ids: HashSet<&str> = folders.iter().filter(|f| f.index_enabled).map(|f| f.id.as_str()).collect();
+    let folder_ids: HashSet<&str> = folders
+        .iter()
+        .filter(|f| f.index_enabled)
+        .map(|f| f.id.as_str())
+        .collect();
     if folders_ok {
         match &scope.folders {
             FolderSel::All => {
@@ -723,7 +989,9 @@ pub fn run_pass_scoped(
             }
             FolderSel::One(id) => {
                 // opted out, switched off or gone: its passages go now
-                if !folder_ids.contains(id.as_str()) && store::remove_ref(conn, PassageKind::Folder, id).is_ok() {
+                if !folder_ids.contains(id.as_str())
+                    && store::remove_ref(conn, PassageKind::Folder, id).is_ok()
+                {
                     rep.removed += 1;
                 }
             }
@@ -743,12 +1011,33 @@ pub fn run_pass_scoped(
             Ok(Ok(_)) => rep.meetings_unchanged += 1,
             Ok(Err(e)) => {
                 rep.errors.push(format!("meeting {}: {e}", m.id));
-                let _ = store::upsert_source(conn, PassageKind::Transcript, &m.id, "", "", -1, -1, "error", Some(&e));
+                let _ = store::upsert_source(
+                    conn,
+                    PassageKind::Transcript,
+                    &m.id,
+                    "",
+                    "",
+                    -1,
+                    -1,
+                    "error",
+                    Some(&e),
+                );
             }
             Err(_) => {
                 // a meeting that panics every time still counts as done, with its reason
-                rep.errors.push(format!("meeting {}: indexing panicked", m.id));
-                let _ = store::upsert_source(conn, PassageKind::Transcript, &m.id, "", "", -1, -1, "error", Some("indexing failed unexpectedly"));
+                rep.errors
+                    .push(format!("meeting {}: indexing panicked", m.id));
+                let _ = store::upsert_source(
+                    conn,
+                    PassageKind::Transcript,
+                    &m.id,
+                    "",
+                    "",
+                    -1,
+                    -1,
+                    "error",
+                    Some("indexing failed unexpectedly"),
+                );
             }
         }
         done += 1;
@@ -756,15 +1045,48 @@ pub fn run_pass_scoped(
     }
 
     for (kind, items) in [
-        (PassageKind::Document, docs.iter().map(|d| (d.id.clone(), d.name.clone(), d.text.clone())).collect::<Vec<_>>()),
-        (PassageKind::TalkingPoint, points.iter().map(|p| (p.id.clone(), p.title.clone(), p.plain_text.clone())).collect()),
+        (
+            PassageKind::Document,
+            docs.iter()
+                .map(|d| {
+                    (
+                        d.id.clone(),
+                        d.name.clone(),
+                        d.text.clone(),
+                        d.pages.clone(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        ),
+        (
+            PassageKind::TalkingPoint,
+            points
+                .iter()
+                .map(|p| (p.id.clone(), p.title.clone(), p.plain_text.clone(), None))
+                .collect(),
+        ),
     ] {
-        for (id, title, text) in items {
+        for (id, title, text, pages) in items {
             if !ctl.checkpoint() {
                 rep.cancelled = true;
                 return rep;
             }
-            match catch_unwind(AssertUnwindSafe(|| index_text_source(conn, kind, &id, &title, &text))) {
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                if kind == PassageKind::Document {
+                    index_document_source(
+                        conn,
+                        &DocInput {
+                            id: id.clone(),
+                            name: title.clone(),
+                            text: text.clone(),
+                            pages,
+                        },
+                    )
+                } else {
+                    index_text_source(conn, kind, &id, &title, &text)
+                }
+            }));
+            match result {
                 Ok(Ok(Outcome::Indexed)) => {
                     if kind == PassageKind::Document {
                         rep.documents_indexed += 1
@@ -774,7 +1096,9 @@ pub fn run_pass_scoped(
                 }
                 Ok(Ok(_)) => {}
                 Ok(Err(e)) => rep.errors.push(format!("{} {id}: {e}", kind.as_str())),
-                Err(_) => rep.errors.push(format!("{} {id}: indexing panicked", kind.as_str())),
+                Err(_) => rep
+                    .errors
+                    .push(format!("{} {id}: indexing panicked", kind.as_str())),
             }
             done += 1;
             tick(done, total, &title, skipped);
@@ -790,7 +1114,11 @@ pub fn run_pass_scoped(
             rep.cancelled = true;
             return rep;
         }
-        let name = f.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = f
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let before = (done, total, skipped);
         let mut file_count = 0usize;
         let mut file_done = 0usize;
@@ -802,7 +1130,12 @@ pub fn run_pass_scoped(
                 } else {
                     file_done += 1;
                     done += 1;
-                    progress(IndexProgress { done, total, current: rel.to_string(), skipped });
+                    progress(IndexProgress {
+                        done,
+                        total,
+                        current: rel.to_string(),
+                        skipped,
+                    });
                 }
             };
             catch_unwind(AssertUnwindSafe(|| index_folder(conn, f, ctl, &mut cb)))
@@ -839,7 +1172,13 @@ pub fn text_units(text: &str) -> usize {
 
 /// One targeted request. Runs under the plain control (it waits out a
 /// meeting, never gives way to another request).
-fn run_command(conn: &mut Connection, provider: &dyn IndexProvider, ctl: &RunControl, progress: &dyn Fn(IndexProgress), cmd: Cmd) {
+fn run_command(
+    conn: &mut Connection,
+    provider: &dyn IndexProvider,
+    ctl: &RunControl,
+    progress: &dyn Fn(IndexProgress),
+    cmd: Cmd,
+) {
     let log_errors = |r: PassReport| {
         for e in &r.errors {
             log::warn!("search indexer: {e}");
@@ -848,7 +1187,9 @@ fn run_command(conn: &mut Connection, provider: &dyn IndexProvider, ctl: &RunCon
     match cmd {
         Cmd::Meeting(id) => {
             if ctl.checkpoint() {
-                if let Err(e) = catch_unwind(AssertUnwindSafe(|| index_meeting(conn, &id))).unwrap_or_else(|_| Err("panicked".into())) {
+                if let Err(e) = catch_unwind(AssertUnwindSafe(|| index_meeting(conn, &id)))
+                    .unwrap_or_else(|_| Err("panicked".into()))
+                {
                     log::warn!("search indexer: meeting {id}: {e}");
                 }
             }
@@ -859,9 +1200,27 @@ fn run_command(conn: &mut Connection, provider: &dyn IndexProvider, ctl: &RunCon
         Cmd::RemoveFolder(id) => {
             let _ = remove_folder_index(conn, &id);
         }
-        Cmd::Folder(id) => log_errors(run_pass_scoped(conn, provider, ctl, progress, &PassScope::folder(&id))),
-        Cmd::Documents => log_errors(run_pass_scoped(conn, provider, ctl, progress, &PassScope::documents())),
-        Cmd::Points => log_errors(run_pass_scoped(conn, provider, ctl, progress, &PassScope::points())),
+        Cmd::Folder(id) => log_errors(run_pass_scoped(
+            conn,
+            provider,
+            ctl,
+            progress,
+            &PassScope::folder(&id),
+        )),
+        Cmd::Documents => log_errors(run_pass_scoped(
+            conn,
+            provider,
+            ctl,
+            progress,
+            &PassScope::documents(),
+        )),
+        Cmd::Points => log_errors(run_pass_scoped(
+            conn,
+            provider,
+            ctl,
+            progress,
+            &PassScope::points(),
+        )),
         Cmd::Rescan | Cmd::Stop => {}
     }
 }
@@ -909,7 +1268,11 @@ fn sync_watches(watchers: &mut Option<super::watch::FolderWatchers>, provider: &
     let Some(w) = watchers.as_mut() else { return };
     match provider.folders() {
         Ok(list) => {
-            let wanted: Vec<(String, PathBuf)> = list.into_iter().filter(|f| f.index_enabled).map(|f| (f.id, f.path)).collect();
+            let wanted: Vec<(String, PathBuf)> = list
+                .into_iter()
+                .filter(|f| f.index_enabled)
+                .map(|f| (f.id, f.path))
+                .collect();
             w.sync(&wanted);
         }
         Err(e) => log::warn!("search indexer: the folders could not be read to watch them: {e}"),
@@ -919,7 +1282,10 @@ fn sync_watches(watchers: &mut Option<super::watch::FolderWatchers>, provider: &
 impl IndexerService {
     pub fn start(cfg: IndexerConfig) -> Result<Self, String> {
         let mut conn = open_search_connection(&cfg.db_path)?;
-        let ctl = RunControl { pace: Duration::from_millis(2), ..RunControl::new(cfg.meeting_active.clone()) };
+        let ctl = RunControl {
+            pace: Duration::from_millis(2),
+            ..RunControl::new(cfg.meeting_active.clone())
+        };
         let (tx, rx) = mpsc::channel::<Cmd>();
         // A change seen in a watched folder asks for that folder to be indexed, like the user would.
         let mut watchers = cfg.watch_debounce.map(|debounce| {
@@ -950,14 +1316,15 @@ impl IndexerService {
                     }
                     // Everything sent so far is taken in; nothing is dropped. Repeated
                     // rescans collapse into one, every other request is kept in order.
-                    let take = |c: Cmd, backlog: &mut VecDeque<Cmd>, full_pending: &mut bool| -> bool {
-                        match c {
-                            Cmd::Stop => return true,
-                            Cmd::Rescan => *full_pending = true,
-                            other => backlog.push_back(other),
-                        }
-                        false
-                    };
+                    let take =
+                        |c: Cmd, backlog: &mut VecDeque<Cmd>, full_pending: &mut bool| -> bool {
+                            match c {
+                                Cmd::Stop => return true,
+                                Cmd::Rescan => *full_pending = true,
+                                other => backlog.push_back(other),
+                            }
+                            false
+                        };
                     while let Ok(c) = rx.try_recv() {
                         if take(c, &mut backlog, &mut full_pending) {
                             return;
@@ -965,7 +1332,13 @@ impl IndexerService {
                     }
                     if let Some(cmd) = backlog.pop_front() {
                         let folders_changed = matches!(cmd, Cmd::Folder(_) | Cmd::RemoveFolder(_));
-                        run_command(&mut conn, cfg.provider.as_ref(), &ctl2, &*cfg.on_progress, cmd);
+                        run_command(
+                            &mut conn,
+                            cfg.provider.as_ref(),
+                            &ctl2,
+                            &*cfg.on_progress,
+                            cmd,
+                        );
                         if folders_changed {
                             sync_watches(&mut watchers, cfg.provider.as_ref());
                         }
@@ -988,7 +1361,12 @@ impl IndexerService {
                     if full_pending {
                         full_pending = false;
                         full_ctl.reset_cancel();
-                        let r = run_pass(&mut conn, cfg.provider.as_ref(), &full_ctl, &*cfg.on_progress);
+                        let r = run_pass(
+                            &mut conn,
+                            cfg.provider.as_ref(),
+                            &full_ctl,
+                            &*cfg.on_progress,
+                        );
                         sync_watches(&mut watchers, cfg.provider.as_ref());
                         for e in &r.errors {
                             log::warn!("search indexer: {e}");
@@ -1016,7 +1394,14 @@ impl IndexerService {
                 }
             })
             .map_err(|e| format!("start indexer: {e}"))?;
-        Ok(IndexerService { tx, ctl, passes, commands, handle: std::sync::Mutex::new(Some(handle)), watching })
+        Ok(IndexerService {
+            tx,
+            ctl,
+            passes,
+            commands,
+            handle: std::sync::Mutex::new(Some(handle)),
+            watching,
+        })
     }
 
     /// Queue a request and raise the flag that makes a full pass in flight
@@ -1125,7 +1510,12 @@ mod tests {
     }
     impl Prov {
         fn new() -> Arc<Self> {
-            Arc::new(Prov { docs: Mutex::new(vec![]), folders: Mutex::new(vec![]), points: Mutex::new(vec![]), fail: AtomicBool::new(false) })
+            Arc::new(Prov {
+                docs: Mutex::new(vec![]),
+                folders: Mutex::new(vec![]),
+                points: Mutex::new(vec![]),
+                fail: AtomicBool::new(false),
+            })
         }
     }
     impl IndexProvider for Prov {
@@ -1154,25 +1544,40 @@ mod tests {
     }
 
     fn q(conn: &Connection, scope: &SearchScope, query: &str) -> Vec<String> {
-        search(conn, scope, query, &[], 20).unwrap().into_iter().map(|p| p.ref_id).collect()
+        search(conn, scope, query, &[], 20)
+            .unwrap()
+            .into_iter()
+            .map(|p| p.ref_id)
+            .collect()
     }
 
     #[test]
     fn indexes_meetings_idempotently_and_reindexes_on_change() {
         let mut conn = mem_db();
-        add_meeting(&conn, "m1", "Pricing call", "2026-01-02T10:00:00Z", None, &[
-            ("You", "We should discuss the platypus pricing tier.", 0),
-            ("Them", "Agreed, platypus pricing needs a review.", 5000),
-        ]);
+        add_meeting(
+            &conn,
+            "m1",
+            "Pricing call",
+            "2026-01-02T10:00:00Z",
+            None,
+            &[
+                ("You", "We should discuss the platypus pricing tier.", 0),
+                ("Them", "Agreed, platypus pricing needs a review.", 5000),
+            ],
+        );
         let r = run(&mut conn, &MeetingsOnly);
         assert_eq!(r.meetings_indexed, 1);
         let scope = SearchScope::with_meetings(["m1"]);
         assert_eq!(q(&conn, &scope, "platypus"), vec!["m1"]);
-        let n1: i64 = conn.query_row("SELECT COUNT(*) FROM search_passages", [], |r| r.get(0)).unwrap();
+        let n1: i64 = conn
+            .query_row("SELECT COUNT(*) FROM search_passages", [], |r| r.get(0))
+            .unwrap();
         // second pass: nothing to do, nothing duplicated
         let r = run(&mut conn, &MeetingsOnly);
         assert_eq!((r.meetings_indexed, r.meetings_unchanged), (0, 1));
-        let n2: i64 = conn.query_row("SELECT COUNT(*) FROM search_passages", [], |r| r.get(0)).unwrap();
+        let n2: i64 = conn
+            .query_row("SELECT COUNT(*) FROM search_passages", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(n1, n2);
         // change the text
         conn.execute(
@@ -1198,11 +1603,23 @@ mod tests {
     #[test]
     fn newest_meetings_are_indexed_first() {
         let mut conn = mem_db();
-        for (i, d) in ["2025-01-01", "2026-03-01", "2025-06-01"].iter().enumerate() {
-            add_meeting(&conn, &format!("m{i}"), "T", &format!("{d}T10:00:00Z"), None, &[("You", "hello world words", 0)]);
+        for (i, d) in ["2025-01-01", "2026-03-01", "2025-06-01"]
+            .iter()
+            .enumerate()
+        {
+            add_meeting(
+                &conn,
+                &format!("m{i}"),
+                "T",
+                &format!("{d}T10:00:00Z"),
+                None,
+                &[("You", "hello world words", 0)],
+            );
         }
         let order = std::cell::RefCell::new(Vec::new());
-        run_pass(&mut conn, &MeetingsOnly, &RunControl::idle(), &|p| order.borrow_mut().push(p.current.clone()));
+        run_pass(&mut conn, &MeetingsOnly, &RunControl::idle(), &|p| {
+            order.borrow_mut().push(p.current.clone())
+        });
         assert_eq!(order.borrow().len(), 4); // three units plus the final tick
         let ids: Vec<String> = conn
             .prepare("SELECT ref_id FROM search_sources ORDER BY indexed_at, rowid")
@@ -1217,40 +1634,80 @@ mod tests {
     #[test]
     fn rename_summary_and_delete_are_followed() {
         let mut conn = mem_db();
-        add_meeting(&conn, "m1", "Old title", "2026-01-02T10:00:00Z", None, &[("You", "The narwhal budget is fixed.", 0)]);
+        add_meeting(
+            &conn,
+            "m1",
+            "Old title",
+            "2026-01-02T10:00:00Z",
+            None,
+            &[("You", "The narwhal budget is fixed.", 0)],
+        );
         run(&mut conn, &MeetingsOnly);
         let scope = SearchScope::with_meetings(["m1"]);
-        assert_eq!(search(&conn, &scope, "narwhal", &[], 5).unwrap()[0].title, "Old title");
-        let card = crate::workspace_search::cards::get_card(&conn, "m1").unwrap().unwrap();
+        assert_eq!(
+            search(&conn, &scope, "narwhal", &[], 5).unwrap()[0].title,
+            "Old title"
+        );
+        let card = crate::workspace_search::cards::get_card(&conn, "m1")
+            .unwrap()
+            .unwrap();
         assert_eq!(card.origin, crate::workspace_search::CardOrigin::Extract);
         conn.execute("UPDATE meetings SET title = 'New title', summary = 'The narwhal budget was fixed at 5k.' WHERE id = 'm1'", []).unwrap();
         run(&mut conn, &MeetingsOnly);
-        assert_eq!(search(&conn, &scope, "narwhal", &[], 5).unwrap()[0].title, "New title");
-        let card = crate::workspace_search::cards::get_card(&conn, "m1").unwrap().unwrap();
+        assert_eq!(
+            search(&conn, &scope, "narwhal", &[], 5).unwrap()[0].title,
+            "New title"
+        );
+        let card = crate::workspace_search::cards::get_card(&conn, "m1")
+            .unwrap()
+            .unwrap();
         assert_eq!(card.origin, crate::workspace_search::CardOrigin::Summary);
         assert!(card.recap.contains("New title"));
         // delete the meeting: the pass removes everything
-        conn.execute("DELETE FROM transcript_segments WHERE meeting_id = 'm1'", []).unwrap();
-        conn.execute("DELETE FROM meetings WHERE id = 'm1'", []).unwrap();
+        conn.execute(
+            "DELETE FROM transcript_segments WHERE meeting_id = 'm1'",
+            [],
+        )
+        .unwrap();
+        conn.execute("DELETE FROM meetings WHERE id = 'm1'", [])
+            .unwrap();
         let r = run(&mut conn, &MeetingsOnly);
         assert_eq!(r.removed, 1);
         assert!(q(&conn, &scope, "narwhal").is_empty());
-        assert!(crate::workspace_search::cards::get_card(&conn, "m1").unwrap().is_none());
-        let left: i64 = conn.query_row("SELECT COUNT(*) FROM search_sources", [], |r| r.get(0)).unwrap();
+        assert!(crate::workspace_search::cards::get_card(&conn, "m1")
+            .unwrap()
+            .is_none());
+        let left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM search_sources", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(left, 0);
     }
 
     #[test]
     fn explicit_remove_meeting_cleans_everything() {
         let mut conn = mem_db();
-        add_meeting(&conn, "m1", "T", "2026-01-02T10:00:00Z", None, &[("You", "The okapi launch is Tuesday.", 0)]);
+        add_meeting(
+            &conn,
+            "m1",
+            "T",
+            "2026-01-02T10:00:00Z",
+            None,
+            &[("You", "The okapi launch is Tuesday.", 0)],
+        );
         run(&mut conn, &MeetingsOnly);
         store::remove_meeting(&conn, "m1").unwrap();
         assert!(q(&conn, &SearchScope::with_meetings(["m1"]), "okapi").is_empty());
-        let fts: i64 = conn.query_row("SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'okapi'", [], |r| r.get(0)).unwrap();
+        let fts: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'okapi'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(fts, 0);
         // index_meeting on a vanished id is a clean no-op
-        conn.execute("DELETE FROM meetings WHERE id = 'm1'", []).unwrap();
+        conn.execute("DELETE FROM meetings WHERE id = 'm1'", [])
+            .unwrap();
         assert_eq!(index_meeting(&mut conn, "m1").unwrap(), Outcome::Removed);
     }
 
@@ -1258,10 +1715,25 @@ mod tests {
     fn documents_and_talking_points_follow_the_provider() {
         let mut conn = mem_db();
         let prov = Prov::new();
-        prov.docs.lock().unwrap().push(DocInput { id: "d1".into(), name: "Handbook".into(), text: "Employees get a quokka day off.".into() });
+        prov.docs.lock().unwrap().push(DocInput {
+            id: "d1".into(),
+            name: "Handbook".into(),
+            text: "Employees get a quokka day off.".into(),
+            pages: None,
+        });
         prov.points.lock().unwrap().extend([
-            TalkingPointInput { id: "t1".into(), title: "Opening".into(), plain_text: "Greet with the aardvark joke.".into(), in_context: true },
-            TalkingPointInput { id: "t2".into(), title: "Private".into(), plain_text: "pangolin plan".into(), in_context: false },
+            TalkingPointInput {
+                id: "t1".into(),
+                title: "Opening".into(),
+                plain_text: "Greet with the aardvark joke.".into(),
+                in_context: true,
+            },
+            TalkingPointInput {
+                id: "t2".into(),
+                title: "Private".into(),
+                plain_text: "pangolin plan".into(),
+                in_context: false,
+            },
         ]);
         let r = run(&mut conn, prov.as_ref());
         assert_eq!((r.documents_indexed, r.points_indexed), (1, 1));
@@ -1286,15 +1758,56 @@ mod tests {
         assert!(q(&conn, &scope, "aardvark").is_empty());
     }
 
+    #[test]
+    fn pdf_document_passages_keep_their_original_page_numbers() {
+        let mut conn = mem_db();
+        let prov = Prov::new();
+        prov.docs.lock().unwrap().push(DocInput {
+            id: "pdf1".into(),
+            name: "Guide.pdf".into(),
+            text: "quokka policy\n\nplatypus appendix".into(),
+            pages: Some(vec![
+                "quokka policy".into(),
+                String::new(),
+                "platypus appendix".into(),
+            ]),
+        });
+        run(&mut conn, prov.as_ref());
+        let scope = SearchScope {
+            document_ids: vec!["pdf1".into()],
+            ..Default::default()
+        };
+        let page_one = search(&conn, &scope, "quokka", &[], 5).unwrap();
+        let page_three = search(&conn, &scope, "platypus", &[], 5).unwrap();
+        assert_eq!(page_one[0].sub_ref.as_deref(), Some("page:1"));
+        assert_eq!(page_three[0].sub_ref.as_deref(), Some("page:3"));
+        let sources = store::list_sub_refs(&conn, PassageKind::Document, "pdf1").unwrap();
+        assert_eq!(
+            sources
+                .iter()
+                .map(|(sub, _)| sub.as_str())
+                .collect::<Vec<_>>(),
+            vec!["page:1", "page:3"]
+        );
+    }
+
     fn folder_fixture(tag: &str) -> (PathBuf, Arc<Prov>) {
         let root = temp_dir(tag);
         fs::create_dir_all(root.join("sub")).unwrap();
         fs::write(root.join("plan.md"), "# Plan\n\nThe ibex migration starts in May.\n\n## Risks\n\nVendor delays around the gazelle contract.\n").unwrap();
-        fs::write(root.join("sub/notes.txt"), "Remember the capybara demo on Friday.").unwrap();
+        fs::write(
+            root.join("sub/notes.txt"),
+            "Remember the capybara demo on Friday.",
+        )
+        .unwrap();
         fs::write(root.join(".env"), "API_KEY=zebracanary-secret").unwrap();
         fs::write(root.join("my secret notes.md"), "zebracanary leaked").unwrap();
         let prov = Prov::new();
-        prov.folders.lock().unwrap().push(FolderInput { id: "f1".into(), path: root.clone(), index_enabled: true });
+        prov.folders.lock().unwrap().push(FolderInput {
+            id: "f1".into(),
+            path: root.clone(),
+            index_enabled: true,
+        });
         (root, prov)
     }
 
@@ -1305,7 +1818,10 @@ mod tests {
         prov.folders.lock().unwrap()[0].index_enabled = false;
         let r = run(&mut conn, prov.as_ref());
         assert_eq!(r.files_indexed, 0);
-        let scope = SearchScope { folder_ids: vec!["f1".into()], ..Default::default() };
+        let scope = SearchScope {
+            folder_ids: vec!["f1".into()],
+            ..Default::default()
+        };
         assert!(q(&conn, &scope, "ibex").is_empty(), "opt-in is off");
         prov.folders.lock().unwrap()[0].index_enabled = true;
         let r = run(&mut conn, prov.as_ref());
@@ -1317,12 +1833,18 @@ mod tests {
         assert!(q(&conn, &scope, "zebracanary").is_empty());
         let problems = store::list_problem_sources(&conn, PassageKind::Folder, "f1").unwrap();
         let names: Vec<&str> = problems.iter().map(|p| p.sub_ref.as_str()).collect();
-        assert!(names.contains(&".env") && names.contains(&"my secret notes.md"), "{names:?}");
+        assert!(
+            names.contains(&".env") && names.contains(&"my secret notes.md"),
+            "{names:?}"
+        );
         // turning opt-in off removes what was indexed
         prov.folders.lock().unwrap()[0].index_enabled = false;
         run(&mut conn, prov.as_ref());
         assert!(q(&conn, &scope, "ibex").is_empty());
-        assert_eq!(store::counts(&conn, PassageKind::Folder, "f1").unwrap(), (0, 0));
+        assert_eq!(
+            store::counts(&conn, PassageKind::Folder, "f1").unwrap(),
+            (0, 0)
+        );
         fs::remove_dir_all(&root).ok();
     }
 
@@ -1330,7 +1852,10 @@ mod tests {
     fn folder_changes_are_found_by_mtime_size_then_hash() {
         let (root, prov) = folder_fixture("idx-f2");
         let mut conn = mem_db();
-        let scope = SearchScope { folder_ids: vec!["f1".into()], ..Default::default() };
+        let scope = SearchScope {
+            folder_ids: vec!["f1".into()],
+            ..Default::default()
+        };
         run(&mut conn, prov.as_ref());
         // untouched: nothing re-read
         let r = run(&mut conn, prov.as_ref());
@@ -1342,7 +1867,11 @@ mod tests {
         let r = run(&mut conn, prov.as_ref());
         assert_eq!(r.files_indexed, 0);
         // change content
-        fs::write(root.join("sub/notes.txt"), "Remember the wallaby demo on Monday afternoon.").unwrap();
+        fs::write(
+            root.join("sub/notes.txt"),
+            "Remember the wallaby demo on Monday afternoon.",
+        )
+        .unwrap();
         let r = run(&mut conn, prov.as_ref());
         assert_eq!(r.files_indexed, 1);
         assert_eq!(q(&conn, &scope, "wallaby"), vec!["f1"]);
@@ -1361,19 +1890,36 @@ mod tests {
     #[test]
     fn a_corrupt_file_never_stops_the_pass() {
         let (root, prov) = folder_fixture("idx-f3");
-        fs::write(root.join("broken.pdf"), b"%PDF-1.4 this is not a pdf at all \x00\x01\x02").unwrap();
+        fs::write(
+            root.join("broken.pdf"),
+            b"%PDF-1.4 this is not a pdf at all \x00\x01\x02",
+        )
+        .unwrap();
         fs::write(root.join("broken.docx"), b"PK\x03\x04 garbage").unwrap();
         fs::write(root.join("binary.txt"), vec![0u8; 5000]).unwrap();
-        fs::write(root.join("latin1.txt"), b"Caf\xe9 meeting about the tapir budget").unwrap();
+        fs::write(
+            root.join("latin1.txt"),
+            b"Caf\xe9 meeting about the tapir budget",
+        )
+        .unwrap();
         let mut conn = mem_db();
         let r = run(&mut conn, prov.as_ref());
         assert!(r.errors.is_empty(), "{:?}", r.errors);
         assert!(r.files_failed >= 3, "failed {}", r.files_failed);
-        let scope = SearchScope { folder_ids: vec!["f1".into()], ..Default::default() };
-        assert_eq!(q(&conn, &scope, "ibex"), vec!["f1"], "good files still indexed");
+        let scope = SearchScope {
+            folder_ids: vec!["f1".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            q(&conn, &scope, "ibex"),
+            vec!["f1"],
+            "good files still indexed"
+        );
         assert_eq!(q(&conn, &scope, "tapir"), vec!["f1"], "latin-1 decoded");
         let problems = store::list_problem_sources(&conn, PassageKind::Folder, "f1").unwrap();
-        assert!(problems.iter().any(|p| p.sub_ref == "broken.pdf" && p.status == "error"));
+        assert!(problems
+            .iter()
+            .any(|p| p.sub_ref == "broken.pdf" && p.status == "error"));
         fs::remove_dir_all(&root).ok();
     }
 
@@ -1381,9 +1927,17 @@ mod tests {
     fn a_huge_file_is_skipped_and_a_big_allowed_one_is_capped() {
         let root = temp_dir("idx-huge");
         fs::write(root.join("huge.txt"), "word ".repeat(500_000)).unwrap(); // 2.5 MB
-        fs::write(root.join("big.txt"), "alpha beta gamma delta. ".repeat(75_000)).unwrap(); // 1.8 MB
+        fs::write(
+            root.join("big.txt"),
+            "alpha beta gamma delta. ".repeat(75_000),
+        )
+        .unwrap(); // 1.8 MB
         let prov = Prov::new();
-        prov.folders.lock().unwrap().push(FolderInput { id: "f".into(), path: root.clone(), index_enabled: true });
+        prov.folders.lock().unwrap().push(FolderInput {
+            id: "f".into(),
+            path: root.clone(),
+            index_enabled: true,
+        });
         let mut conn = mem_db();
         let t = Instant::now();
         let r = run(&mut conn, prov.as_ref());
@@ -1399,7 +1953,14 @@ mod tests {
     fn cancelling_leaves_a_consistent_resumable_index() {
         let mut conn = mem_db();
         for i in 0..6 {
-            add_meeting(&conn, &format!("m{i}"), "T", &format!("2026-01-0{}T10:00:00Z", i + 1), None, &[("You", &format!("okapi{i} planning words"), 0)]);
+            add_meeting(
+                &conn,
+                &format!("m{i}"),
+                "T",
+                &format!("2026-01-0{}T10:00:00Z", i + 1),
+                None,
+                &[("You", &format!("okapi{i} planning words"), 0)],
+            );
         }
         let ctl = RunControl::idle();
         let c2 = ctl.clone();
@@ -1415,7 +1976,11 @@ mod tests {
         ctl.reset_cancel();
         let r = run_pass(&mut conn, &MeetingsOnly, &ctl, &|_| {});
         assert!(!r.cancelled);
-        assert_eq!((r.meetings_indexed, r.meetings_unchanged), (4, 2), "resumed, no rework");
+        assert_eq!(
+            (r.meetings_indexed, r.meetings_unchanged),
+            (4, 2),
+            "resumed, no rework"
+        );
     }
 
     #[test]
@@ -1424,7 +1989,14 @@ mod tests {
         let db = file_db(&dir);
         {
             let c = Connection::open(&db).unwrap();
-            add_meeting(&c, "m1", "T", "2026-01-02T10:00:00Z", None, &[("You", "The ocelot plan is ready.", 0)]);
+            add_meeting(
+                &c,
+                "m1",
+                "T",
+                "2026-01-02T10:00:00Z",
+                None,
+                &[("You", "The ocelot plan is ready.", 0)],
+            );
         }
         let active = Arc::new(AtomicBool::new(true));
         let a2 = active.clone();
@@ -1445,12 +2017,16 @@ mod tests {
         .unwrap();
         std::thread::sleep(Duration::from_millis(500));
         let conn = Connection::open(&db).unwrap();
-        let n: i64 = conn.query_row("SELECT COUNT(*) FROM search_passages", [], |r| r.get(0)).unwrap();
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM search_passages", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(n, 0, "nothing indexed during a meeting");
         assert_eq!(svc.passes_completed(), 0);
         active.store(false, Ordering::SeqCst);
         assert!(svc.wait_for_passes(1, Duration::from_secs(10)));
-        let n: i64 = conn.query_row("SELECT COUNT(*) FROM search_passages", [], |r| r.get(0)).unwrap();
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM search_passages", [], |r| r.get(0))
+            .unwrap();
         assert!(n > 0);
         assert!(progress.load(Ordering::SeqCst) >= 1);
         svc.shutdown();
@@ -1463,7 +2039,14 @@ mod tests {
         let db = file_db(&dir);
         {
             let c = Connection::open(&db).unwrap();
-            add_meeting(&c, "m1", "T", "2026-01-02T10:00:00Z", None, &[("You", "first meeting about the lynx.", 0)]);
+            add_meeting(
+                &c,
+                "m1",
+                "T",
+                "2026-01-02T10:00:00Z",
+                None,
+                &[("You", "first meeting about the lynx.", 0)],
+            );
         }
         let svc = IndexerService::start(IndexerConfig {
             db_path: db.clone(),
@@ -1478,13 +2061,23 @@ mod tests {
         .unwrap();
         assert!(svc.wait_for_passes(1, Duration::from_secs(10)));
         let reader = open_search_connection(&db).unwrap();
-        let scope = SearchScope { meetings: MeetingScope::Ids(vec!["m1".into(), "m2".into()]), ..Default::default() };
+        let scope = SearchScope {
+            meetings: MeetingScope::Ids(vec!["m1".into(), "m2".into()]),
+            ..Default::default()
+        };
         assert_eq!(q(&reader, &scope, "lynx"), vec!["m1"]);
         // a meeting ends: indexed through the single-meeting path while readers keep working
         {
             let c = Connection::open(&db).unwrap();
             c.busy_timeout(Duration::from_secs(5)).unwrap();
-            add_meeting(&c, "m2", "T2", "2026-02-02T10:00:00Z", None, &[("You", "second meeting about the jackal.", 0)]);
+            add_meeting(
+                &c,
+                "m2",
+                "T2",
+                "2026-02-02T10:00:00Z",
+                None,
+                &[("You", "second meeting about the jackal.", 0)],
+            );
         }
         svc.index_meeting("m2");
         let t = Instant::now();
@@ -1523,12 +2116,22 @@ mod tests {
         assert!(svc.wait_for_passes(1, Duration::from_secs(10)));
         {
             let c = Connection::open(&db).unwrap();
-            add_meeting(&c, "m9", "T", "2026-02-02T10:00:00Z", None, &[("You", "late arrival about the marmot.", 0)]);
+            add_meeting(
+                &c,
+                "m9",
+                "T",
+                "2026-02-02T10:00:00Z",
+                None,
+                &[("You", "late arrival about the marmot.", 0)],
+            );
         }
         svc.rescan();
         assert!(svc.wait_for_passes(2, Duration::from_secs(10)));
         let reader = open_search_connection(&db).unwrap();
-        assert_eq!(q(&reader, &SearchScope::with_meetings(["m9"]), "marmot"), vec!["m9"]);
+        assert_eq!(
+            q(&reader, &SearchScope::with_meetings(["m9"]), "marmot"),
+            vec!["m9"]
+        );
         drop(svc);
         fs::remove_dir_all(&dir).ok();
     }
@@ -1538,7 +2141,8 @@ mod tests {
         let mut buf = std::io::Cursor::new(Vec::new());
         {
             let mut zip = zip::ZipWriter::new(&mut buf);
-            let o = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            let o = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
             zip.start_file("word/document.xml", o).unwrap();
             zip.write_all(xml).unwrap();
             zip.finish().unwrap();
@@ -1597,10 +2201,20 @@ mod tests {
         assert!(t.elapsed() < Duration::from_secs(30));
         assert!(r.errors.is_empty(), "{:?}", r.errors);
         let problems = store::list_problem_sources(&conn, PassageKind::Folder, "f1").unwrap();
-        let p = problems.iter().find(|p| p.sub_ref == "bomb.docx").expect("listed");
+        let p = problems
+            .iter()
+            .find(|p| p.sub_ref == "bomb.docx")
+            .expect("listed");
         assert_eq!(p.status, "error");
-        assert!(p.error.as_deref().unwrap().contains("too much"), "{:?}", p.error);
-        let scope = SearchScope { folder_ids: vec!["f1".into()], ..Default::default() };
+        assert!(
+            p.error.as_deref().unwrap().contains("too much"),
+            "{:?}",
+            p.error
+        );
+        let scope = SearchScope {
+            folder_ids: vec!["f1".into()],
+            ..Default::default()
+        };
         assert_eq!(q(&conn, &scope, "ibex"), vec!["f1"]);
         fs::remove_dir_all(&root).ok();
     }
@@ -1612,14 +2226,35 @@ mod tests {
         run(&mut conn, prov.as_ref());
         // simulate a crash while reading notes.txt: the row says in_progress with its current stat
         let md = fs::metadata(root.join("sub/notes.txt")).unwrap();
-        let mtime = md.modified().unwrap().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+        let mtime = md
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
         store::delete_passages(&conn, PassageKind::Folder, "f1", Some("sub/notes.txt")).unwrap();
-        store::upsert_source(&conn, PassageKind::Folder, "f1", "sub/notes.txt", "", mtime, md.len() as i64, "in_progress", Some("being read")).unwrap();
-        let scope = SearchScope { folder_ids: vec!["f1".into()], ..Default::default() };
+        store::upsert_source(
+            &conn,
+            PassageKind::Folder,
+            "f1",
+            "sub/notes.txt",
+            "",
+            mtime,
+            md.len() as i64,
+            "in_progress",
+            Some("being read"),
+        )
+        .unwrap();
+        let scope = SearchScope {
+            folder_ids: vec!["f1".into()],
+            ..Default::default()
+        };
         let r = run(&mut conn, prov.as_ref());
         assert_eq!(r.files_indexed, 0);
         assert!(q(&conn, &scope, "capybara").is_empty(), "not read again");
-        let row = store::get_source(&conn, PassageKind::Folder, "f1", "sub/notes.txt").unwrap().unwrap();
+        let row = store::get_source(&conn, PassageKind::Folder, "f1", "sub/notes.txt")
+            .unwrap()
+            .unwrap();
         assert_eq!(row.status, "crashed");
         assert!(row.error.unwrap().contains("stopped"));
         // still skipped on the next pass
@@ -1627,7 +2262,11 @@ mod tests {
         assert!(q(&conn, &scope, "capybara").is_empty());
         // changed: tried again
         std::thread::sleep(Duration::from_millis(30));
-        fs::write(root.join("sub/notes.txt"), "Remember the capybara demo, now with extra words on Friday.").unwrap();
+        fs::write(
+            root.join("sub/notes.txt"),
+            "Remember the capybara demo, now with extra words on Friday.",
+        )
+        .unwrap();
         let r = run(&mut conn, prov.as_ref());
         assert_eq!(r.files_indexed, 1);
         assert_eq!(q(&conn, &scope, "capybara"), vec!["f1"]);
@@ -1638,23 +2277,43 @@ mod tests {
     fn a_walk_cut_short_still_removes_files_that_are_gone_or_no_longer_allowed() {
         let root = temp_dir("idx-trunc");
         for i in 0..6 {
-            fs::write(root.join(format!("n{i}.md")), format!("note number {i} about the quokka{i} plan")).unwrap();
+            fs::write(
+                root.join(format!("n{i}.md")),
+                format!("note number {i} about the quokka{i} plan"),
+            )
+            .unwrap();
         }
-        let folder = FolderInput { id: "f".into(), path: root.clone(), index_enabled: true };
+        let folder = FolderInput {
+            id: "f".into(),
+            path: root.clone(),
+            index_enabled: true,
+        };
         let mut conn = mem_db();
         let ctl = RunControl::idle();
         let full = CrawlOptions::default();
         index_folder_with(&mut conn, &folder, &ctl, &full, &mut |_, _| {}).unwrap();
-        let scope = SearchScope { folder_ids: vec!["f".into()], ..Default::default() };
+        let scope = SearchScope {
+            folder_ids: vec!["f".into()],
+            ..Default::default()
+        };
         assert_eq!(store::counts(&conn, PassageKind::Folder, "f").unwrap().0, 6);
         // one file goes, one becomes secret-looking, while the next walk is limited to 2 files
         fs::remove_file(root.join("n5.md")).unwrap();
         fs::rename(root.join("n4.md"), root.join("n4 secret.md")).unwrap();
-        let limited = CrawlOptions { max_files: 2, ..Default::default() };
+        let limited = CrawlOptions {
+            max_files: 2,
+            ..Default::default()
+        };
         let rep = index_folder_with(&mut conn, &folder, &ctl, &limited, &mut |_, _| {}).unwrap();
         assert!(rep.truncated);
-        assert!(q(&conn, &scope, "quokka5").is_empty(), "deleted file removed");
-        assert!(q(&conn, &scope, "quokka4").is_empty(), "now secret-looking: removed");
+        assert!(
+            q(&conn, &scope, "quokka5").is_empty(),
+            "deleted file removed"
+        );
+        assert!(
+            q(&conn, &scope, "quokka4").is_empty(),
+            "now secret-looking: removed"
+        );
         // files still allowed but beyond the limit keep their rows
         assert_eq!(q(&conn, &scope, "quokka3"), vec!["f"]);
         fs::remove_dir_all(&root).ok();
@@ -1669,9 +2328,19 @@ mod tests {
         let ctl = RunControl::idle();
         ctl.cancel();
         let f = prov.folders.lock().unwrap()[0].clone();
-        let rep = index_folder_with(&mut conn, &f, &ctl, &CrawlOptions::default(), &mut |_, _| {}).unwrap();
+        let rep = index_folder_with(
+            &mut conn,
+            &f,
+            &ctl,
+            &CrawlOptions::default(),
+            &mut |_, _| {},
+        )
+        .unwrap();
         assert!(rep.cancelled);
-        assert_eq!(store::counts(&conn, PassageKind::Folder, "f1").unwrap(), before);
+        assert_eq!(
+            store::counts(&conn, PassageKind::Folder, "f1").unwrap(),
+            before
+        );
         fs::remove_dir_all(&root).ok();
     }
 
@@ -1680,12 +2349,24 @@ mod tests {
         let (root, prov) = folder_fixture("idx-optout");
         let mut conn = mem_db();
         run(&mut conn, prov.as_ref());
-        let scope = SearchScope { folder_ids: vec!["f1".into()], ..Default::default() };
+        let scope = SearchScope {
+            folder_ids: vec!["f1".into()],
+            ..Default::default()
+        };
         assert_eq!(q(&conn, &scope, "ibex"), vec!["f1"]);
         remove_folder_index(&conn, "f1").unwrap();
         assert!(q(&conn, &scope, "ibex").is_empty());
-        assert_eq!(store::counts(&conn, PassageKind::Folder, "f1").unwrap(), (0, 0));
-        let fts: i64 = conn.query_row("SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'ibex'", [], |r| r.get(0)).unwrap();
+        assert_eq!(
+            store::counts(&conn, PassageKind::Folder, "f1").unwrap(),
+            (0, 0)
+        );
+        let fts: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'ibex'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(fts, 0);
         // through the running service too
         let dir = temp_dir("idx-optout2");
@@ -1757,7 +2438,11 @@ mod tests {
 
     /// A service that watches its folders and sweeps only every 10 minutes: what it learns in the
     /// seconds a test waits, it learns from the watchers.
-    fn watching_service(db: &std::path::Path, prov: Arc<Prov>, debounce: Duration) -> IndexerService {
+    fn watching_service(
+        db: &std::path::Path,
+        prov: Arc<Prov>,
+        debounce: Duration,
+    ) -> IndexerService {
         IndexerService::start(IndexerConfig {
             db_path: db.to_path_buf(),
             provider: prov,
@@ -1772,56 +2457,111 @@ mod tests {
     }
 
     #[test]
-    fn a_file_added_edited_and_deleted_in_a_watched_folder_is_searchable_within_seconds_and_unlinking_stops_it() {
+    fn a_file_added_edited_and_deleted_in_a_watched_folder_is_searchable_within_seconds_and_unlinking_stops_it(
+    ) {
         let dir = temp_dir("idx-watch");
         let db = file_db(&dir);
         let root = dir.join("notes");
         fs::create_dir_all(&root).unwrap();
-        fs::write(root.join("first.md"), "# First
-The quokka plan.").unwrap();
+        fs::write(
+            root.join("first.md"),
+            "# First
+The quokka plan.",
+        )
+        .unwrap();
         let prov = Prov::new();
-        prov.folders.lock().unwrap().push(FolderInput { id: "f1".into(), path: root.clone(), index_enabled: true });
+        prov.folders.lock().unwrap().push(FolderInput {
+            id: "f1".into(),
+            path: root.clone(),
+            index_enabled: true,
+        });
         let svc = watching_service(&db, prov.clone(), Duration::from_millis(200));
         assert!(svc.wait_for_passes(1, Duration::from_secs(10)));
-        assert_eq!(svc.watched_folders(), vec!["f1"], "linked and indexed: watched");
+        assert_eq!(
+            svc.watched_folders(),
+            vec!["f1"],
+            "linked and indexed: watched"
+        );
         let reader = open_search_connection(&db).unwrap();
-        let scope = SearchScope { folder_ids: vec!["f1".into()], ..Default::default() };
-        let found = |w: &str| search(&reader, &scope, w, &[PassageKind::Folder], 5).unwrap().iter().map(|p| p.title.clone()).collect::<Vec<_>>();
+        let scope = SearchScope {
+            folder_ids: vec!["f1".into()],
+            ..Default::default()
+        };
+        let found = |w: &str| {
+            search(&reader, &scope, w, &[PassageKind::Folder], 5)
+                .unwrap()
+                .iter()
+                .map(|p| p.title.clone())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(found("quokka").len(), 1);
         let passes = svc.passes_completed();
 
         // added
-        let took = { fs::write(root.join("second.md"), "# Second
-The wombat budget.").unwrap(); wait_until("the added file", 8, || !found("wombat").is_empty()) };
+        let took = {
+            fs::write(
+                root.join("second.md"),
+                "# Second
+The wombat budget.",
+            )
+            .unwrap();
+            wait_until("the added file", 8, || !found("wombat").is_empty())
+        };
         assert!(took < Duration::from_secs(6), "within seconds: {took:?}");
         // edited: the new words appear and the old ones go
-        fs::write(root.join("second.md"), "# Second
-The numbat budget.").unwrap();
-        wait_until("the edit", 8, || !found("numbat").is_empty() && found("wombat").is_empty());
+        fs::write(
+            root.join("second.md"),
+            "# Second
+The numbat budget.",
+        )
+        .unwrap();
+        wait_until("the edit", 8, || {
+            !found("numbat").is_empty() && found("wombat").is_empty()
+        });
         // renamed
         fs::rename(root.join("second.md"), root.join("renamed.md")).unwrap();
-        wait_until("the rename", 8, || found("numbat").iter().any(|t| t.contains("renamed")));
+        wait_until("the rename", 8, || {
+            found("numbat").iter().any(|t| t.contains("renamed"))
+        });
         // deleted
         fs::remove_file(root.join("renamed.md")).unwrap();
         wait_until("the delete", 8, || found("numbat").is_empty());
         assert_eq!(found("quokka").len(), 1, "the other file is untouched");
-        assert_eq!(svc.passes_completed(), passes, "no full pass was needed: the watchers did it");
+        assert_eq!(
+            svc.passes_completed(),
+            passes,
+            "no full pass was needed: the watchers did it"
+        );
 
         // a hidden file and a secret-looking one are never indexed, watched or not
-        fs::write(root.join(".hidden.md"), "# Hidden
-The ocelot secret.").unwrap();
-        fs::write(root.join("password list.md"), "# Pw
-The ocelot token.").unwrap();
+        fs::write(
+            root.join(".hidden.md"),
+            "# Hidden
+The ocelot secret.",
+        )
+        .unwrap();
+        fs::write(
+            root.join("password list.md"),
+            "# Pw
+The ocelot token.",
+        )
+        .unwrap();
         std::thread::sleep(Duration::from_millis(1_200));
         assert!(found("ocelot").is_empty());
 
         // unlinked: it stops being watched, its text goes, and a new file is not picked up
         prov.folders.lock().unwrap().clear();
         svc.remove_folder("f1");
-        wait_until("it stops being watched", 8, || svc.watched_folders().is_empty());
+        wait_until("it stops being watched", 8, || {
+            svc.watched_folders().is_empty()
+        });
         wait_until("its text goes", 8, || found("quokka").is_empty());
-        fs::write(root.join("late.md"), "# Late
-The pangolin note.").unwrap();
+        fs::write(
+            root.join("late.md"),
+            "# Late
+The pangolin note.",
+        )
+        .unwrap();
         std::thread::sleep(Duration::from_millis(1_000));
         assert!(found("pangolin").is_empty());
         svc.shutdown();
@@ -1831,7 +2571,10 @@ The pangolin note.").unwrap();
     fn wait_until(what: &str, secs: u64, f: impl Fn() -> bool) -> Duration {
         let t = Instant::now();
         while !f() {
-            assert!(t.elapsed() < Duration::from_secs(secs), "timed out waiting for {what}");
+            assert!(
+                t.elapsed() < Duration::from_secs(secs),
+                "timed out waiting for {what}"
+            );
             std::thread::sleep(Duration::from_millis(10));
         }
         t.elapsed()
@@ -1844,7 +2587,14 @@ The pangolin note.").unwrap();
         {
             let c = Connection::open(&db).unwrap();
             for i in 0..900 {
-                add_meeting(&c, &format!("m{i}"), "T", &format!("2026-01-{:02}T10:00:00Z", 1 + i % 28), None, &[("You", "some words about things", 0)]);
+                add_meeting(
+                    &c,
+                    &format!("m{i}"),
+                    "T",
+                    &format!("2026-01-{:02}T10:00:00Z", 1 + i % 28),
+                    None,
+                    &[("You", "some words about things", 0)],
+                );
             }
         }
         let (root, prov) = folder_fixture("idx-prio-f");
@@ -1855,14 +2605,27 @@ The pangolin note.").unwrap();
         // the user opts the folder in
         prov.folders.lock().unwrap()[0].index_enabled = true;
         let reader = open_search_connection(&db).unwrap();
-        let scope = SearchScope { folder_ids: vec!["f1".into()], ..Default::default() };
+        let scope = SearchScope {
+            folder_ids: vec!["f1".into()],
+            ..Default::default()
+        };
         svc.index_folder("f1");
         let took = wait_until("the folder", 20, || !q(&reader, &scope, "ibex").is_empty());
         assert!(took < Duration::from_secs(2), "took {took:?}");
-        assert_eq!(svc.passes_completed(), 0, "the long pass was still running: the request did not wait for it");
+        assert_eq!(
+            svc.passes_completed(),
+            0,
+            "the long pass was still running: the request did not wait for it"
+        );
         // the interrupted pass resumes and finishes: every meeting is indexed
         assert!(svc.wait_for_passes(1, Duration::from_secs(120)));
-        let n: i64 = reader.query_row("SELECT COUNT(DISTINCT ref_id) FROM search_sources WHERE kind = 'transcript'", [], |r| r.get(0)).unwrap();
+        let n: i64 = reader
+            .query_row(
+                "SELECT COUNT(DISTINCT ref_id) FROM search_sources WHERE kind = 'transcript'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(n, 900);
         svc.shutdown();
         fs::remove_dir_all(&root).ok();
@@ -1888,23 +2651,55 @@ The pangolin note.").unwrap();
         // opt-in
         prov.folders.lock().unwrap()[0].index_enabled = true;
         svc.index_folder("f1");
-        assert!(wait_until("folder", 5, || !q(&reader, &all, "ibex").is_empty()) < Duration::from_secs(2));
+        assert!(
+            wait_until("folder", 5, || !q(&reader, &all, "ibex").is_empty())
+                < Duration::from_secs(2)
+        );
         // document add
-        prov.docs.lock().unwrap().push(DocInput { id: "d1".into(), name: "Guide".into(), text: "The quokka handbook".into() });
+        prov.docs.lock().unwrap().push(DocInput {
+            id: "d1".into(),
+            name: "Guide".into(),
+            text: "The quokka handbook".into(),
+            pages: None,
+        });
         svc.index_documents();
-        assert!(wait_until("document", 5, || !q(&reader, &all, "quokka").is_empty()) < Duration::from_secs(2));
+        assert!(
+            wait_until("document", 5, || !q(&reader, &all, "quokka").is_empty())
+                < Duration::from_secs(2)
+        );
         // talking point save
-        prov.points.lock().unwrap().push(TalkingPointInput { id: "t1".into(), title: "Open".into(), plain_text: "Greet the aardvark".into(), in_context: true });
+        prov.points.lock().unwrap().push(TalkingPointInput {
+            id: "t1".into(),
+            title: "Open".into(),
+            plain_text: "Greet the aardvark".into(),
+            in_context: true,
+        });
         svc.index_talking_points();
-        assert!(wait_until("point", 5, || !q(&reader, &all, "aardvark").is_empty()) < Duration::from_secs(2));
+        assert!(
+            wait_until("point", 5, || !q(&reader, &all, "aardvark").is_empty())
+                < Duration::from_secs(2)
+        );
         // meeting end
-        add_meeting(&writer, "m-new", "New", "2026-02-02T10:00:00Z", None, &[("You", "The lynx launch is ready", 0)]);
+        add_meeting(
+            &writer,
+            "m-new",
+            "New",
+            "2026-02-02T10:00:00Z",
+            None,
+            &[("You", "The lynx launch is ready", 0)],
+        );
         svc.index_meeting("m-new");
-        assert!(wait_until("meeting", 5, || !q(&reader, &all, "lynx").is_empty()) < Duration::from_secs(2));
+        assert!(
+            wait_until("meeting", 5, || !q(&reader, &all, "lynx").is_empty())
+                < Duration::from_secs(2)
+        );
         // opt-out
         prov.folders.lock().unwrap()[0].index_enabled = false;
         svc.index_folder("f1");
-        assert!(wait_until("opt-out", 5, || q(&reader, &all, "ibex").is_empty()) < Duration::from_secs(2));
+        assert!(
+            wait_until("opt-out", 5, || q(&reader, &all, "ibex").is_empty())
+                < Duration::from_secs(2)
+        );
         svc.shutdown();
         fs::remove_dir_all(&root).ok();
         fs::remove_dir_all(&dir).ok();
@@ -1917,13 +2712,37 @@ The pangolin note.").unwrap();
         {
             let c = Connection::open(&db).unwrap();
             for i in 0..300 {
-                add_meeting(&c, &format!("m{i}"), "T", "2026-01-05T10:00:00Z", None, &[("You", "plain words", 0)]);
+                add_meeting(
+                    &c,
+                    &format!("m{i}"),
+                    "T",
+                    "2026-01-05T10:00:00Z",
+                    None,
+                    &[("You", "plain words", 0)],
+                );
             }
-            add_meeting(&c, "m-late", "Late", "2026-03-01T10:00:00Z", None, &[("You", "The marmot report", 0)]);
+            add_meeting(
+                &c,
+                "m-late",
+                "Late",
+                "2026-03-01T10:00:00Z",
+                None,
+                &[("You", "The marmot report", 0)],
+            );
         }
         let (root, prov) = folder_fixture("idx-burst-f");
-        prov.docs.lock().unwrap().push(DocInput { id: "d1".into(), name: "G".into(), text: "The numbat guide".into() });
-        prov.points.lock().unwrap().push(TalkingPointInput { id: "t1".into(), title: "T".into(), plain_text: "Greet the ocelot".into(), in_context: true });
+        prov.docs.lock().unwrap().push(DocInput {
+            id: "d1".into(),
+            name: "G".into(),
+            text: "The numbat guide".into(),
+            pages: None,
+        });
+        prov.points.lock().unwrap().push(TalkingPointInput {
+            id: "t1".into(),
+            title: "T".into(),
+            plain_text: "Greet the ocelot".into(),
+            in_context: true,
+        });
         let svc = service(&db, prov.clone(), true);
         // everything at once, while the first pass is running
         for _ in 0..3 {
@@ -1946,7 +2765,10 @@ The pangolin note.").unwrap();
         for word in ["marmot", "numbat", "ocelot", "ibex"] {
             wait_until(word, 30, || !q(&reader, &all, word).is_empty());
         }
-        assert!(svc.wait_for_commands(4, Duration::from_secs(30)), "the requests are all handled");
+        assert!(
+            svc.wait_for_commands(4, Duration::from_secs(30)),
+            "the requests are all handled"
+        );
         assert!(svc.wait_for_passes(1, Duration::from_secs(120)));
         // the repeated rescans did not queue a pass each
         assert!(svc.passes_completed() <= 3, "{}", svc.passes_completed());
@@ -1958,10 +2780,27 @@ The pangolin note.").unwrap();
     #[test]
     fn a_read_that_fails_never_deletes_what_is_indexed() {
         let (root, prov) = folder_fixture("idx-readfail");
-        prov.docs.lock().unwrap().push(DocInput { id: "d1".into(), name: "G".into(), text: "The numbat guide".into() });
-        prov.points.lock().unwrap().push(TalkingPointInput { id: "t1".into(), title: "T".into(), plain_text: "Greet the ocelot".into(), in_context: true });
+        prov.docs.lock().unwrap().push(DocInput {
+            id: "d1".into(),
+            name: "G".into(),
+            text: "The numbat guide".into(),
+            pages: None,
+        });
+        prov.points.lock().unwrap().push(TalkingPointInput {
+            id: "t1".into(),
+            title: "T".into(),
+            plain_text: "Greet the ocelot".into(),
+            in_context: true,
+        });
         let mut conn = mem_db();
-        add_meeting(&conn, "m1", "T", "2026-01-05T10:00:00Z", None, &[("You", "The marmot report", 0)]);
+        add_meeting(
+            &conn,
+            "m1",
+            "T",
+            "2026-01-05T10:00:00Z",
+            None,
+            &[("You", "The marmot report", 0)],
+        );
         run(&mut conn, prov.as_ref());
         let all = SearchScope {
             meetings: MeetingScope::Ids(vec!["m1".into()]),
@@ -1979,10 +2818,19 @@ The pangolin note.").unwrap();
         assert!(r.errors.len() >= 3, "{:?}", r.errors);
         assert_eq!(r.removed, 0);
         for word in ["marmot", "numbat", "ocelot", "ibex"] {
-            assert!(!q(&conn, &all, word).is_empty(), "{word} survives a failed read");
+            assert!(
+                !q(&conn, &all, word).is_empty(),
+                "{word} survives a failed read"
+            );
         }
         // a targeted pass over one folder behaves the same
-        let r = run_pass_scoped(&mut conn, prov.as_ref(), &RunControl::idle(), &|_| {}, &PassScope::folder("f1"));
+        let r = run_pass_scoped(
+            &mut conn,
+            prov.as_ref(),
+            &RunControl::idle(),
+            &|_| {},
+            &PassScope::folder("f1"),
+        );
         assert!(!r.errors.is_empty() && r.removed == 0);
         assert!(!q(&conn, &all, "ibex").is_empty());
         // and once it can read again, a really removed document goes
@@ -1999,21 +2847,76 @@ The pangolin note.").unwrap();
         // wall-clock stamps (some speech providers), relative stamps (others), before-start and a missing start
         let start: i64 = 1_767_348_000_000; // 2026-01-02T10:00:00Z
         let mut conn = mem_db();
-        add_meeting(&conn, "e", "Epoch", "2026-01-02T10:00:00Z", None, &[("You", "epochquokka said hello", start + 3_000), ("Them", "second epochwombat line", start + 65_000)]);
-        add_meeting(&conn, "r", "Relative", "2026-01-02T10:00:00Z", None, &[("You", "relquokka said hello", 3_000), ("Them", "second relwombat line", 65_000)]);
-        add_meeting(&conn, "b", "Before", "2026-01-02T10:00:00Z", None, &[("You", "beforequokka said hello", start - 9_000)]);
-        add_meeting(&conn, "n", "NoStart", "not a date", None, &[("You", "nostartquokka said hello", start + 5_000), ("Them", "nostartwombat second", start + 20_000)]);
+        add_meeting(
+            &conn,
+            "e",
+            "Epoch",
+            "2026-01-02T10:00:00Z",
+            None,
+            &[
+                ("You", "epochquokka said hello", start + 3_000),
+                ("Them", "second epochwombat line", start + 65_000),
+            ],
+        );
+        add_meeting(
+            &conn,
+            "r",
+            "Relative",
+            "2026-01-02T10:00:00Z",
+            None,
+            &[
+                ("You", "relquokka said hello", 3_000),
+                ("Them", "second relwombat line", 65_000),
+            ],
+        );
+        add_meeting(
+            &conn,
+            "b",
+            "Before",
+            "2026-01-02T10:00:00Z",
+            None,
+            &[("You", "beforequokka said hello", start - 9_000)],
+        );
+        add_meeting(
+            &conn,
+            "n",
+            "NoStart",
+            "not a date",
+            None,
+            &[
+                ("You", "nostartquokka said hello", start + 5_000),
+                ("Them", "nostartwombat second", start + 20_000),
+            ],
+        );
         run(&mut conn, &MeetingsOnly);
         let all = SearchScope::with_meetings(["e", "r", "b", "n"]);
-        let first = |word: &str| search(&conn, &all, word, &[], 5).unwrap().into_iter().next().unwrap_or_else(|| panic!("no hit for {word}"));
+        let first = |word: &str| {
+            search(&conn, &all, word, &[], 5)
+                .unwrap()
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| panic!("no hit for {word}"))
+        };
         // the passage that holds both lines starts at the first line's time
         assert_eq!(first("epochquokka").start_ms, Some(3_000), "epoch stamps");
         assert_eq!(first("relquokka").start_ms, Some(3_000), "relative stamps");
-        assert_eq!(first("beforequokka").start_ms, Some(0), "before the start is 0");
-        assert_eq!(first("nostartquokka").start_ms, Some(0), "no start time: the first stamp is 0");
+        assert_eq!(
+            first("beforequokka").start_ms,
+            Some(0),
+            "before the start is 0"
+        );
+        assert_eq!(
+            first("nostartquokka").start_ms,
+            Some(0),
+            "no start time: the first stamp is 0"
+        );
         for p in ["epochwombat", "relwombat", "nostartwombat"] {
             let hit = first(p);
-            assert!(hit.start_ms.unwrap() < 3_600_000 && hit.end_ms.unwrap() < 3_600_000, "{p}: {:?}", (hit.start_ms, hit.end_ms));
+            assert!(
+                hit.start_ms.unwrap() < 3_600_000 && hit.end_ms.unwrap() < 3_600_000,
+                "{p}: {:?}",
+                (hit.start_ms, hit.end_ms)
+            );
         }
     }
 }

@@ -10,6 +10,7 @@
     "license:inventory": "node scripts/generate-license-inventory.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
+    "setup": "node scripts/setup.mjs",
     "release": "node scripts/release.js",
     "release:dry-run": "node scripts/release.js --dry-run",
     "sync-version": "node scripts/sync-version.js",

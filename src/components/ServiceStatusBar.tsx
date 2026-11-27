@@ -12,7 +12,7 @@ import { useStreamStore } from "../stores/streamStore";
 import { useMeetingStore } from "../stores/meetingStore";
 import { useSpeakerStore } from "../stores/speakerStore";
 import { useAudioLevel } from "../hooks/useAudioLevel";
-import { hasApiKey, listLocalSTTEngines, getApiKey } from "../lib/ipc";
+import { hasApiKey, listLocalSTTEngines } from "../lib/ipc";
 import { hasSttCredential } from "../lib/whisperApi";
 import type { STTProviderType, LLMProviderType, LocalSTTEngineInfo } from "../lib/types";
 import { STT_GROUPS, sttGroup, type SttGroupId } from "../lib/sttGroups";
@@ -1002,10 +1002,8 @@ function LLMPickerDropdown({
     (async () => {
       try {
         const { listModels } = await import("../lib/ipc");
-        const key = await getApiKey(pendingProvider).catch(() => null);
         const config = JSON.stringify({
           provider_type: pendingProvider,
-          ...(key && { api_key: key }),
           ...(pendingProvider === "custom" && customBaseUrl && { base_url: customBaseUrl, auth_type: customAuthType }),
         });
         const modelList = await listModels(config);

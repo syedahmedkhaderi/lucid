@@ -8,7 +8,6 @@ import { ns } from "./testing";
 vi.mock("../lib/ipc", () => ({
   getAutomaticModel: async () => null,
   cliAgentStatus: async () => null,
-  getApiKey: async () => null,
   getLLMProviders: async () => ["openai", "groq"],
   listModels: async () => [],
   cliAgentModels: async () => [],

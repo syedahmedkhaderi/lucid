@@ -24,6 +24,8 @@ export interface StartMeetingOptions {
   workspaceId?: string;
   /** Workspaces used in this meeting too ("Also use"). */
   borrowed?: string[];
+  /** Explicit library documents selected for this meeting; omitted means all in scope. */
+  documentIds?: string[];
 }
 
 interface MeetingState {
@@ -230,25 +232,16 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
         }
 
         // 1. Create meeting record in SQLite
-        const meeting = await ipcStartMeeting(title, options?.workspaceId);
+        const meeting = await ipcStartMeeting(title, options?.workspaceId, options?.borrowed, options?.documentIds);
 
         // 1-. A request the backend could not honour: the meeting runs filed nowhere, and the person is told how to file it.
         if (options?.workspaceId && meeting.workspace_notice) {
           showToast(meeting.workspace_notice, "warning");
         }
 
-        // 1a. "Also use": the borrowed workspaces. A refusal (keep separate) never blocks the meeting.
-        let borrowed: string[] = [];
-        // A meeting filed nowhere borrows nothing until it is filed (the backend refuses it).
-        if (options?.borrowed && options.borrowed.length > 0 && !isUnfiledHome(meeting.workspace_id)) {
-          try {
-            const { setMeetingScope } = await import("../lib/ipc");
-            const scope = await setMeetingScope(meeting.id, options.borrowed);
-            borrowed = scope.borrowed;
-          } catch (err) {
-            showToast(`Started without the extra workspaces: ${err instanceof Error ? err.message : String(err)}`, "warning");
-          }
-        }
+        // The backend committed borrowed workspaces and the document selection
+        // atomically with the meeting before any runtime session was warmed.
+        const borrowed = !isUnfiledHome(meeting.workspace_id) ? [...new Set(options?.borrowed ?? [])] : [];
 
         // 1b. Store mode/scenario in state and persist to DB
         set({ audioMode: resolvedMode, aiScenario: resolvedScenario });

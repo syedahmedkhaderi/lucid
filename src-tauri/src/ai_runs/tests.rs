@@ -5,6 +5,26 @@ use crate::llm::cli_agent::protocol::TurnResult;
 use crate::llm::cli_agent::settings::CliSettings;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+#[test]
+fn credential_config_hints_never_retain_provider_secrets() {
+    let configs = CredentialConfigs::new(None);
+    configs.set_hint(ProviderConfig {
+        provider_type: "custom".into(),
+        api_key: Some("typed-api-key".into()),
+        base_url: Some("https://example.invalid/v1".into()),
+        auth_type: Some("bearer".into()),
+        auth_value: Some("typed-custom-token".into()),
+        auth_header: Some("Authorization".into()),
+        thinking: Default::default(),
+        extra_request_json: None,
+    });
+    let hints = configs.hints.read().unwrap();
+    let hint = hints.get("custom").unwrap();
+    assert!(hint.api_key.is_none());
+    assert!(hint.auth_value.is_none());
+    assert_eq!(hint.base_url.as_deref(), Some("https://example.invalid/v1"));
+}
+
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------

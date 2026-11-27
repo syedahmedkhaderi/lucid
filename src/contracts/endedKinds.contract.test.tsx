@@ -16,7 +16,6 @@ vi.mock("../lib/ipc", () => ({
   getAutomaticModel: async () => null,
   getLLMProviders: async () => [],
   cliAgentStatus: async () => null,
-  getApiKey: async () => null,
 }));
 vi.mock("../lib/events", async () => {
   const hotkeys = await import("../lib/hotkeys");

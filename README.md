@@ -4,7 +4,7 @@ Lucid is a local-first desktop meeting assistant for live transcription, documen
 
 ## Status
 
-This checkout is an active development build, not a professional-pilot release. The frontend passes 3,931 tests (2 skipped), all Rust targets pass 2,007 tests (24 ignored), and the macOS app and installer image build. Gemini Live Transcribe and bounded PPTX text extraction are implemented but remain unverified against real provider accounts and production meeting data. See [`PROGRESS.md`](PROGRESS.md) and [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) for verified status and gaps.
+This checkout is an active development build, not a professional-pilot release. The frontend passes 3,942 tests (2 skipped), all Rust targets pass 2,037 tests (24 ignored), and the macOS app opens to first-run setup. Gemini Live Transcribe and bounded PPTX text extraction are implemented but remain unverified against real provider accounts and production meeting data. See [`PROGRESS.md`](PROGRESS.md) and [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) for verified status and gaps.
 
 ## Current capabilities inherited from NexQ
 
@@ -15,31 +15,27 @@ This checkout is an active development build, not a professional-pilot release. 
 - Local speech/model options and configurable cloud providers.
 - Gemini Live multilingual speech transcription with interim/final text, automatic language detection, and pre-limit session refresh.
 - Local PPTX slide text and basic table-row extraction with slide markers.
-- OS credential-store integration for provider secrets.
+- Individually validated and tab-separated bulk credential profiles stored in the OS credential store, with manual selection and no quota-triggered rotation.
 
 These features are inherited and selectively rebranded. The compact overlay has unit-tested placement math but still needs interactive runtime verification. Do not infer production readiness from the upstream README.
 
 ## Build from source
 
-See [`DEVELOPMENT.md`](DEVELOPMENT.md). On macOS, install Node.js 22.22.2+ or 24.15.0+, Rust stable, Xcode Command Line Tools, and CMake, then:
+Install Node.js 22.22.2+ or 24.15.0+, Rust stable, CMake, and the platform toolchain (Xcode Command Line Tools on macOS; Visual Studio C++ Build Tools on Windows). From the project directory, run:
 
 ```sh
-npm ci
-npm test
-npm run build
-source scripts/macos-env.sh
-npx tauri dev
+npm run setup
 ```
 
-The repository's original `build-mac.sh` creates a macOS development package after native dependencies are staged. Windows packaging must be run and tested on Windows; it has not been verified from this Mac.
+On macOS this installs `Lucid.app` in `/Applications`. On Windows it builds an NSIS installer in `src-tauri/target/release/bundle/nsis/`. Use `npm run setup -- --dry-run` to check prerequisites and see the planned commands without building. For development and individual test commands, see [`DEVELOPMENT.md`](DEVELOPMENT.md).
 
 ## Privacy and credentials
 
 Lucid starts in **Private Local** mode. It blocks cloud speech, cloud LLM and translation requests, subscription CLIs, remote model endpoints, Gemini context uploads, and remote embeddings. It permits offline speech engines and Ollama or LM Studio bound to a loopback address. Change this in **Settings → Privacy** after the meeting and any current AI requests finish. **Cloud processing allowed** may send audio, transcripts, document excerpts, notes, or images to the selected provider and may incur charges. Check provider and organizational data policies before enabling it. Private Local cannot verify the behavior of software you install on your device, and it does not encrypt meeting records stored on disk.
 
-Provider keys belong in the app's OS credential store and must never be committed. The keys pasted in the originating request were not copied into this repository or tested; treat them as exposed and revoke or rotate them at their provider.
+Provider keys belong in the app's OS credential store and must never be committed. Gemini keys can be added one at a time or as tab-separated profiles in **Settings → LLM Provider**; each is validated before storage and can be explicitly selected. Saved values are write-only from the web UI. The keys pasted in the originating request were not copied into this repository or tested; treat them as exposed and revoke or rotate them at their provider.
 
-Gemini quotas are project-level. Multiple keys from one project share its quota, so Lucid will not use key cycling to bypass limits. Multi-key project-aware management is not implemented yet. See [`DECISIONS.md`](DECISIONS.md).
+Gemini quotas are project-level. Multiple keys from one project share its quota, so Lucid does not switch keys automatically after a quota error. See [`DECISIONS.md`](DECISIONS.md).
 
 ## Project docs
 

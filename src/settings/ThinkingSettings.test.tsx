@@ -22,7 +22,6 @@ const ipc = vi.hoisted(() => ({ setLLMProvider: vi.fn() }));
 vi.mock("../lib/ipc", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/ipc")>()),
   setLLMProvider: (...a: unknown[]) => ipc.setLLMProvider(...a),
-  getApiKey: async () => null,
 }));
 
 import { ThinkingSettings } from "./ThinkingSettings";

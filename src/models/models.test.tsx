@@ -6,7 +6,6 @@ const h = vi.hoisted(() => ({ configs: [] as string[] }));
 vi.mock("../lib/ipc", () => ({
   getAutomaticModel: async () => null,
   cliAgentStatus: async () => null,
-  getApiKey: async () => "sk-test",
   listModels: async (config: string) => {
     h.configs.push(config);
     return [
@@ -52,7 +51,7 @@ describe("ModelField", () => {
     await userEvent.click(screen.getByRole("button", { name: "Model" }));
     expect(await screen.findByRole("option", { name: "GPT Mini" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Embedding" })).toBeNull();
-    expect(JSON.parse(h.configs[0])).toEqual({ provider_type: "openai", api_key: "sk-test" });
+    expect(JSON.parse(h.configs[0])).toEqual({ provider_type: "openai" });
     await userEvent.click(screen.getByRole("option", { name: "GPT Mini" }));
     expect(onChange).toHaveBeenCalledWith({ provider: "openai", model: "gpt-mini", effort: null });
   });

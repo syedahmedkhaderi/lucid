@@ -30,18 +30,23 @@ use crate::llm::cli_agent::manager::{
     AgentSessionManager, SessionInit, SessionKey, SessionOverride, SessionScope, Tier,
 };
 use crate::llm::cli_agent::protocol::{classify_error, AgentErrorKind, PlanLimit, PlanLimitLevel};
-use crate::llm::cli_agent::session::{decode_activity, decode_tool_result, is_activity, AgentError, THINKING_SIGNAL};
-use crate::sources::activity::{describe_tool_use, notice, SourceActivity};
+use crate::llm::cli_agent::session::{
+    decode_activity, decode_tool_result, is_activity, AgentError, THINKING_SIGNAL,
+};
 use crate::llm::cli_agent::{transcripts, CliAgentKind};
 use crate::llm::provider::{
     CancelToken, CompletionStats, GenerationParams, LLMError, LLMMessage, ModelInfo, TokenSink,
 };
 use crate::llm::thinking::ThinkingSetting;
 use crate::llm::{create_provider, ProviderConfig, ProviderType};
+use crate::sources::activity::{describe_tool_use, notice, SourceActivity};
 use async_trait::async_trait;
 pub use gate::{local_server_id, GateWait, LiveBusy, LiveGate, LiveTarget};
 use std::collections::HashMap;
-use std::sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex, RwLock};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex, RwLock,
+};
 use std::time::{Duration, Instant};
 pub use windows::{bucket_context, estimate_tokens, ModelWindows};
 
@@ -94,7 +99,11 @@ pub struct ModelSelection {
 
 impl ModelSelection {
     pub fn new(provider: &str, model: &str, effort: Option<&str>) -> Self {
-        Self { provider: provider.to_string(), model: model.to_string(), effort: effort.map(str::to_string) }
+        Self {
+            provider: provider.to_string(),
+            model: model.to_string(),
+            effort: effort.map(str::to_string),
+        }
     }
 }
 
@@ -140,7 +149,10 @@ impl AiRunRequest {
             selection,
             system: system.to_string(),
             stable_context: None,
-            messages: vec![LLMMessage { role: "user".into(), content: user.to_string() }],
+            messages: vec![LLMMessage {
+                role: "user".into(),
+                content: user.to_string(),
+            }],
             max_output: 1024,
             temperature: None,
             cancel: Arc::new(CancelToken::new()),
@@ -197,7 +209,10 @@ pub enum AiRunError {
     NoKey { provider: String, message: String },
     /// Rate limit, quota or (CLI) usage limit of the plan.
     #[error("{message}")]
-    RateLimited { message: String, plan_limit: Option<PlanLimit> },
+    RateLimited {
+        message: String,
+        plan_limit: Option<PlanLimit>,
+    },
     /// Not installed, not signed in, not reachable, crashed or timed out.
     #[error("{message}")]
     Unavailable { message: String },
@@ -243,7 +258,9 @@ fn too_long_text(needed: u64, window: u64) -> String {
     if window == 0 {
         format!("the prompt (about {needed} tokens) is too long for this model")
     } else {
-        format!("the prompt (about {needed} tokens) does not fit this model's window ({window} tokens)")
+        format!(
+            "the prompt (about {needed} tokens) does not fit this model's window ({window} tokens)"
+        )
     }
 }
 
@@ -258,16 +275,31 @@ struct Size {
 fn classify_failure(message: String, provider: &str, size: Size) -> AiRunError {
     let lower = message.to_lowercase();
     match classify_error(&message) {
-        AgentErrorKind::RateLimited => AiRunError::RateLimited { message, plan_limit: None },
-        AgentErrorKind::ContextOverflow => AiRunError::TooLong { needed: size.needed, window: size.window },
+        AgentErrorKind::RateLimited => AiRunError::RateLimited {
+            message,
+            plan_limit: None,
+        },
+        AgentErrorKind::ContextOverflow => AiRunError::TooLong {
+            needed: size.needed,
+            window: size.window,
+        },
         AgentErrorKind::NotLoggedIn | AgentErrorKind::NotInstalled | AgentErrorKind::Outdated => {
             AiRunError::Unavailable { message }
         }
         _ if lower.contains("429") || lower.contains("quota") || lower.contains("overloaded") => {
-            AiRunError::RateLimited { message, plan_limit: None }
+            AiRunError::RateLimited {
+                message,
+                plan_limit: None,
+            }
         }
-        _ if lower.contains("401") || lower.contains("403") || lower.contains("invalid api key") => {
-            AiRunError::NoKey { provider: provider.to_string(), message }
+        _ if lower.contains("401")
+            || lower.contains("403")
+            || lower.contains("invalid api key") =>
+        {
+            AiRunError::NoKey {
+                provider: provider.to_string(),
+                message,
+            }
         }
         _ => AiRunError::Other { message },
     }
@@ -276,10 +308,15 @@ fn classify_failure(message: String, provider: &str, size: Size) -> AiRunError {
 fn map_llm_error(e: LLMError, provider: &str, size: Size) -> AiRunError {
     match e {
         LLMError::Cancelled => AiRunError::Cancelled,
-        LLMError::AuthError(message) => AiRunError::NoKey { provider: provider.to_string(), message },
+        LLMError::AuthError(message) => AiRunError::NoKey {
+            provider: provider.to_string(),
+            message,
+        },
         LLMError::NotConfigured(message) => AiRunError::Unavailable { message },
         LLMError::ConnectionFailed(message) => AiRunError::Unavailable { message },
-        LLMError::HttpError(e) => AiRunError::Unavailable { message: crate::llm::provider::error_text(&e) },
+        LLMError::HttpError(e) => AiRunError::Unavailable {
+            message: crate::llm::provider::error_text(&e),
+        },
         other => classify_failure(other.to_string(), provider, size),
     }
 }
@@ -292,9 +329,17 @@ fn map_agent_error(e: AgentError, size: Size) -> AiRunError {
     match e.kind() {
         AgentErrorKind::RateLimited => AiRunError::RateLimited {
             message,
-            plan_limit: Some(PlanLimit { level: PlanLimitLevel::Hit, resets_at: None, window: None, used: None }),
+            plan_limit: Some(PlanLimit {
+                level: PlanLimitLevel::Hit,
+                resets_at: None,
+                window: None,
+                used: None,
+            }),
         },
-        AgentErrorKind::ContextOverflow => AiRunError::TooLong { needed: size.needed, window: size.window },
+        AgentErrorKind::ContextOverflow => AiRunError::TooLong {
+            needed: size.needed,
+            window: size.window,
+        },
         AgentErrorKind::NotInstalled
         | AgentErrorKind::Outdated
         | AgentErrorKind::NotLoggedIn
@@ -334,32 +379,46 @@ pub struct CredentialConfigs {
 
 impl CredentialConfigs {
     pub fn new(credentials: Option<Arc<Mutex<CredentialManager>>>) -> Self {
-        Self { credentials, hints: RwLock::new(HashMap::new()) }
+        Self {
+            credentials,
+            hints: RwLock::new(HashMap::new()),
+        }
     }
 
     /// Remember a provider's endpoint and auth settings (its key is read fresh
     /// from the credential manager, never kept here).
     pub fn set_hint(&self, mut config: ProviderConfig) {
         config.api_key = None;
-        self.hints.write().unwrap().insert(config.provider_type.clone(), config);
+        config.auth_value = None;
+        self.hints
+            .write()
+            .unwrap()
+            .insert(config.provider_type.clone(), config);
     }
 }
 
 impl ConfigSource for CredentialConfigs {
     fn config_for(&self, selection: &ModelSelection) -> Result<ProviderConfig, AiRunError> {
         let provider = selection.provider.as_str();
-        let ptype = ProviderType::from_str(provider)
-            .map_err(|e| AiRunError::Other { message: e.to_string() })?;
-        let mut config = self.hints.read().unwrap().get(provider).cloned().unwrap_or_else(|| ProviderConfig {
-            provider_type: provider.to_string(),
-            api_key: None,
-            base_url: None,
-            auth_type: None,
-            auth_value: None,
-            auth_header: None,
-            thinking: Default::default(),
-            extra_request_json: None,
-        });
+        let ptype = ProviderType::from_str(provider).map_err(|e| AiRunError::Other {
+            message: e.to_string(),
+        })?;
+        let mut config = self
+            .hints
+            .read()
+            .unwrap()
+            .get(provider)
+            .cloned()
+            .unwrap_or_else(|| ProviderConfig {
+                provider_type: provider.to_string(),
+                api_key: None,
+                base_url: None,
+                auth_type: None,
+                auth_value: None,
+                auth_header: None,
+                thinking: Default::default(),
+                extra_request_json: None,
+            });
         if ptype.requires_api_key() && config.api_key.is_none() {
             let key = self
                 .credentials
@@ -372,13 +431,41 @@ impl ConfigSource for CredentialConfigs {
                 None => {
                     return Err(AiRunError::NoKey {
                         provider: provider.to_string(),
-                        message: format!("No {} key is saved. Add one in Settings.", ptype.display_name()),
+                        message: format!(
+                            "No {} key is saved. Add one in Settings.",
+                            ptype.display_name()
+                        ),
+                    })
+                }
+            }
+        }
+        if matches!(ptype, ProviderType::Custom)
+            && config
+                .auth_type
+                .as_deref()
+                .is_some_and(|value| value != "none")
+            && config.auth_value.is_none()
+        {
+            let token = self
+                .credentials
+                .as_ref()
+                .and_then(|c| c.lock().ok())
+                .and_then(|c| c.get_key("custom").ok().flatten())
+                .filter(|value| !value.trim().is_empty());
+            match token {
+                Some(token) => config.auth_value = Some(token),
+                None => {
+                    return Err(AiRunError::NoKey {
+                        provider: "custom".into(),
+                        message: "No custom endpoint token is saved. Add one in Settings.".into(),
                     })
                 }
             }
         }
         if matches!(ptype, ProviderType::Custom) && config.base_url.is_none() {
-            return Err(AiRunError::Unavailable { message: "The custom endpoint has no address.".into() });
+            return Err(AiRunError::Unavailable {
+                message: "The custom endpoint has no address.".into(),
+            });
         }
         Ok(config)
     }
@@ -425,7 +512,9 @@ impl ApiBackend for LiveBackend {
         sink: Option<TokenSink>,
     ) -> Result<CompletionStats, LLMError> {
         let provider = create_provider(&config).map_err(LLMError::NotConfigured)?;
-        provider.stream_completion(messages, &model, params, self.app.clone(), sink).await
+        provider
+            .stream_completion(messages, &model, params, self.app.clone(), sink)
+            .await
     }
 
     async fn list_models(&self, config: ProviderConfig) -> Result<Vec<ModelInfo>, LLMError> {
@@ -434,7 +523,10 @@ impl ApiBackend for LiveBackend {
     }
 
     async fn ollama_window(&self, base_url: &str, model: &str) -> Option<u64> {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(5)).build().ok()?;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .ok()?;
         let body = client
             .post(format!("{}/api/show", base_url.trim_end_matches('/')))
             .json(&serde_json::json!({ "model": model }))
@@ -503,7 +595,10 @@ pub fn chat_safe(mut line: SourceActivity) -> SourceActivity {
         if s.chars().count() <= ACTIVITY_LABEL_CHARS {
             s.to_string()
         } else {
-            format!("{}…", s.chars().take(ACTIVITY_LABEL_CHARS - 1).collect::<String>())
+            format!(
+                "{}…",
+                s.chars().take(ACTIVITY_LABEL_CHARS - 1).collect::<String>()
+            )
         }
     };
     line.label = cut(&line.label);
@@ -526,9 +621,15 @@ impl AiRuns {
         let ptype = ProviderType::from_str(&selection.provider).map_err(|e| e.to_string())?;
         crate::privacy::ensure_llm_allowed(&ptype, None)?;
         if crate::privacy::is_private_local()
-            && matches!(ptype, ProviderType::Ollama | ProviderType::LmStudio | ProviderType::Custom)
+            && matches!(
+                ptype,
+                ProviderType::Ollama | ProviderType::LmStudio | ProviderType::Custom
+            )
         {
-            let config = self.configs.config_for(selection).map_err(|e| e.to_string())?;
+            let config = self
+                .configs
+                .config_for(selection)
+                .map_err(|e| e.to_string())?;
             crate::privacy::ensure_llm_config_allowed(&config)?;
         }
         Ok(())
@@ -550,7 +651,12 @@ impl AiRuns {
             }
         }));
         let configs = Arc::new(CredentialConfigs::new(credentials));
-        let mut runs = Self::with_parts(Arc::new(LiveBackend::new(app)), cli, LiveGate::global(), configs.clone());
+        let mut runs = Self::with_parts(
+            Arc::new(LiveBackend::new(app)),
+            cli,
+            LiveGate::global(),
+            configs.clone(),
+        );
         runs.hints = Some(configs);
         runs
     }
@@ -602,20 +708,28 @@ impl AiRuns {
         if !models::keeps_list(provider) {
             return None;
         }
-        self.configs.config_for(&ModelSelection::new(provider, "", None)).ok()
+        self.configs
+            .config_for(&ModelSelection::new(provider, "", None))
+            .ok()
     }
 
     /// The model ids `provider` offers, when a list for its current key and
     /// address is known. Instant: never fetches (see [`AiRuns::refresh_models`]).
     pub fn known_models(&self, provider: &str) -> Option<Vec<String>> {
         let config = self.list_config(provider)?;
-        self.model_lists.known(provider, models::fingerprint(&config))
+        self.model_lists
+            .known(provider, models::fingerprint(&config))
     }
 
     /// Is a fetch of `provider`'s list due (and possible: a key, an API provider)?
     pub fn models_due(&self, provider: &str) -> bool {
         match self.list_config(provider) {
-            Some(config) => self.model_lists.due(provider, models::fingerprint(&config), self.models_ttl, models::RETRY_AFTER),
+            Some(config) => self.model_lists.due(
+                provider,
+                models::fingerprint(&config),
+                self.models_ttl,
+                models::RETRY_AFTER,
+            ),
             None => false,
         }
     }
@@ -624,18 +738,32 @@ impl AiRuns {
     /// within [`models::FETCH_TIMEOUT`], never while a live answer runs. True
     /// when a new list was stored.
     pub async fn refresh_models(&self, provider: &str) -> bool {
-        let Some(config) = self.list_config(provider) else { return false };
+        let Some(config) = self.list_config(provider) else {
+            return false;
+        };
         let fingerprint = models::fingerprint(&config);
-        if !self.model_lists.due(provider, fingerprint, self.models_ttl, models::RETRY_AFTER) || self.gate.is_busy() {
+        if !self
+            .model_lists
+            .due(provider, fingerprint, self.models_ttl, models::RETRY_AFTER)
+            || self.gate.is_busy()
+        {
             return false;
         }
-        if !self.models_inflight.lock().unwrap().insert(provider.to_string()) {
+        if !self
+            .models_inflight
+            .lock()
+            .unwrap()
+            .insert(provider.to_string())
+        {
             return false;
         }
-        let fetched = tokio::time::timeout(models::FETCH_TIMEOUT, self.api.list_models(config)).await;
+        let fetched =
+            tokio::time::timeout(models::FETCH_TIMEOUT, self.api.list_models(config)).await;
         self.models_inflight.lock().unwrap().remove(provider);
         let ids = match fetched {
-            Ok(Ok(list)) if !list.is_empty() => Some(list.into_iter().map(|m| m.id).collect::<Vec<_>>()),
+            Ok(Ok(list)) if !list.is_empty() => {
+                Some(list.into_iter().map(|m| m.id).collect::<Vec<_>>())
+            }
             _ => None,
         };
         let stored = ids.is_some();
@@ -679,16 +807,24 @@ impl AiRuns {
         }
         let config = self.configs.config_for(selection).ok()?;
         let window = if matches!(ptype, ProviderType::Ollama) {
-            let base = config.base_url.clone().unwrap_or_else(|| ptype.default_base_url().to_string());
+            let base = config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| ptype.default_base_url().to_string());
             self.api.ollama_window(&base, &selection.model).await
         } else {
             self.listed_window(&config, selection).await
         };
-        self.windows.store(&selection.provider, &selection.model, window);
+        self.windows
+            .store(&selection.provider, &selection.model, window);
         window
     }
 
-    async fn listed_window(&self, config: &ProviderConfig, selection: &ModelSelection) -> Option<u64> {
+    async fn listed_window(
+        &self,
+        config: &ProviderConfig,
+        selection: &ModelSelection,
+    ) -> Option<u64> {
         if self.windows.listing_fresh(&selection.provider) {
             return None;
         }
@@ -699,19 +835,26 @@ impl AiRuns {
             if m.id == selection.model {
                 found = m.context_window;
             }
-            self.windows.store(&selection.provider, &m.id, m.context_window);
+            self.windows
+                .store(&selection.provider, &m.id, m.context_window);
         }
         found
     }
 
     /// Run one request to the end. Tokens go to `sink` as they arrive.
-    pub async fn run(&self, req: AiRunRequest, sink: Option<TokenSink>) -> Result<AiRunResult, AiRunError> {
+    pub async fn run(
+        &self,
+        req: AiRunRequest,
+        sink: Option<TokenSink>,
+    ) -> Result<AiRunResult, AiRunError> {
         let _activity = RunActivity::begin(&self.active_runs);
         if req.cancel.is_cancelled() {
             return Err(AiRunError::Cancelled);
         }
-        let ptype = ProviderType::from_str(&req.selection.provider)
-            .map_err(|e| AiRunError::Other { message: e.to_string() })?;
+        let ptype =
+            ProviderType::from_str(&req.selection.provider).map_err(|e| AiRunError::Other {
+                message: e.to_string(),
+            })?;
         let request_config = if crate::privacy::is_private_local() {
             self.configs.config_for(&req.selection).ok()
         } else {
@@ -719,7 +862,9 @@ impl AiRuns {
         };
         let _content_request = crate::privacy::begin_llm_request(
             &ptype,
-            request_config.as_ref().and_then(|config| config.base_url.as_deref()),
+            request_config
+                .as_ref()
+                .and_then(|config| config.base_url.as_deref()),
         )
         .map_err(|message| AiRunError::Other { message })?;
         match ptype.cli_agent_kind() {
@@ -761,7 +906,12 @@ impl AiRuns {
         // Size: what goes in plus what may come out, against the real window.
         let system = join_system(&req.system, req.stable_context.as_deref());
         let input = req.est_input_tokens.unwrap_or_else(|| {
-            estimate_tokens(&system) + req.messages.iter().map(|m| estimate_tokens(&m.content) + 4).sum::<u64>()
+            estimate_tokens(&system)
+                + req
+                    .messages
+                    .iter()
+                    .map(|m| estimate_tokens(&m.content) + 4)
+                    .sum::<u64>()
         });
         let needed = input + req.max_output;
         let mut window = self.model_window(&req.selection).await;
@@ -780,7 +930,10 @@ impl AiRuns {
 
         let mut messages = Vec::with_capacity(req.messages.len() + 1);
         if !system.is_empty() {
-            messages.push(LLMMessage { role: "system".into(), content: system });
+            messages.push(LLMMessage {
+                role: "system".into(),
+                content: system,
+            });
         }
         messages.extend(req.messages.iter().cloned());
 
@@ -795,7 +948,8 @@ impl AiRuns {
             silent: true,
             cancel: Some(inner.clone()),
             thinking,
-            thinking_auto_off: !req.purpose.thinks_by_default() && thinking == ThinkingSetting::Auto,
+            thinking_auto_off: !req.purpose.thinks_by_default()
+                && thinking == ThinkingSetting::Auto,
             cache_system: true,
             num_ctx,
             ..Default::default()
@@ -844,17 +998,34 @@ impl AiRuns {
                 window,
                 plan_limit: None,
             }),
-            Err(LLMError::Cancelled) if preempted && !req.cancel.is_cancelled() => Err(AiRunError::Preempted),
-            Err(e) => Err(map_llm_error(e, &req.selection.provider, Size { needed, window: window.unwrap_or(0) })),
+            Err(LLMError::Cancelled) if preempted && !req.cancel.is_cancelled() => {
+                Err(AiRunError::Preempted)
+            }
+            Err(e) => Err(map_llm_error(
+                e,
+                &req.selection.provider,
+                Size {
+                    needed,
+                    window: window.unwrap_or(0),
+                },
+            )),
         }
     }
 
     /// The context size to ask Ollama for: enough for this prompt, in a stable
     /// bucket, and never smaller than what this model was asked for before.
-    fn sticky_context(&self, config: &ProviderConfig, model: &str, needed: u64, window: Option<u64>) -> u64 {
+    fn sticky_context(
+        &self,
+        config: &ProviderConfig,
+        model: &str,
+        needed: u64,
+        window: Option<u64>,
+    ) -> u64 {
         let server = config.base_url.clone().unwrap_or_default();
         let mut seen = self.ollama_ctx.lock().unwrap();
-        let slot = seen.entry((crate::llm::ollama::server_key(&server), model.to_string())).or_insert(0);
+        let slot = seen
+            .entry((crate::llm::ollama::server_key(&server), model.to_string()))
+            .or_insert(0);
         let wanted = bucket_context(needed, window).max(*slot);
         let wanted = window.map_or(wanted, |w| wanted.min(w));
         *slot = wanted;
@@ -873,14 +1044,17 @@ impl AiRuns {
     ) -> Result<AiRunResult, AiRunError> {
         self.admit(&req, None).await?;
         let window = windows::cli_window(&req.selection.model);
-        let last = req
-            .messages
-            .last()
-            .ok_or_else(|| AiRunError::Other { message: "A run needs at least one message.".into() })?;
+        let last = req.messages.last().ok_or_else(|| AiRunError::Other {
+            message: "A run needs at least one message.".into(),
+        })?;
         let history = &req.messages[..req.messages.len() - 1];
         let needed = req.est_input_tokens.unwrap_or_else(|| {
             estimate_tokens(&join_system(&req.system, req.stable_context.as_deref()))
-                + req.messages.iter().map(|m| estimate_tokens(&m.content)).sum::<u64>()
+                + req
+                    .messages
+                    .iter()
+                    .map(|m| estimate_tokens(&m.content))
+                    .sum::<u64>()
         }) + req.max_output;
         if needed > window {
             return Err(AiRunError::TooLong { needed, window });
@@ -888,18 +1062,31 @@ impl AiRuns {
 
         let ephemeral = req.session_key.is_none();
         let key = req.session_key.clone().unwrap_or_else(|| {
-            SessionKey::plain(SessionScope::Workspace(format!("run-{}", uuid::Uuid::new_v4())), Tier::Fast)
+            SessionKey::plain(
+                SessionScope::Workspace(format!("run-{}", uuid::Uuid::new_v4())),
+                Tier::Fast,
+            )
         });
-        let expected = req.expected_generation.unwrap_or_else(|| self.cli.generation_for(&key));
+        let expected = req
+            .expected_generation
+            .unwrap_or_else(|| self.cli.generation_for(&key));
         let overrides = SessionOverride {
             kind: Some(kind),
             model: Some(req.selection.model.clone()).filter(|m| !m.trim().is_empty()),
-            effort: req.selection.effort.clone().filter(|e| !e.trim().is_empty()),
+            effort: req
+                .selection
+                .effort
+                .clone()
+                .filter(|e| !e.trim().is_empty()),
             thinking: (!req.purpose.thinks_by_default()).then_some(false),
         };
         let init = SessionInit {
             system_prompt: join_system(&req.system, req.stable_context.as_deref()),
-            preload: if history.is_empty() { Vec::new() } else { vec![replay(history)] },
+            preload: if history.is_empty() {
+                Vec::new()
+            } else {
+                vec![replay(history)]
+            },
             sources: req.sources.clone(),
         };
 
@@ -907,7 +1094,18 @@ impl AiRuns {
             self.cli.recycle_after(&key, n).await;
         }
         let size = Size { needed, window };
-        let result = self.ask_cli(&key, init, overrides, expected, &last.content, &req, sink, size).await;
+        let result = self
+            .ask_cli(
+                &key,
+                init,
+                overrides,
+                expected,
+                &last.content,
+                &req,
+                sink,
+                size,
+            )
+            .await;
         if ephemeral {
             self.cli.close_scope(&key.scope).await;
         }
@@ -939,16 +1137,30 @@ impl AiRuns {
         req: &AiRunRequest,
         sink: Option<TokenSink>,
         size: Size,
-    ) -> Result<(crate::llm::cli_agent::protocol::TurnResult, String, Option<PlanLimit>), AiRunError> {
+    ) -> Result<
+        (
+            crate::llm::cli_agent::protocol::TurnResult,
+            String,
+            Option<PlanLimit>,
+        ),
+        AiRunError,
+    > {
         // Not raced against the cancel: dropping a spawn mid-way would leave the
         // session status stuck on "starting". The cancel is checked right after.
-        let handle = self.cli.ensure_at(key, init, Some(overrides), Some(expected)).await.map_err(|e| {
-            if crate::llm::cli_agent::manager::is_scope_changed(&e) {
-                AiRunError::Unavailable { message: "The workspace changed while this was starting. Try again.".to_string() }
-            } else {
-                map_agent_error(e, size)
-            }
-        })?;
+        let handle = self
+            .cli
+            .ensure_at(key, init, Some(overrides), Some(expected))
+            .await
+            .map_err(|e| {
+                if crate::llm::cli_agent::manager::is_scope_changed(&e) {
+                    AiRunError::Unavailable {
+                        message: "The workspace changed while this was starting. Try again."
+                            .to_string(),
+                    }
+                } else {
+                    map_agent_error(e, size)
+                }
+            })?;
         if req.cancel.is_cancelled() {
             return Err(AiRunError::Cancelled);
         }
@@ -959,20 +1171,31 @@ impl AiRuns {
             .chat_id()
             .map(str::to_string)
             .zip(self.chat_activity.lock().unwrap().clone());
-        let labels = req.sources.as_ref().map(|s| s.server_labels.clone()).unwrap_or_default();
-        let chips: Mutex<HashMap<String, (String, Option<crate::sources::activity::SourceChip>)>> = Mutex::default();
+        let labels = req
+            .sources
+            .as_ref()
+            .map(|s| s.server_labels.clone())
+            .unwrap_or_default();
+        let chips: Mutex<HashMap<String, (String, Option<crate::sources::activity::SourceChip>)>> =
+            Mutex::default();
         let on_delta: crate::llm::cli_agent::manager::OnDelta = Box::new(move |token: &str| {
             if let Some((chat, emit)) = &report {
                 if let Some(tool) = decode_activity(token) {
                     let mut line = describe_tool_use(&tool, &labels);
-                    chips.lock().unwrap().insert(tool.id.clone(), (line.label.clone(), line.chip.take()));
+                    chips
+                        .lock()
+                        .unwrap()
+                        .insert(tool.id.clone(), (line.label.clone(), line.chip.take()));
                     emit(chat, chat_safe(line));
                     return;
                 }
                 if let Some(done) = decode_tool_result(token) {
                     if let Some((label, chip)) = chips.lock().unwrap().remove(&done.tool_use_id) {
                         if done.is_error {
-                            emit(chat, chat_safe(notice(format!("{label} was not run or failed"))));
+                            emit(
+                                chat,
+                                chat_safe(notice(format!("{label} was not run or failed"))),
+                            );
                         } else if let Some(chip) = chip {
                             emit(chat, chat_safe(SourceActivity::chip_only(chip)));
                         }
@@ -987,12 +1210,18 @@ impl AiRuns {
                 sink(token);
             }
         });
-        let turn = self.cli.ask(key, prompt, on_delta, req.cancel.clone()).await;
+        let turn = self
+            .cli
+            .ask(key, prompt, on_delta, req.cancel.clone())
+            .await;
         let plan_limit = handle.take_plan_limit();
         match turn {
             Ok(turn) if turn.is_error => {
                 let mut err = classify_failure(turn.text.clone(), &req.selection.provider, size);
-                if let AiRunError::RateLimited { plan_limit: slot, .. } = &mut err {
+                if let AiRunError::RateLimited {
+                    plan_limit: slot, ..
+                } = &mut err
+                {
                     *slot = plan_limit.clone().or(Some(PlanLimit {
                         level: PlanLimitLevel::Hit,
                         resets_at: None,
@@ -1005,7 +1234,13 @@ impl AiRuns {
             Ok(turn) => Ok((turn, handle.model(), plan_limit)),
             Err(e) => {
                 let mut err = map_agent_error(e, size);
-                if let (AiRunError::RateLimited { plan_limit: slot, .. }, Some(signal)) = (&mut err, plan_limit) {
+                if let (
+                    AiRunError::RateLimited {
+                        plan_limit: slot, ..
+                    },
+                    Some(signal),
+                ) = (&mut err, plan_limit)
+                {
                     *slot = Some(signal);
                 }
                 Err(err)
@@ -1029,7 +1264,10 @@ impl AiRuns {
 
     /// A meeting ended: its notes and brief sessions end the same way.
     pub async fn close_meeting(&self, meeting_id: &str) {
-        for scope in [SessionScope::Notes(meeting_id.to_string()), SessionScope::Brief(meeting_id.to_string())] {
+        for scope in [
+            SessionScope::Notes(meeting_id.to_string()),
+            SessionScope::Brief(meeting_id.to_string()),
+        ] {
             self.cli
                 .close_scope_graceful(&scope, crate::llm::cli_agent::manager::DRAIN_TIMEOUT)
                 .await;
@@ -1050,7 +1288,11 @@ fn join_system(system: &str, context: Option<&str>) -> String {
 fn replay(history: &[LLMMessage]) -> String {
     let mut text = String::from("The conversation so far (earlier turns, for context only):\n");
     for m in history {
-        let who = if m.role == "assistant" { "Assistant" } else { "User" };
+        let who = if m.role == "assistant" {
+            "Assistant"
+        } else {
+            "User"
+        };
         text.push_str(&format!("\n{who}: {}\n", m.content));
     }
     text
@@ -1082,7 +1324,12 @@ impl Collector {
     }
 
     fn sink(&self) -> TokenSink {
-        let (text, first, start, forward) = (self.text.clone(), self.first.clone(), self.start, self.forward.clone());
+        let (text, first, start, forward) = (
+            self.text.clone(),
+            self.first.clone(),
+            self.start,
+            self.forward.clone(),
+        );
         Arc::new(move |token: &str| {
             if !token.is_empty() {
                 first.get_or_init(|| start.elapsed().as_millis() as u64);

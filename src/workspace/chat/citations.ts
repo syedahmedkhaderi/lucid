@@ -39,6 +39,8 @@ export function formatMs(ms: number): string {
 export function citationWhere(c: WorkspaceCitation): string {
   const title = displayTitle(c.title, c.ref_id);
   if (c.kind === "transcript") return c.start_ms != null ? `${title} at ${formatMs(c.start_ms)}` : title;
+  const page = c.kind === "document" ? /^page:(\d+)$/.exec(c.sub_ref ?? "") : null;
+  if (page) return `${title}, page ${page[1]}`;
   return title;
 }
 

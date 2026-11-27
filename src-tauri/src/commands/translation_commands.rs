@@ -12,29 +12,9 @@ pub async fn set_translation_provider(
     app: AppHandle,
     provider: String,
     region: Option<String>,
+    api_key: Option<String>,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
-
-    // Load credentials from CredentialManager into the router
-    if let Some(ref cred_arc) = state.credentials {
-        if let Ok(cred) = cred_arc.lock() {
-            let trans_arc = state.translation.as_ref()
-                .ok_or("Translation router not initialized")?;
-            let mut router = trans_arc.lock()
-                .map_err(|_| "Translation lock poisoned".to_string())?;
-
-            if let Ok(Some(key)) = cred.get_key("translation_microsoft") {
-                router.set_microsoft_credentials(key, region.clone());
-            }
-            if let Ok(Some(key)) = cred.get_key("translation_google") {
-                router.set_google_credentials(key);
-            }
-            if let Ok(Some(key)) = cred.get_key("translation_deepl") {
-                router.set_deepl_credentials(key);
-            }
-        }
-    }
-
     let provider_type = match provider.as_str() {
         "microsoft" => TranslationProviderType::Microsoft,
         "google" => TranslationProviderType::Google,
@@ -45,10 +25,41 @@ pub async fn set_translation_provider(
     };
     crate::privacy::ensure_translation_allowed(&provider)?;
 
+    // Load saved credentials without holding the OS-keychain lock while the
+    // translation router is locked.
+    let (microsoft_key, google_key, deepl_key, saved_region) =
+        if let Some(credentials) = state.credentials.as_ref() {
+            let credentials = credentials
+                .lock()
+                .map_err(|_| "Credential store lock poisoned".to_string())?;
+            (
+                credentials.get_key("translation_microsoft").ok().flatten(),
+                credentials.get_key("translation_google").ok().flatten(),
+                credentials.get_key("translation_deepl").ok().flatten(),
+                credentials.get_key("translation_microsoft_region").ok().flatten(),
+            )
+        } else {
+            (None, None, None, None)
+        };
+    let region = region.or(saved_region);
     let trans_arc = state.translation.as_ref()
         .ok_or("Translation router not initialized")?;
     let mut router = trans_arc.lock()
         .map_err(|_| "Translation lock poisoned".to_string())?;
+    router.set_microsoft_credentials(microsoft_key, region.clone());
+    router.set_google_credentials(google_key);
+    router.set_deepl_credentials(deepl_key);
+
+    // A newly entered key is a short-lived override for validation. It is not
+    // persisted until test_translation_connection reports success.
+    if let Some(key) = api_key.filter(|key| !key.trim().is_empty()) {
+        match provider.as_str() {
+            "microsoft" => router.set_microsoft_credentials(Some(key), region.clone()),
+            "google" => router.set_google_credentials(Some(key)),
+            "deepl" => router.set_deepl_credentials(Some(key)),
+            _ => {}
+        }
+    }
 
     router.set_provider(provider_type)
         .map_err(|e| e.to_string())
@@ -413,20 +424,107 @@ pub async fn detect_language(
 #[command]
 pub async fn test_translation_connection(
     app: AppHandle,
-    _provider: String,
+    provider: String,
+    api_key: Option<String>,
+    region: Option<String>,
 ) -> Result<ConnectionStatus, String> {
     let state = app.state::<AppState>();
     let trans_arc = state.translation.as_ref()
         .ok_or("Translation router not initialized")?;
     let provider_arc = {
         let router = trans_arc.lock().map_err(|_| "Lock poisoned")?;
-        if let Some(provider) = router.active_type() {
-            crate::privacy::ensure_translation_allowed(&provider.to_string())?;
+        if let Some(active_provider) = router.active_type() {
+            if active_provider.to_string() != provider {
+                return Err("The active translation provider changed before the test completed".into());
+            }
+            crate::privacy::ensure_translation_allowed(&active_provider.to_string())?;
         }
         router.get_provider().map_err(|e| e.to_string())?
         // lock dropped here
     };
-    provider_arc.test_connection().await.map_err(|e| e.to_string())
+    let result = match provider_arc.test_connection().await {
+        Ok(result) => result,
+        Err(error) => {
+            let _ = restore_translation_provider_from_store(&state, &provider);
+            return Err(error.to_string());
+        }
+    };
+    if !result.connected {
+        let _ = restore_translation_provider_from_store(&state, &provider);
+        return Ok(result);
+    }
+    if result.connected {
+        let slot = match provider.as_str() {
+            "microsoft" => Some("translation_microsoft"),
+            "google" => Some("translation_google"),
+            "deepl" => Some("translation_deepl"),
+            _ => None,
+        };
+        if let (Some(key), Some(slot), Some(credentials)) =
+            (api_key.as_deref(), slot, state.credentials.as_ref())
+        {
+            if !key.trim().is_empty() {
+                let save = credentials
+                    .lock()
+                    .map_err(|_| "Credential store lock poisoned".to_string())?
+                    .store_key(slot, key.trim());
+                if let Err(error) = save {
+                    let _ = restore_translation_provider_from_store(&state, &provider);
+                    return Err(error);
+                }
+            }
+        }
+        if provider == "microsoft" {
+            if let (Some(region), Some(credentials)) = (region.as_deref(), state.credentials.as_ref()) {
+                if !region.trim().is_empty() {
+                    let save = credentials
+                        .lock()
+                        .map_err(|_| "Credential store lock poisoned".to_string())?
+                        .store_key("translation_microsoft_region", region.trim());
+                    if let Err(error) = save {
+                        let _ = restore_translation_provider_from_store(&state, &provider);
+                        return Err(error);
+                    }
+                }
+            }
+        }
+    }
+    Ok(result)
+}
+
+fn restore_translation_provider_from_store(state: &AppState, provider: &str) -> Result<(), String> {
+    let provider_type = match provider {
+        "microsoft" => TranslationProviderType::Microsoft,
+        "google" => TranslationProviderType::Google,
+        "deepl" => TranslationProviderType::Deepl,
+        _ => return Ok(()),
+    };
+    let (microsoft_key, google_key, deepl_key, region) =
+        if let Some(credentials) = state.credentials.as_ref() {
+            let credentials = credentials
+                .lock()
+                .map_err(|_| "Credential store lock poisoned".to_string())?;
+            (
+                credentials.get_key("translation_microsoft").ok().flatten(),
+                credentials.get_key("translation_google").ok().flatten(),
+                credentials.get_key("translation_deepl").ok().flatten(),
+                credentials.get_key("translation_microsoft_region").ok().flatten(),
+            )
+        } else {
+            (None, None, None, None)
+        };
+    let translation = state.translation.as_ref().ok_or("Translation router not initialized")?;
+    let mut router = translation
+        .lock()
+        .map_err(|_| "Translation lock poisoned".to_string())?;
+    router.set_microsoft_credentials(microsoft_key, region);
+    router.set_google_credentials(google_key);
+    router.set_deepl_credentials(deepl_key);
+    if let Err(error) = router.set_provider(provider_type) {
+        router.clear_active_provider();
+        return Err(error.to_string());
+    }
+    Ok(())
 }
 
 #[command]

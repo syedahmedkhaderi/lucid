@@ -4,6 +4,7 @@
   ],
   "facts": [
     {
+      "evidence": "Acme annual plan costs 12 dollars per seat.",
       "passage_id": 3,
       "source": "Pricing.pdf",
       "sources": [

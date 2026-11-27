@@ -95,7 +95,7 @@ export function LauncherView() {
       setIsStarting(true);
       setStartError(null);
       try {
-        await startMeetingFlow(undefined, setup.audioMode, setup.scenario, { workspaceId: setup.workspaceId, borrowed: setup.borrowed });
+        await startMeetingFlow(undefined, setup.audioMode, setup.scenario, { workspaceId: setup.workspaceId, borrowed: setup.borrowed, documentIds: setup.documentIds });
         showToast(toast, "success");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to start meeting";
@@ -141,7 +141,7 @@ export function LauncherView() {
       if (!(await endMeetingFromThisWindow())) {
         throw new Error("Couldn't finish saving the meeting, so the new meeting was not started");
       }
-      await startMeetingFlow(undefined, setup?.audioMode, setup?.scenario, setup ? { workspaceId: setup.workspaceId, borrowed: setup.borrowed } : undefined);
+      await startMeetingFlow(undefined, setup?.audioMode, setup?.scenario, setup ? { workspaceId: setup.workspaceId, borrowed: setup.borrowed, documentIds: setup.documentIds } : undefined);
       showToast("New meeting started", "success");
     } catch (err) {
       setStartError(err instanceof Error ? err.message : "Failed to start");

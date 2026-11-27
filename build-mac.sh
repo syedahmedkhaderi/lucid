@@ -83,10 +83,9 @@ fi
 # shellcheck source=scripts/macos-env.sh
 source "$SCRIPT_DIR/scripts/macos-env.sh"
 
-# Updater artifacts need the release signing key; local builds skip them.
-if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
-  BUILD_ARGS+=("--config" '{"bundle":{"createUpdaterArtifacts":false}}')
-fi
+# Updater artifacts remain disabled in tauri.conf.json. Avoid passing a partial
+# Tauri config here: it can serialize an absent updater plugin config as null,
+# which makes the updater plugin panic during app startup.
 
 # ── Build ────────────────────────────────────────────────────────────────────
 echo "▶ Building Lucid ($PROFILE) ..."

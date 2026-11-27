@@ -18,10 +18,17 @@ pub fn extract_text_from_pdf(file_path: &str) -> Result<String, String> {
             if !trimmed.is_empty() {
                 return Ok(trimmed);
             }
-            log::warn!("pdf_extract returned empty for '{}', trying lopdf fallback", file_path);
+            log::warn!(
+                "pdf_extract returned empty for '{}', trying lopdf fallback",
+                file_path
+            );
         }
         Err(e) => {
-            log::warn!("pdf_extract failed for '{}': {} — trying lopdf fallback", file_path, e);
+            log::warn!(
+                "pdf_extract failed for '{}': {} — trying lopdf fallback",
+                file_path,
+                e
+            );
         }
     }
 
@@ -42,19 +49,30 @@ pub fn extract_text_from_pdf(file_path: &str) -> Result<String, String> {
 // ── lopdf fallback ────────────────────────────────────────────────────────────
 
 fn extract_with_lopdf(file_path: &str) -> Result<String, String> {
-    let doc = lopdf::Document::load(file_path)
-        .map_err(|e| format!("lopdf failed to load PDF: {}", e))?;
+    let doc =
+        lopdf::Document::load(file_path).map_err(|e| format!("lopdf failed to load PDF: {}", e))?;
     extract_lopdf_doc(&doc)
 }
 
 /// Text of an already loaded document (bounded: 2,000 pages, 4 M characters).
 fn extract_lopdf_doc(doc: &lopdf::Document) -> Result<String, String> {
+    Ok(extract_lopdf_pages(doc)?
+        .into_iter()
+        .filter(|page| !page.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
+
+/// Text for each page of an already loaded document (bounded: 2,000 pages,
+/// 4 M characters). Empty entries are kept so later pages retain their number.
+fn extract_lopdf_pages(doc: &lopdf::Document) -> Result<Vec<String>, String> {
     use lopdf::content::Content;
 
-    let mut full_text = String::new();
+    let mut pages = Vec::new();
+    let mut total_chars = 0usize;
 
     for page_id in doc.page_iter().take(2000) {
-        if full_text.len() > 4_000_000 {
+        if total_chars >= 4_000_000 {
             break;
         }
         let font_maps = get_page_font_maps(doc, page_id);
@@ -63,7 +81,10 @@ fn extract_lopdf_doc(doc: &lopdf::Document) -> Result<String, String> {
         let content_bytes = doc.get_page_content(page_id);
         let content = match Content::decode(&content_bytes) {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(_) => {
+                pages.push(String::new());
+                continue;
+            }
         };
 
         let mut in_text = false;
@@ -72,8 +93,13 @@ fn extract_lopdf_doc(doc: &lopdf::Document) -> Result<String, String> {
 
         for op in &content.operations {
             match op.operator.as_str() {
-                "BT" => { in_text = true; }
-                "ET" => { in_text = false; page_text.push('\n'); }
+                "BT" => {
+                    in_text = true;
+                }
+                "ET" => {
+                    in_text = false;
+                    page_text.push('\n');
+                }
                 "Tf" if in_text => {
                     if let Some(lopdf::Object::Name(name)) = op.operands.first() {
                         current_font = Some(String::from_utf8_lossy(name).to_string());
@@ -97,20 +123,24 @@ fn extract_lopdf_doc(doc: &lopdf::Document) -> Result<String, String> {
                     }
                 }
                 "Td" | "TD" | "T*" if in_text => {
-                    if !page_text.ends_with('\n') { page_text.push(' '); }
+                    if !page_text.ends_with('\n') {
+                        page_text.push(' ');
+                    }
                 }
                 "Tm" if in_text => {
-                    if !page_text.ends_with('\n') { page_text.push('\n'); }
+                    if !page_text.ends_with('\n') {
+                        page_text.push('\n');
+                    }
                 }
                 _ => {}
             }
         }
 
-        full_text.push_str(&page_text);
-        full_text.push('\n');
+        total_chars += page_text.chars().count();
+        pages.push(page_text);
     }
 
-    Ok(full_text.trim().to_string())
+    Ok(pages)
 }
 
 // ── Font map building ─────────────────────────────────────────────────────────
@@ -191,21 +221,36 @@ fn parse_cmap_text(cmap: &str) -> Option<CharMap> {
 
     for line in cmap.lines() {
         let line = line.trim();
-        if line.contains("beginbfchar") { in_section = true; is_range = false; continue; }
-        if line.contains("beginbfrange") { in_section = true; is_range = true; continue; }
-        if line.contains("endbfchar") || line.contains("endbfrange") {
-            in_section = false; continue;
+        if line.contains("beginbfchar") {
+            in_section = true;
+            is_range = false;
+            continue;
         }
-        if !in_section || !line.starts_with('<') { continue; }
+        if line.contains("beginbfrange") {
+            in_section = true;
+            is_range = true;
+            continue;
+        }
+        if line.contains("endbfchar") || line.contains("endbfrange") {
+            in_section = false;
+            continue;
+        }
+        if !in_section || !line.starts_with('<') {
+            continue;
+        }
 
         let parts: Vec<&str> = line.split_whitespace().collect();
         if !is_range && parts.len() == 2 {
             if let (Some(src), Some(dst)) = (parse_hex_byte(parts[0]), parse_hex_u32(parts[1])) {
-                if let Some(ch) = char::from_u32(dst) { map.insert(src, ch); }
+                if let Some(ch) = char::from_u32(dst) {
+                    map.insert(src, ch);
+                }
             }
         } else if is_range && parts.len() == 3 {
             if let (Some(start), Some(end), Some(dst)) = (
-                parse_hex_byte(parts[0]), parse_hex_byte(parts[1]), parse_hex_u32(parts[2]),
+                parse_hex_byte(parts[0]),
+                parse_hex_byte(parts[1]),
+                parse_hex_u32(parts[2]),
             ) {
                 for i in 0..=(end.wrapping_sub(start)) {
                     if let Some(ch) = char::from_u32(dst + i as u32) {
@@ -216,7 +261,11 @@ fn parse_cmap_text(cmap: &str) -> Option<CharMap> {
         }
     }
 
-    if map.is_empty() { None } else { Some(map) }
+    if map.is_empty() {
+        None
+    } else {
+        Some(map)
+    }
 }
 
 fn parse_hex_byte(s: &str) -> Option<u8> {
@@ -246,7 +295,9 @@ fn build_encoding_map(doc: &lopdf::Document, obj: &lopdf::Object) -> Result<Char
                 let mut code: u8 = 0;
                 for item in diffs {
                     match item {
-                        lopdf::Object::Integer(n) => { code = *n as u8; }
+                        lopdf::Object::Integer(n) => {
+                            code = *n as u8;
+                        }
                         lopdf::Object::Name(glyph) => {
                             let name = String::from_utf8_lossy(glyph);
                             if let Some(ch) = glyph_name_to_char(&name) {
@@ -281,14 +332,18 @@ fn decode_bytes(bytes: &[u8], char_map: Option<&CharMap>) -> String {
             .chunks(2)
             .map(|c| u16::from_be_bytes([c[0], c.get(1).copied().unwrap_or(0)]))
             .collect();
-        if let Ok(s) = String::from_utf16(&utf16) { return s; }
+        if let Ok(s) = String::from_utf16(&utf16) {
+            return s;
+        }
     }
 
     if let Some(map) = char_map {
         return bytes.iter().filter_map(|b| map.get(b)).collect();
     }
 
-    if let Ok(s) = std::str::from_utf8(bytes) { return s.to_string(); }
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_string();
+    }
     let (decoded, _, _) = encoding_rs::WINDOWS_1252.decode(bytes);
     decoded.into_owned()
 }
@@ -297,82 +352,335 @@ fn decode_bytes(bytes: &[u8], char_map: Option<&CharMap>) -> String {
 
 fn win_ansi_map() -> CharMap {
     let mut map = CharMap::new();
-    for b in 0x20u8..=0x7Eu8 { map.insert(b, b as char); }
+    for b in 0x20u8..=0x7Eu8 {
+        map.insert(b, b as char);
+    }
     let ext: &[(u8, char)] = &[
-        (0x80,'€'),(0x82,'‚'),(0x83,'ƒ'),(0x84,'„'),(0x85,'…'),(0x86,'†'),(0x87,'‡'),
-        (0x88,'ˆ'),(0x89,'‰'),(0x8A,'Š'),(0x8B,'‹'),(0x8C,'Œ'),(0x8E,'Ž'),
-        (0x91,'\u{2018}'),(0x92,'\u{2019}'),(0x93,'\u{201C}'),(0x94,'\u{201D}'),
-        (0x95,'•'),(0x96,'–'),(0x97,'—'),(0x98,'˜'),(0x99,'™'),(0x9A,'š'),
-        (0x9B,'›'),(0x9C,'œ'),(0x9E,'ž'),(0x9F,'Ÿ'),
-        (0xA0,'\u{00A0}'),(0xA1,'¡'),(0xA2,'¢'),(0xA3,'£'),(0xA4,'¤'),(0xA5,'¥'),
-        (0xA6,'¦'),(0xA7,'§'),(0xA8,'¨'),(0xA9,'©'),(0xAA,'ª'),(0xAB,'«'),
-        (0xAC,'¬'),(0xAD,'\u{00AD}'),(0xAE,'®'),(0xAF,'¯'),(0xB0,'°'),(0xB1,'±'),
-        (0xB2,'²'),(0xB3,'³'),(0xB4,'´'),(0xB5,'µ'),(0xB6,'¶'),(0xB7,'·'),
-        (0xB8,'¸'),(0xB9,'¹'),(0xBA,'º'),(0xBB,'»'),(0xBC,'¼'),(0xBD,'½'),
-        (0xBE,'¾'),(0xBF,'¿'),
-        (0xC0,'À'),(0xC1,'Á'),(0xC2,'Â'),(0xC3,'Ã'),(0xC4,'Ä'),(0xC5,'Å'),
-        (0xC6,'Æ'),(0xC7,'Ç'),(0xC8,'È'),(0xC9,'É'),(0xCA,'Ê'),(0xCB,'Ë'),
-        (0xCC,'Ì'),(0xCD,'Í'),(0xCE,'Î'),(0xCF,'Ï'),(0xD0,'Ð'),(0xD1,'Ñ'),
-        (0xD2,'Ò'),(0xD3,'Ó'),(0xD4,'Ô'),(0xD5,'Õ'),(0xD6,'Ö'),(0xD7,'×'),
-        (0xD8,'Ø'),(0xD9,'Ù'),(0xDA,'Ú'),(0xDB,'Û'),(0xDC,'Ü'),(0xDD,'Ý'),
-        (0xDE,'Þ'),(0xDF,'ß'),
-        (0xE0,'à'),(0xE1,'á'),(0xE2,'â'),(0xE3,'ã'),(0xE4,'ä'),(0xE5,'å'),
-        (0xE6,'æ'),(0xE7,'ç'),(0xE8,'è'),(0xE9,'é'),(0xEA,'ê'),(0xEB,'ë'),
-        (0xEC,'ì'),(0xED,'í'),(0xEE,'î'),(0xEF,'ï'),(0xF0,'ð'),(0xF1,'ñ'),
-        (0xF2,'ò'),(0xF3,'ó'),(0xF4,'ô'),(0xF5,'õ'),(0xF6,'ö'),(0xF7,'÷'),
-        (0xF8,'ø'),(0xF9,'ù'),(0xFA,'ú'),(0xFB,'û'),(0xFC,'ü'),(0xFD,'ý'),
-        (0xFE,'þ'),(0xFF,'ÿ'),
+        (0x80, '€'),
+        (0x82, '‚'),
+        (0x83, 'ƒ'),
+        (0x84, '„'),
+        (0x85, '…'),
+        (0x86, '†'),
+        (0x87, '‡'),
+        (0x88, 'ˆ'),
+        (0x89, '‰'),
+        (0x8A, 'Š'),
+        (0x8B, '‹'),
+        (0x8C, 'Œ'),
+        (0x8E, 'Ž'),
+        (0x91, '\u{2018}'),
+        (0x92, '\u{2019}'),
+        (0x93, '\u{201C}'),
+        (0x94, '\u{201D}'),
+        (0x95, '•'),
+        (0x96, '–'),
+        (0x97, '—'),
+        (0x98, '˜'),
+        (0x99, '™'),
+        (0x9A, 'š'),
+        (0x9B, '›'),
+        (0x9C, 'œ'),
+        (0x9E, 'ž'),
+        (0x9F, 'Ÿ'),
+        (0xA0, '\u{00A0}'),
+        (0xA1, '¡'),
+        (0xA2, '¢'),
+        (0xA3, '£'),
+        (0xA4, '¤'),
+        (0xA5, '¥'),
+        (0xA6, '¦'),
+        (0xA7, '§'),
+        (0xA8, '¨'),
+        (0xA9, '©'),
+        (0xAA, 'ª'),
+        (0xAB, '«'),
+        (0xAC, '¬'),
+        (0xAD, '\u{00AD}'),
+        (0xAE, '®'),
+        (0xAF, '¯'),
+        (0xB0, '°'),
+        (0xB1, '±'),
+        (0xB2, '²'),
+        (0xB3, '³'),
+        (0xB4, '´'),
+        (0xB5, 'µ'),
+        (0xB6, '¶'),
+        (0xB7, '·'),
+        (0xB8, '¸'),
+        (0xB9, '¹'),
+        (0xBA, 'º'),
+        (0xBB, '»'),
+        (0xBC, '¼'),
+        (0xBD, '½'),
+        (0xBE, '¾'),
+        (0xBF, '¿'),
+        (0xC0, 'À'),
+        (0xC1, 'Á'),
+        (0xC2, 'Â'),
+        (0xC3, 'Ã'),
+        (0xC4, 'Ä'),
+        (0xC5, 'Å'),
+        (0xC6, 'Æ'),
+        (0xC7, 'Ç'),
+        (0xC8, 'È'),
+        (0xC9, 'É'),
+        (0xCA, 'Ê'),
+        (0xCB, 'Ë'),
+        (0xCC, 'Ì'),
+        (0xCD, 'Í'),
+        (0xCE, 'Î'),
+        (0xCF, 'Ï'),
+        (0xD0, 'Ð'),
+        (0xD1, 'Ñ'),
+        (0xD2, 'Ò'),
+        (0xD3, 'Ó'),
+        (0xD4, 'Ô'),
+        (0xD5, 'Õ'),
+        (0xD6, 'Ö'),
+        (0xD7, '×'),
+        (0xD8, 'Ø'),
+        (0xD9, 'Ù'),
+        (0xDA, 'Ú'),
+        (0xDB, 'Û'),
+        (0xDC, 'Ü'),
+        (0xDD, 'Ý'),
+        (0xDE, 'Þ'),
+        (0xDF, 'ß'),
+        (0xE0, 'à'),
+        (0xE1, 'á'),
+        (0xE2, 'â'),
+        (0xE3, 'ã'),
+        (0xE4, 'ä'),
+        (0xE5, 'å'),
+        (0xE6, 'æ'),
+        (0xE7, 'ç'),
+        (0xE8, 'è'),
+        (0xE9, 'é'),
+        (0xEA, 'ê'),
+        (0xEB, 'ë'),
+        (0xEC, 'ì'),
+        (0xED, 'í'),
+        (0xEE, 'î'),
+        (0xEF, 'ï'),
+        (0xF0, 'ð'),
+        (0xF1, 'ñ'),
+        (0xF2, 'ò'),
+        (0xF3, 'ó'),
+        (0xF4, 'ô'),
+        (0xF5, 'õ'),
+        (0xF6, 'ö'),
+        (0xF7, '÷'),
+        (0xF8, 'ø'),
+        (0xF9, 'ù'),
+        (0xFA, 'ú'),
+        (0xFB, 'û'),
+        (0xFC, 'ü'),
+        (0xFD, 'ý'),
+        (0xFE, 'þ'),
+        (0xFF, 'ÿ'),
     ];
-    for &(b, c) in ext { map.insert(b, c); }
+    for &(b, c) in ext {
+        map.insert(b, c);
+    }
     map
 }
 
 fn mac_roman_map() -> CharMap {
     let mut map = CharMap::new();
-    for b in 0x20u8..=0x7Eu8 { map.insert(b, b as char); }
+    for b in 0x20u8..=0x7Eu8 {
+        map.insert(b, b as char);
+    }
     let ext: &[(u8, char)] = &[
-        (0x80,'Ä'),(0x81,'Å'),(0x82,'Ç'),(0x83,'É'),(0x84,'Ñ'),(0x85,'Ö'),(0x86,'Ü'),
-        (0x87,'á'),(0x88,'à'),(0x89,'â'),(0x8A,'ä'),(0x8B,'ã'),(0x8C,'å'),(0x8D,'ç'),
-        (0x8E,'é'),(0x8F,'è'),(0x90,'ê'),(0x91,'ë'),(0x92,'í'),(0x93,'ì'),(0x94,'î'),
-        (0x95,'ï'),(0x96,'ñ'),(0x97,'ó'),(0x98,'ò'),(0x99,'ô'),(0x9A,'ö'),(0x9B,'ú'),
-        (0x9C,'ù'),(0x9D,'û'),(0x9E,'ü'),(0x9F,'†'),(0xA0,'°'),(0xA1,'¢'),(0xA2,'£'),
-        (0xA3,'§'),(0xA4,'•'),(0xA5,'¶'),(0xA6,'ß'),(0xA7,'®'),(0xA8,'©'),(0xA9,'™'),
-        (0xAA,'´'),(0xAB,'¨'),(0xAC,'\u{2260}'),(0xAD,'Æ'),(0xAE,'Ø'),(0xAF,'\u{221E}'),
-        (0xB0,'±'),(0xB1,'\u{2264}'),(0xB2,'\u{2265}'),(0xB3,'¥'),(0xB4,'µ'),
-        (0xB5,'\u{2202}'),(0xB6,'\u{2211}'),(0xB7,'\u{220F}'),(0xB8,'π'),
-        (0xB9,'\u{222B}'),(0xBA,'ª'),(0xBB,'º'),(0xBC,'Ω'),(0xBD,'æ'),(0xBE,'ø'),
-        (0xBF,'¿'),(0xC0,'¡'),(0xC1,'¬'),(0xC2,'\u{0192}'),(0xC3,'«'),(0xC4,'»'),
-        (0xC5,'\u{2026}'),(0xC6,'\u{00A0}'),(0xC7,'À'),(0xC8,'Ã'),(0xC9,'Õ'),
-        (0xCA,'Œ'),(0xCB,'œ'),(0xCC,'–'),(0xCD,'—'),(0xCE,'\u{201C}'),(0xCF,'\u{201D}'),
-        (0xD0,'\u{2018}'),(0xD1,'\u{2019}'),(0xD2,'÷'),(0xD3,'\u{25CA}'),(0xD4,'ÿ'),
-        (0xD5,'Ÿ'),(0xD6,'\u{2044}'),(0xD7,'€'),(0xD8,'‹'),(0xD9,'›'),(0xDA,'f'),
-        (0xDB,'f'),(0xDC,'‡'),(0xDD,'·'),(0xDE,'‚'),(0xDF,'„'),(0xE0,'‰'),
-        (0xE1,'Â'),(0xE2,'Ê'),(0xE3,'Á'),(0xE4,'Ë'),(0xE5,'È'),(0xE6,'Í'),(0xE7,'Î'),
-        (0xE8,'Ï'),(0xE9,'Ì'),(0xEA,'Ó'),(0xEB,'Ô'),(0xED,'Ò'),(0xEE,'Ú'),(0xEF,'Û'),
-        (0xF0,'Ù'),(0xF1,'ı'),(0xF2,'ˆ'),(0xF3,'˜'),(0xF4,'¯'),(0xF5,'˘'),(0xF6,'˙'),
-        (0xF7,'˚'),(0xF8,'¸'),(0xF9,'˝'),(0xFA,'˛'),(0xFB,'ˇ'),
+        (0x80, 'Ä'),
+        (0x81, 'Å'),
+        (0x82, 'Ç'),
+        (0x83, 'É'),
+        (0x84, 'Ñ'),
+        (0x85, 'Ö'),
+        (0x86, 'Ü'),
+        (0x87, 'á'),
+        (0x88, 'à'),
+        (0x89, 'â'),
+        (0x8A, 'ä'),
+        (0x8B, 'ã'),
+        (0x8C, 'å'),
+        (0x8D, 'ç'),
+        (0x8E, 'é'),
+        (0x8F, 'è'),
+        (0x90, 'ê'),
+        (0x91, 'ë'),
+        (0x92, 'í'),
+        (0x93, 'ì'),
+        (0x94, 'î'),
+        (0x95, 'ï'),
+        (0x96, 'ñ'),
+        (0x97, 'ó'),
+        (0x98, 'ò'),
+        (0x99, 'ô'),
+        (0x9A, 'ö'),
+        (0x9B, 'ú'),
+        (0x9C, 'ù'),
+        (0x9D, 'û'),
+        (0x9E, 'ü'),
+        (0x9F, '†'),
+        (0xA0, '°'),
+        (0xA1, '¢'),
+        (0xA2, '£'),
+        (0xA3, '§'),
+        (0xA4, '•'),
+        (0xA5, '¶'),
+        (0xA6, 'ß'),
+        (0xA7, '®'),
+        (0xA8, '©'),
+        (0xA9, '™'),
+        (0xAA, '´'),
+        (0xAB, '¨'),
+        (0xAC, '\u{2260}'),
+        (0xAD, 'Æ'),
+        (0xAE, 'Ø'),
+        (0xAF, '\u{221E}'),
+        (0xB0, '±'),
+        (0xB1, '\u{2264}'),
+        (0xB2, '\u{2265}'),
+        (0xB3, '¥'),
+        (0xB4, 'µ'),
+        (0xB5, '\u{2202}'),
+        (0xB6, '\u{2211}'),
+        (0xB7, '\u{220F}'),
+        (0xB8, 'π'),
+        (0xB9, '\u{222B}'),
+        (0xBA, 'ª'),
+        (0xBB, 'º'),
+        (0xBC, 'Ω'),
+        (0xBD, 'æ'),
+        (0xBE, 'ø'),
+        (0xBF, '¿'),
+        (0xC0, '¡'),
+        (0xC1, '¬'),
+        (0xC2, '\u{0192}'),
+        (0xC3, '«'),
+        (0xC4, '»'),
+        (0xC5, '\u{2026}'),
+        (0xC6, '\u{00A0}'),
+        (0xC7, 'À'),
+        (0xC8, 'Ã'),
+        (0xC9, 'Õ'),
+        (0xCA, 'Œ'),
+        (0xCB, 'œ'),
+        (0xCC, '–'),
+        (0xCD, '—'),
+        (0xCE, '\u{201C}'),
+        (0xCF, '\u{201D}'),
+        (0xD0, '\u{2018}'),
+        (0xD1, '\u{2019}'),
+        (0xD2, '÷'),
+        (0xD3, '\u{25CA}'),
+        (0xD4, 'ÿ'),
+        (0xD5, 'Ÿ'),
+        (0xD6, '\u{2044}'),
+        (0xD7, '€'),
+        (0xD8, '‹'),
+        (0xD9, '›'),
+        (0xDA, 'f'),
+        (0xDB, 'f'),
+        (0xDC, '‡'),
+        (0xDD, '·'),
+        (0xDE, '‚'),
+        (0xDF, '„'),
+        (0xE0, '‰'),
+        (0xE1, 'Â'),
+        (0xE2, 'Ê'),
+        (0xE3, 'Á'),
+        (0xE4, 'Ë'),
+        (0xE5, 'È'),
+        (0xE6, 'Í'),
+        (0xE7, 'Î'),
+        (0xE8, 'Ï'),
+        (0xE9, 'Ì'),
+        (0xEA, 'Ó'),
+        (0xEB, 'Ô'),
+        (0xED, 'Ò'),
+        (0xEE, 'Ú'),
+        (0xEF, 'Û'),
+        (0xF0, 'Ù'),
+        (0xF1, 'ı'),
+        (0xF2, 'ˆ'),
+        (0xF3, '˜'),
+        (0xF4, '¯'),
+        (0xF5, '˘'),
+        (0xF6, '˙'),
+        (0xF7, '˚'),
+        (0xF8, '¸'),
+        (0xF9, '˝'),
+        (0xFA, '˛'),
+        (0xFB, 'ˇ'),
     ];
-    for &(b, c) in ext { map.insert(b, c); }
+    for &(b, c) in ext {
+        map.insert(b, c);
+    }
     map
 }
 
 fn standard_map() -> CharMap {
     // Adobe StandardEncoding — ASCII printables, common punctuation
     let mut map = CharMap::new();
-    for b in 0x20u8..=0x7Eu8 { map.insert(b, b as char); }
+    for b in 0x20u8..=0x7Eu8 {
+        map.insert(b, b as char);
+    }
     let ext: &[(u8, char)] = &[
-        (0xA1,'Æ'),(0xA2,'æ'),(0xA3,'°'),(0xA4,'/'),(0xA5,'Ø'),(0xA6,'ø'),
-        (0xA8,'\u{201C}'),(0xA9,'\u{201D}'),(0xAA,'\u{2019}'),(0xAB,'f'),(0xAC,'f'),
-        (0xAE,'\u{2013}'),(0xAF,'\u{2014}'),(0xB0,'\u{2018}'),(0xB1,'†'),
-        (0xB4,'•'),(0xB6,'¶'),(0xB7,'§'),(0xBB,'–'),(0xBC,'\u{2022}'),
-        (0xBF,'¿'),(0xC0,'`'),(0xC1,'´'),(0xC2,'^'),(0xC3,'~'),(0xC4,'¯'),
-        (0xC5,'˘'),(0xC6,'˙'),(0xC7,'¨'),(0xC9,'˚'),(0xCA,'\u{00B8}'),
-        (0xCB,'\u{00B4}'),(0xCD,'˝'),(0xCE,'\u{02DB}'),(0xCF,'ˇ'),
-        (0xD0,'—'),(0xE1,'Æ'),(0xE3,'ª'),(0xE8,'Ł'),(0xE9,'Ø'),(0xEA,'Œ'),
-        (0xEB,'º'),(0xF1,'æ'),(0xF3,'ı'),(0xF8,'ł'),(0xF9,'ø'),(0xFA,'œ'),
-        (0xFB,'ß'),
+        (0xA1, 'Æ'),
+        (0xA2, 'æ'),
+        (0xA3, '°'),
+        (0xA4, '/'),
+        (0xA5, 'Ø'),
+        (0xA6, 'ø'),
+        (0xA8, '\u{201C}'),
+        (0xA9, '\u{201D}'),
+        (0xAA, '\u{2019}'),
+        (0xAB, 'f'),
+        (0xAC, 'f'),
+        (0xAE, '\u{2013}'),
+        (0xAF, '\u{2014}'),
+        (0xB0, '\u{2018}'),
+        (0xB1, '†'),
+        (0xB4, '•'),
+        (0xB6, '¶'),
+        (0xB7, '§'),
+        (0xBB, '–'),
+        (0xBC, '\u{2022}'),
+        (0xBF, '¿'),
+        (0xC0, '`'),
+        (0xC1, '´'),
+        (0xC2, '^'),
+        (0xC3, '~'),
+        (0xC4, '¯'),
+        (0xC5, '˘'),
+        (0xC6, '˙'),
+        (0xC7, '¨'),
+        (0xC9, '˚'),
+        (0xCA, '\u{00B8}'),
+        (0xCB, '\u{00B4}'),
+        (0xCD, '˝'),
+        (0xCE, '\u{02DB}'),
+        (0xCF, 'ˇ'),
+        (0xD0, '—'),
+        (0xE1, 'Æ'),
+        (0xE3, 'ª'),
+        (0xE8, 'Ł'),
+        (0xE9, 'Ø'),
+        (0xEA, 'Œ'),
+        (0xEB, 'º'),
+        (0xF1, 'æ'),
+        (0xF3, 'ı'),
+        (0xF8, 'ł'),
+        (0xF9, 'ø'),
+        (0xFA, 'œ'),
+        (0xFB, 'ß'),
     ];
-    for &(b, c) in ext { map.insert(b, c); }
+    for &(b, c) in ext {
+        map.insert(b, c);
+    }
     map
 }
 
@@ -381,69 +689,232 @@ fn standard_map() -> CharMap {
 fn glyph_name_to_char(name: &str) -> Option<char> {
     // uniXXXX / uXXXX convention
     if let Some(hex) = name.strip_prefix("uni") {
-        if let Ok(n) = u32::from_str_radix(hex, 16) { return char::from_u32(n); }
+        if let Ok(n) = u32::from_str_radix(hex, 16) {
+            return char::from_u32(n);
+        }
     }
     if let Some(hex) = name.strip_prefix('u') {
         if hex.len() >= 4 {
-            if let Ok(n) = u32::from_str_radix(hex, 16) { return char::from_u32(n); }
+            if let Ok(n) = u32::from_str_radix(hex, 16) {
+                return char::from_u32(n);
+            }
         }
     }
 
     Some(match name {
-        "space"=>' ',"exclam"=>'!',"quotedbl"=>'"',"numbersign"=>'#',"dollar"=>'$',
-        "percent"=>'%',"ampersand"=>'&',"quotesingle"=>'\'', "quoteright"=>'\'',
-        "parenleft"=>'(',"parenright"=>')',"asterisk"=>'*',"plus"=>'+',
-        "comma"=>',',"hyphen"|"minus"=>'-',"period"=>'.',"slash"=>'/',
-        "zero"=>'0',"one"=>'1',"two"=>'2',"three"=>'3',"four"=>'4',
-        "five"=>'5',"six"=>'6',"seven"=>'7',"eight"=>'8',"nine"=>'9',
-        "colon"=>':',"semicolon"=>';',"less"=>'<',"equal"=>'=',"greater"=>'>',
-        "question"=>'?',"at"=>'@',
-        "A"=>'A',"B"=>'B',"C"=>'C',"D"=>'D',"E"=>'E',"F"=>'F',"G"=>'G',
-        "H"=>'H',"I"=>'I',"J"=>'J',"K"=>'K',"L"=>'L',"M"=>'M',"N"=>'N',
-        "O"=>'O',"P"=>'P',"Q"=>'Q',"R"=>'R',"S"=>'S',"T"=>'T',"U"=>'U',
-        "V"=>'V',"W"=>'W',"X"=>'X',"Y"=>'Y',"Z"=>'Z',
-        "bracketleft"=>'[',"backslash"=>'\\',"bracketright"=>']',
-        "asciicircum"=>'^',"underscore"=>'_',"grave"|"quoteleft"=>'`',
-        "a"=>'a',"b"=>'b',"c"=>'c',"d"=>'d',"e"=>'e',"f"=>'f',"g"=>'g',
-        "h"=>'h',"i"=>'i',"j"=>'j',"k"=>'k',"l"=>'l',"m"=>'m',"n"=>'n',
-        "o"=>'o',"p"=>'p',"q"=>'q',"r"=>'r',"s"=>'s',"t"=>'t',"u"=>'u',
-        "v"=>'v',"w"=>'w',"x"=>'x',"y"=>'y',"z"=>'z',
-        "braceleft"=>'{',"bar"=>'|',"braceright"=>'}',"asciitilde"=>'~',
+        "space" => ' ',
+        "exclam" => '!',
+        "quotedbl" => '"',
+        "numbersign" => '#',
+        "dollar" => '$',
+        "percent" => '%',
+        "ampersand" => '&',
+        "quotesingle" => '\'',
+        "quoteright" => '\'',
+        "parenleft" => '(',
+        "parenright" => ')',
+        "asterisk" => '*',
+        "plus" => '+',
+        "comma" => ',',
+        "hyphen" | "minus" => '-',
+        "period" => '.',
+        "slash" => '/',
+        "zero" => '0',
+        "one" => '1',
+        "two" => '2',
+        "three" => '3',
+        "four" => '4',
+        "five" => '5',
+        "six" => '6',
+        "seven" => '7',
+        "eight" => '8',
+        "nine" => '9',
+        "colon" => ':',
+        "semicolon" => ';',
+        "less" => '<',
+        "equal" => '=',
+        "greater" => '>',
+        "question" => '?',
+        "at" => '@',
+        "A" => 'A',
+        "B" => 'B',
+        "C" => 'C',
+        "D" => 'D',
+        "E" => 'E',
+        "F" => 'F',
+        "G" => 'G',
+        "H" => 'H',
+        "I" => 'I',
+        "J" => 'J',
+        "K" => 'K',
+        "L" => 'L',
+        "M" => 'M',
+        "N" => 'N',
+        "O" => 'O',
+        "P" => 'P',
+        "Q" => 'Q',
+        "R" => 'R',
+        "S" => 'S',
+        "T" => 'T',
+        "U" => 'U',
+        "V" => 'V',
+        "W" => 'W',
+        "X" => 'X',
+        "Y" => 'Y',
+        "Z" => 'Z',
+        "bracketleft" => '[',
+        "backslash" => '\\',
+        "bracketright" => ']',
+        "asciicircum" => '^',
+        "underscore" => '_',
+        "grave" | "quoteleft" => '`',
+        "a" => 'a',
+        "b" => 'b',
+        "c" => 'c',
+        "d" => 'd',
+        "e" => 'e',
+        "f" => 'f',
+        "g" => 'g',
+        "h" => 'h',
+        "i" => 'i',
+        "j" => 'j',
+        "k" => 'k',
+        "l" => 'l',
+        "m" => 'm',
+        "n" => 'n',
+        "o" => 'o',
+        "p" => 'p',
+        "q" => 'q',
+        "r" => 'r',
+        "s" => 's',
+        "t" => 't',
+        "u" => 'u',
+        "v" => 'v',
+        "w" => 'w',
+        "x" => 'x',
+        "y" => 'y',
+        "z" => 'z',
+        "braceleft" => '{',
+        "bar" => '|',
+        "braceright" => '}',
+        "asciitilde" => '~',
         // Latin extended — full Spanish set
-        "Agrave"=>'À',"Aacute"=>'Á',"Acircumflex"=>'Â',"Atilde"=>'Ã',
-        "Adieresis"=>'Ä',"Aring"=>'Å',"AE"=>'Æ',"Ccedilla"=>'Ç',
-        "Egrave"=>'È',"Eacute"=>'É',"Ecircumflex"=>'Ê',"Edieresis"=>'Ë',
-        "Igrave"=>'Ì',"Iacute"=>'Í',"Icircumflex"=>'Î',"Idieresis"=>'Ï',
-        "Eth"=>'Ð',"Ntilde"=>'Ñ',"Ograve"=>'Ò',"Oacute"=>'Ó',
-        "Ocircumflex"=>'Ô',"Otilde"=>'Õ',"Odieresis"=>'Ö',"multiply"=>'×',
-        "Oslash"=>'Ø',"Ugrave"=>'Ù',"Uacute"=>'Ú',"Ucircumflex"=>'Û',
-        "Udieresis"=>'Ü',"Yacute"=>'Ý',"Thorn"=>'Þ',"germandbls"|"ssharp"=>'ß',
-        "agrave"=>'à',"aacute"=>'á',"acircumflex"=>'â',"atilde"=>'ã',
-        "adieresis"=>'ä',"aring"=>'å',"ae"=>'æ',"ccedilla"=>'ç',
-        "egrave"=>'è',"eacute"=>'é',"ecircumflex"=>'ê',"edieresis"=>'ë',
-        "igrave"=>'ì',"iacute"=>'í',"icircumflex"=>'î',"idieresis"=>'ï',
-        "eth"=>'ð',"ntilde"=>'ñ',"ograve"=>'ò',"oacute"=>'ó',
-        "ocircumflex"=>'ô',"otilde"=>'õ',"odieresis"=>'ö',"divide"=>'÷',
-        "oslash"=>'ø',"ugrave"=>'ù',"uacute"=>'ú',"ucircumflex"=>'û',
-        "udieresis"=>'ü',"yacute"=>'ý',"thorn"=>'þ',"ydieresis"=>'ÿ',
+        "Agrave" => 'À',
+        "Aacute" => 'Á',
+        "Acircumflex" => 'Â',
+        "Atilde" => 'Ã',
+        "Adieresis" => 'Ä',
+        "Aring" => 'Å',
+        "AE" => 'Æ',
+        "Ccedilla" => 'Ç',
+        "Egrave" => 'È',
+        "Eacute" => 'É',
+        "Ecircumflex" => 'Ê',
+        "Edieresis" => 'Ë',
+        "Igrave" => 'Ì',
+        "Iacute" => 'Í',
+        "Icircumflex" => 'Î',
+        "Idieresis" => 'Ï',
+        "Eth" => 'Ð',
+        "Ntilde" => 'Ñ',
+        "Ograve" => 'Ò',
+        "Oacute" => 'Ó',
+        "Ocircumflex" => 'Ô',
+        "Otilde" => 'Õ',
+        "Odieresis" => 'Ö',
+        "multiply" => '×',
+        "Oslash" => 'Ø',
+        "Ugrave" => 'Ù',
+        "Uacute" => 'Ú',
+        "Ucircumflex" => 'Û',
+        "Udieresis" => 'Ü',
+        "Yacute" => 'Ý',
+        "Thorn" => 'Þ',
+        "germandbls" | "ssharp" => 'ß',
+        "agrave" => 'à',
+        "aacute" => 'á',
+        "acircumflex" => 'â',
+        "atilde" => 'ã',
+        "adieresis" => 'ä',
+        "aring" => 'å',
+        "ae" => 'æ',
+        "ccedilla" => 'ç',
+        "egrave" => 'è',
+        "eacute" => 'é',
+        "ecircumflex" => 'ê',
+        "edieresis" => 'ë',
+        "igrave" => 'ì',
+        "iacute" => 'í',
+        "icircumflex" => 'î',
+        "idieresis" => 'ï',
+        "eth" => 'ð',
+        "ntilde" => 'ñ',
+        "ograve" => 'ò',
+        "oacute" => 'ó',
+        "ocircumflex" => 'ô',
+        "otilde" => 'õ',
+        "odieresis" => 'ö',
+        "divide" => '÷',
+        "oslash" => 'ø',
+        "ugrave" => 'ù',
+        "uacute" => 'ú',
+        "ucircumflex" => 'û',
+        "udieresis" => 'ü',
+        "yacute" => 'ý',
+        "thorn" => 'þ',
+        "ydieresis" => 'ÿ',
         // Typography
-        "endash"=>'–',"emdash"=>'—',
-        "quotedblleft"=>'\u{201C}',"quotedblright"=>'\u{201D}',
-        "quotesinglbase"=>'‚',"quotedblbase"=>'„',
-        "ellipsis"=>'…',"dagger"=>'†',"daggerdbl"=>'‡',"bullet"=>'•',
-        "perthousand"=>'‰',"guilsinglleft"=>'‹',"guilsinglright"=>'›',
-        "guillemotleft"=>'«',"guillemotright"=>'»',
-        "exclamdown"=>'¡',"questiondown"=>'¿',
-        "cent"=>'¢',"sterling"=>'£',"currency"=>'¤',"yen"=>'¥',
-        "section"=>'§',"copyright"=>'©',"ordfeminine"=>'ª',
-        "registered"=>'®',"degree"=>'°',"plusminus"=>'±',
-        "twosuperior"=>'²',"threesuperior"=>'³',"mu"=>'µ',"paragraph"=>'¶',
-        "periodcentered"=>'·',"ordmasculine"=>'º',
-        "onequarter"=>'¼',"onehalf"=>'½',"threequarters"=>'¾',
-        "fi"=>'f',"fl"=>'f',"ff"=>'f',"ffi"=>'f',"ffl"=>'f',
-        "lslash"=>'ł',"Lslash"=>'Ł',"oe"=>'œ',"OE"=>'Œ',
-        "scaron"=>'š',"Scaron"=>'Š',"zcaron"=>'ž',"Zcaron"=>'Ž',
-        "trademark"=>'™',"Euro"=>'€',
+        "endash" => '–',
+        "emdash" => '—',
+        "quotedblleft" => '\u{201C}',
+        "quotedblright" => '\u{201D}',
+        "quotesinglbase" => '‚',
+        "quotedblbase" => '„',
+        "ellipsis" => '…',
+        "dagger" => '†',
+        "daggerdbl" => '‡',
+        "bullet" => '•',
+        "perthousand" => '‰',
+        "guilsinglleft" => '‹',
+        "guilsinglright" => '›',
+        "guillemotleft" => '«',
+        "guillemotright" => '»',
+        "exclamdown" => '¡',
+        "questiondown" => '¿',
+        "cent" => '¢',
+        "sterling" => '£',
+        "currency" => '¤',
+        "yen" => '¥',
+        "section" => '§',
+        "copyright" => '©',
+        "ordfeminine" => 'ª',
+        "registered" => '®',
+        "degree" => '°',
+        "plusminus" => '±',
+        "twosuperior" => '²',
+        "threesuperior" => '³',
+        "mu" => 'µ',
+        "paragraph" => '¶',
+        "periodcentered" => '·',
+        "ordmasculine" => 'º',
+        "onequarter" => '¼',
+        "onehalf" => '½',
+        "threequarters" => '¾',
+        "fi" => 'f',
+        "fl" => 'f',
+        "ff" => 'f',
+        "ffi" => 'f',
+        "ffl" => 'f',
+        "lslash" => 'ł',
+        "Lslash" => 'Ł',
+        "oe" => 'œ',
+        "OE" => 'Œ',
+        "scaron" => 'š',
+        "Scaron" => 'Š',
+        "zcaron" => 'ž',
+        "Zcaron" => 'Ž',
+        "trademark" => '™',
+        "Euro" => '€',
         _ => return None,
     })
 }
@@ -530,11 +1001,22 @@ mod tests {
     }
 
     #[test]
+    fn extracts_page_text_as_number_preserving_entries() {
+        let path = sample_path("pages");
+        write_sample_pdf(&path);
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let pages = extract_pdf_pages_from_pdf_bytes(&bytes, 10_000).unwrap();
+        assert_eq!(pages.len(), 1);
+        assert!(pages[0].contains("Hello Lucid"), "got: {pages:?}");
+        assert!(pages[0].contains("PDFupgrade"), "got: {pages:?}");
+    }
+
+    #[test]
     fn missing_file_is_an_error() {
         assert!(extract_text_from_pdf("Z:/definitely/not/here.pdf").is_err());
     }
 }
-
 
 // ── from memory (the indexer reads a file once, then extracts from the bytes) ──
 
@@ -558,9 +1040,19 @@ impl PdfLimits {
 
     pub fn for_size(len: usize) -> Self {
         if len > Self::BIG_FILE {
-            PdfLimits { max_pages: 300, max_objects: 60_000, max_inflated: 16 * 1024 * 1024, deadline: std::time::Duration::from_secs(10) }
+            PdfLimits {
+                max_pages: 300,
+                max_objects: 60_000,
+                max_inflated: 16 * 1024 * 1024,
+                deadline: std::time::Duration::from_secs(10),
+            }
         } else {
-            PdfLimits { max_pages: 2000, max_objects: 250_000, max_inflated: MAX_PDF_INFLATED, deadline: PDF_DEADLINE }
+            PdfLimits {
+                max_pages: 2000,
+                max_objects: 250_000,
+                max_inflated: MAX_PDF_INFLATED,
+                deadline: PDF_DEADLINE,
+            }
         }
     }
 }
@@ -578,16 +1070,21 @@ fn check_pdf_streams(doc: &lopdf::Document, limits: &PdfLimits) -> Result<(), St
     }
     let mut total = 0u64;
     for obj in doc.objects.values() {
-        let lopdf::Object::Stream(stream) = obj else { continue };
+        let lopdf::Object::Stream(stream) = obj else {
+            continue;
+        };
         let flate = match stream.dict.get(b"Filter") {
             Ok(lopdf::Object::Name(n)) => n.as_slice() == b"FlateDecode",
-            Ok(lopdf::Object::Array(a)) => a.iter().any(|o| matches!(o, lopdf::Object::Name(n) if n.as_slice() == b"FlateDecode")),
+            Ok(lopdf::Object::Array(a)) => a
+                .iter()
+                .any(|o| matches!(o, lopdf::Object::Name(n) if n.as_slice() == b"FlateDecode")),
             _ => false,
         };
         if !flate {
             total += stream.content.len() as u64;
         } else {
-            let mut dec = flate2::read::ZlibDecoder::new(&stream.content[..]).take(limits.max_inflated + 1);
+            let mut dec =
+                flate2::read::ZlibDecoder::new(&stream.content[..]).take(limits.max_inflated + 1);
             let n = std::io::copy(&mut dec, &mut std::io::sink()).unwrap_or(0);
             total += n;
         }
@@ -601,7 +1098,8 @@ fn check_pdf_streams(doc: &lopdf::Document, limits: &PdfLimits) -> Result<(), St
 /// Text of a PDF held in memory. Bounded: streams are checked first, the
 /// work has a deadline, and the text is cut at `max_chars`.
 pub fn extract_text_from_pdf_bytes(bytes: &[u8], max_chars: usize) -> Result<String, String> {
-    let doc = lopdf::Document::load_mem(bytes).map_err(|e| format!("Could not read this PDF: {e}"))?;
+    let doc =
+        lopdf::Document::load_mem(bytes).map_err(|e| format!("Could not read this PDF: {e}"))?;
     let limits = PdfLimits::for_size(bytes.len());
     check_pdf_streams(&doc, &limits)?;
     let data = bytes.to_vec();
@@ -609,9 +1107,11 @@ pub fn extract_text_from_pdf_bytes(bytes: &[u8], max_chars: usize) -> Result<Str
     std::thread::Builder::new()
         .name("nexq-pdf-extract".into())
         .spawn(move || {
-            let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match pdf_extract::extract_text_from_mem(&data) {
-                Ok(t) if !t.trim().is_empty() => Ok(t.trim().to_string()),
-                _ => extract_lopdf_doc(&doc),
+            let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                match pdf_extract::extract_text_from_mem(&data) {
+                    Ok(t) if !t.trim().is_empty() => Ok(t.trim().to_string()),
+                    _ => extract_lopdf_doc(&doc),
+                }
             }));
             let _ = tx.send(attempt.unwrap_or_else(|_| Err("Could not read this PDF".to_string())));
         })
@@ -622,7 +1122,76 @@ pub fn extract_text_from_pdf_bytes(bytes: &[u8], max_chars: usize) -> Result<Str
     if text.trim().is_empty() {
         return Err("PDF has no extractable text".to_string());
     }
-    Ok(crate::workspace_search::cjk::truncate_chars(&text, max_chars))
+    Ok(crate::workspace_search::cjk::truncate_chars(
+        &text, max_chars,
+    ))
+}
+
+/// Extract text as page-numbered entries for source citations. This uses the
+/// same page-aware font decoder used by the fallback path and the same limits
+/// as the workspace's in-memory PDF reader.
+pub fn extract_pdf_pages_from_pdf_bytes(
+    bytes: &[u8],
+    max_chars: usize,
+) -> Result<Vec<String>, String> {
+    let doc =
+        lopdf::Document::load_mem(bytes).map_err(|e| format!("Could not read this PDF: {e}"))?;
+    let limits = PdfLimits::for_size(bytes.len());
+    check_pdf_streams(&doc, &limits)?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("lucid-pdf-pages".into())
+        .spawn(move || {
+            let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                extract_lopdf_pages(&doc)
+            }));
+            let _ = tx.send(attempt.unwrap_or_else(|_| Err("Could not read this PDF".to_string())));
+        })
+        .map_err(|e| e.to_string())?;
+    let mut pages = rx
+        .recv_timeout(limits.deadline)
+        .map_err(|_| "Reading this PDF took too long".to_string())??;
+    let mut remaining = max_chars;
+    let mut truncate_at = None;
+    for (index, page) in pages.iter_mut().enumerate() {
+        if remaining == 0 {
+            truncate_at = Some(index);
+            break;
+        }
+        let count = page.chars().count();
+        if count > remaining {
+            *page = crate::workspace_search::cjk::truncate_chars(page, remaining);
+        }
+        remaining = remaining.saturating_sub(page.chars().count());
+    }
+    if let Some(length) = truncate_at {
+        pages.truncate(length);
+    }
+    if pages.iter().all(|page| page.trim().is_empty()) {
+        return Err("PDF has no extractable text".to_string());
+    }
+    Ok(pages)
+}
+
+/// Read the copied PDF from disk with a strict byte limit before page
+/// extraction. Uploads already enforce this limit; this check protects callers
+/// that use this helper directly as well.
+pub fn extract_pdf_pages_from_pdf(
+    file_path: &str,
+    max_chars: usize,
+) -> Result<Vec<String>, String> {
+    use std::io::Read;
+    let mut file =
+        std::fs::File::open(file_path).map_err(|e| format!("Could not open this PDF: {e}"))?;
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take(crate::context::MAX_CONTEXT_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("Could not read this PDF: {e}"))?;
+    if bytes.len() as u64 > crate::context::MAX_CONTEXT_FILE_BYTES {
+        return Err("This PDF is larger than the 50 MB per-file limit".to_string());
+    }
+    extract_pdf_pages_from_pdf_bytes(&bytes, max_chars)
 }
 
 #[cfg(test)]
@@ -644,12 +1213,18 @@ mod bytes_tests {
             z.write_all(&chunk).unwrap();
         }
         let bomb = z.finish().unwrap();
-        assert!(bomb.len() < 200_000, "the bomb itself is small: {}", bomb.len());
+        assert!(
+            bomb.len() < 200_000,
+            "the bomb itself is small: {}",
+            bomb.len()
+        );
         let mut doc = lopdf::Document::with_version("1.5");
         let mut dict = lopdf::Dictionary::new();
         dict.set("Filter", lopdf::Object::Name(b"FlateDecode".to_vec()));
         doc.add_object(lopdf::Stream::new(dict, bomb));
-        assert!(check_pdf_streams(&doc, &PdfLimits::for_size(1000)).unwrap_err().contains("too much"));
+        assert!(check_pdf_streams(&doc, &PdfLimits::for_size(1000))
+            .unwrap_err()
+            .contains("too much"));
     }
 
     #[test]
@@ -659,9 +1234,17 @@ mod bytes_tests {
             doc.add_object(lopdf::Object::Integer(1));
         }
         assert!(check_pdf_streams(&doc, &PdfLimits::for_size(1000)).is_ok());
-        assert!(check_pdf_streams(&doc, &PdfLimits::for_size(PdfLimits::BIG_FILE + 1)).unwrap_err().contains("too many parts"));
+        assert!(
+            check_pdf_streams(&doc, &PdfLimits::for_size(PdfLimits::BIG_FILE + 1))
+                .unwrap_err()
+                .contains("too many parts")
+        );
         let small = PdfLimits::for_size(1000);
         let big = PdfLimits::for_size(6 * 1024 * 1024);
-        assert!(big.max_pages < small.max_pages && big.max_inflated < small.max_inflated && big.deadline < small.deadline);
+        assert!(
+            big.max_pages < small.max_pages
+                && big.max_inflated < small.max_inflated
+                && big.deadline < small.deadline
+        );
     }
 }

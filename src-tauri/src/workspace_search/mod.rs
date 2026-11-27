@@ -10,6 +10,7 @@ pub mod cards;
 pub mod cjk;
 pub mod context_plan;
 pub mod crawler;
+pub mod facts;
 pub mod indexer;
 pub mod migrate;
 pub mod passages;

@@ -34,7 +34,7 @@ vi.mock("../lib/ipc", async (importOriginal) => ({
   setActiveModel: (...a: unknown[]) => ipc.setActiveModel(...a),
   setCliAgentConfig: (...a: unknown[]) => ipc.setCliAgentConfig(...a),
   storeApiKey: (...a: unknown[]) => ipc.storeApiKey(...a),
-  getApiKey: async () => null,
+  getCredentialSetting: async () => null,
   hasApiKey: async () => false,
   listModels: async () => [],
   listLocalSTTEngines: async () => [],
@@ -137,11 +137,11 @@ describe("Settings ↔ footer sync of the active LLM", () => {
       fireEvent.blur(token);
       await waitFor(() =>
         expect(ipc.setLLMProvider).toHaveBeenLastCalledWith(
-          JSON.stringify({ ...OLLAMA_CLOUD, auth_type: "bearer", auth_value: "the-key" }),
+          JSON.stringify({ ...OLLAMA_CLOUD, auth_type: "bearer" }),
         ),
       );
       expect(ipc.storeApiKey).toHaveBeenCalledWith("custom", "the-key");
-      expect(token).toHaveValue("the-key");
+      expect(token).toHaveValue("");
     });
 
     it("a changed auth type applies at once", async () => {

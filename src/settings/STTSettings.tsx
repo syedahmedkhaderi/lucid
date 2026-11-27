@@ -23,7 +23,7 @@ import {
   listLocalSTTEngines,
   deleteApiKey,
 } from "../lib/ipc";
-import { storeApiKey, getApiKey, hasApiKey } from "../lib/ipc";
+import { storeApiKey, getCredentialSetting, hasApiKey } from "../lib/ipc";
 import {
   WHISPER_API_KEY,
   WHISPER_API_CUSTOM_KEY,
@@ -555,13 +555,6 @@ export function STTSettings() {
         const keyExists = await hasApiKey(credKey);
         if (cancelled) return;
         setHasStoredKey(keyExists);
-        // MAI keys are write-only in the UI: discover presence, but never
-        // read the long-lived secret back into JavaScript or the input field.
-        if (keyExists && selectedProvider !== "azure_mai_streaming" && !keepTyped) {
-          const stored = await getApiKey(credKey);
-          if (cancelled) return;
-          if (stored) setApiKey(stored);
-        }
       } catch (e) {
         if (!cancelled) console.warn("Failed to load STT API key:", e);
       }
@@ -569,15 +562,11 @@ export function STTSettings() {
       if (cancelled) return;
       if (currentProviderOption.needsRegion && currentProviderOption.regionCredentialKey) {
         try {
-          const regionExists = await hasApiKey(currentProviderOption.regionCredentialKey);
+          const stored = await getCredentialSetting(currentProviderOption.regionCredentialKey);
           if (cancelled) return;
-          if (regionExists) {
-            const stored = await getApiKey(currentProviderOption.regionCredentialKey);
-            if (cancelled) return;
-            if (stored) {
-              if (selectedProvider === "azure_mai_streaming") setAzureMaiRegion(stored);
-              else setAzureRegion(stored);
-            }
+          if (stored) {
+            if (selectedProvider === "azure_mai_streaming") setAzureMaiRegion(stored);
+            else setAzureRegion(stored);
           }
         } catch (e) {
           if (!cancelled) console.warn("Failed to load speech region:", e);
@@ -604,8 +593,8 @@ export function STTSettings() {
     let cancelled = false;
     void (async () => {
       try {
-        const load = async (credKey: string) =>
-          (await hasApiKey(credKey)) ? (await getApiKey(credKey)) ?? "" : "";
+        const load = async (setting: string) =>
+          (await getCredentialSetting(setting)) ?? "";
         const [baseUrl, model, hasOpenAiKey] = await Promise.all([
           load(WHISPER_API_BASE_URL_KEY),
           load(WHISPER_API_MODEL_KEY),
@@ -720,10 +709,9 @@ export function STTSettings() {
   }, [whisperBaseUrl, whisperModel, persistWhisperEndpoint, updateVerifiedProvider]);
 
   /**
-   * Whisper API Save & Test. The key is written only when the user typed or
-   * cleared it, into the slot for the current endpoint (OpenAI key or the custom
-   * server's key). A failed test restores the key slot and the verified flag.
-   * The endpoint and model stay saved: the blur save already wrote them.
+   * Whisper API Save & Test. A new key is sent to the backend only for this
+   * probe and is persisted after a successful response. Saved keys remain in
+   * the OS keychain if a replacement fails.
    */
   const handleWhisperSaveAndTest = useCallback(async () => {
     const provider: STTProviderType = "whisper_api";
@@ -744,7 +732,7 @@ export function STTSettings() {
     const custom = isCustomWhisperEndpoint(whisperBaseUrl);
     const slot = custom ? WHISPER_API_CUSTOM_KEY : WHISPER_API_KEY;
     const typed = apiKey.trim();
-    if (!custom && !typed) {
+    if (!custom && !typed && !hasStoredKey) {
       fail("Enter your OpenAI API key, or set an endpoint for your own server.");
       return;
     }
@@ -757,18 +745,14 @@ export function STTSettings() {
     // Blur saves may still be writing the endpoint/model: let all of them finish first.
     await whisperSaveRef.current;
     const wasVerified = useConfigStore.getState().verifiedCloudProviders.includes(provider);
-    let previousKey: string | null = null;
-    let keyWritten = false;
     try {
-      if (keyDirty) {
-        if (hasStoredKey) previousKey = await getApiKey(slot).catch(() => null);
-        keyWritten = true;
-        if (typed) await storeApiKey(slot, typed);
-        else await deleteApiKey(slot).catch(() => {});
-      }
       await persistWhisperEndpoint(whisperBaseUrl, whisperModel);
 
-      const success = await testSTTConnection(provider);
+      const success = await testSTTConnection(
+        provider,
+        keyDirty ? typed : undefined,
+        keyDirty,
+      );
       if (!success) throw new Error("Connection failed");
 
       // The config changed while testing: this result is not about what is saved now.
@@ -779,19 +763,15 @@ export function STTSettings() {
       if (isStillSelected()) {
         setHasStoredKey(keyPresent);
         setKeyDirty(false);
+        keyDirtyRef.current = false;
+        setApiKey("");
         setWhisperDirty(false);
         setConnectionStatus("success");
         setStatusMessage("Connection successful. Provider is ready.");
       }
     } catch (e) {
-      // Put back the key slot and the verified flag; the endpoint stays saved.
-      if (keyWritten) {
-        if (previousKey) await storeApiKey(slot, previousKey).catch(() => {});
-        else await deleteApiKey(slot).catch(() => {});
-      }
       if (isStale()) return;
       updateVerifiedProvider(provider, wasVerified);
-      if (isStillSelected() && keyWritten) setHasStoredKey(previousKey !== null);
       fail(e instanceof Error ? e.message : String(e));
     }
   }, [
@@ -806,7 +786,10 @@ export function STTSettings() {
 
   /** Save & Test: test key first, only persist on success. */
   const handleSaveAndTest = useCallback(async () => {
-    if (!apiKey.trim() || !currentProviderOption?.credentialKey) return;
+    if (
+      !currentProviderOption?.credentialKey ||
+      (!apiKey.trim() && (!hasStoredKey || selectedProvider === "azure_mai_streaming"))
+    ) return;
 
     const provider = selectedProvider;
     const option = currentProviderOption;
@@ -844,6 +827,8 @@ export function STTSettings() {
         if (!isStillSelected()) return;
         setHasStoredKey(true);
         setKeyDirty(false);
+        keyDirtyRef.current = false;
+        setApiKey("");
         setConnectionStatus("success");
         setStatusMessage("Connection successful — provider is ready");
       } catch (e) {
@@ -855,44 +840,43 @@ export function STTSettings() {
       return;
     }
 
-    // Legacy cloud-provider flow remains unchanged.
     try {
-      // Temporarily store so the backend can read it during test
-      await storeApiKey(option.credentialKey, apiKey.trim());
-      if (option.needsRegion && azureRegion.trim()) {
-        await storeApiKey("azure_speech_region", azureRegion.trim());
-      }
-
-      const success = await testSTTConnection(provider);
+      const key = apiKey.trim();
+      const success = await testSTTConnection(
+        provider,
+        keyDirty ? key : undefined,
+        keyDirty,
+        option.needsRegion ? azureRegion.trim() : undefined,
+      );
       if (success) {
         updateVerifiedProvider(provider, true);
         if (isStillSelected()) {
           setHasStoredKey(true);
           setKeyDirty(false);
+          keyDirtyRef.current = false;
+          setApiKey("");
           setConnectionStatus("success");
           setStatusMessage("Connection successful — provider is ready");
         }
       } else {
-        // Remove the key we temporarily stored — test failed
-        await deleteApiKey(option.credentialKey).catch(() => {});
         updateVerifiedProvider(provider, false);
         if (isStillSelected()) {
-          setHasStoredKey(false);
+          setHasStoredKey(await hasApiKey(option.credentialKey).catch(() => false));
           setConnectionStatus("error");
-          setStatusMessage("Connection failed — key not saved");
+          setStatusMessage("Connection failed — saved credentials were kept");
         }
       }
     } catch (e) {
-      await deleteApiKey(option.credentialKey).catch(() => {});
       updateVerifiedProvider(provider, false);
       if (isStillSelected()) {
-        setHasStoredKey(false);
+        setHasStoredKey(await hasApiKey(option.credentialKey).catch(() => false));
         setConnectionStatus("error");
         setStatusMessage(`Test failed: ${e}`);
       }
     }
   }, [
     apiKey,
+    keyDirty,
     azureRegion,
     azureMaiRegion,
     selectedProvider,
@@ -1150,7 +1134,7 @@ export function STTSettings() {
                   (whisperEndpointSet && !verifiedCloudProviders.includes("whisper_api"))))) && (
               <button
                 onClick={isWhisperApi ? handleWhisperSaveAndTest : handleSaveAndTest}
-                disabled={(!shownApiKey.trim() && !whisperEndpointSet) || shownConnectionStatus === "testing" || credentialsAreLoading}
+                disabled={(selectedProvider === "azure_mai_streaming" && !shownApiKey.trim()) || (!shownApiKey.trim() && !shownHasStoredKey && !whisperEndpointSet) || shownConnectionStatus === "testing" || credentialsAreLoading}
                 className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {shownConnectionStatus === "testing" ? (

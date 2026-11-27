@@ -18,6 +18,8 @@ pub struct SavedText {
     pub token_count: i64,
     /// `ready` or `missing`.
     pub status: String,
+    /// Page-numbered text for PDFs; empty for other document types and older PDFs.
+    pub pages: Vec<String>,
 }
 
 fn err(what: &str, e: impl std::fmt::Display) -> String {
@@ -40,22 +42,47 @@ pub fn db_row(resource: &ContextResource) -> context_db::ContextResource {
 
 /// Saves a loaded document: its row and its text. With `workspace_id` it also
 /// joins that workspace in the same step; without, it is unfiled.
-pub fn add_document(conn: &Connection, resource: &ContextResource, text: &str, workspace_id: Option<&str>) -> Result<(), String> {
+pub fn add_document(
+    conn: &Connection,
+    resource: &ContextResource,
+    text: &str,
+    workspace_id: Option<&str>,
+) -> Result<(), String> {
+    add_document_with_pages(conn, resource, text, &[], workspace_id)
+}
+
+/// Saves a document and its optional page-level PDF text in one transaction.
+pub fn add_document_with_pages(
+    conn: &Connection,
+    resource: &ContextResource,
+    text: &str,
+    pages: &[String],
+    workspace_id: Option<&str>,
+) -> Result<(), String> {
     let tx = crate::db::immediate_tx(conn).map_err(|e| err("Couldn't save the document", e))?;
-    context_db::add_context_resource(&tx, &db_row(resource)).map_err(|e| err("Couldn't save the document", e))?;
+    context_db::add_context_resource(&tx, &db_row(resource))
+        .map_err(|e| err("Couldn't save the document", e))?;
     store_text(&tx, &resource.id, text, resource.token_count as i64)?;
+    store_pages(&tx, &resource.id, pages)?;
     if let Some(ws) = workspace_id {
         store::add_item(&tx, ws, ItemKind::Document, &resource.id, None)?;
     }
-    tx.commit().map_err(|e| err("Couldn't save the document", e))
+    tx.commit()
+        .map_err(|e| err("Couldn't save the document", e))
 }
 
 /// Saves an edited note: its row, its text, and drops the index rows of the
 /// old text (the next pass reads the new one).
-pub fn update_note(conn: &Connection, resource: &ContextResource, text: &str) -> Result<(), String> {
+pub fn update_note(
+    conn: &Connection,
+    resource: &ContextResource,
+    text: &str,
+) -> Result<(), String> {
     let tx = crate::db::immediate_tx(conn).map_err(|e| err("Couldn't save the note", e))?;
-    context_db::update_context_resource_text(&tx, &db_row(resource)).map_err(|e| err("Couldn't save the note", e))?;
+    context_db::update_context_resource_text(&tx, &db_row(resource))
+        .map_err(|e| err("Couldn't save the note", e))?;
     store_text(&tx, &resource.id, text, resource.token_count as i64)?;
+    store_pages(&tx, &resource.id, &[])?;
     crate::db::rag::delete_chunks_by_file(&tx, &resource.id)?;
     tx.commit().map_err(|e| err("Couldn't save the note", e))
 }
@@ -65,10 +92,20 @@ pub fn remove_document(conn: &Connection, id: &str) -> Result<(), String> {
     let tx = crate::db::immediate_tx(conn).map_err(|e| err("Couldn't remove the document", e))?;
     let _ = context_db::delete_context_resource(&tx, id);
     crate::db::rag::delete_chunks_by_file(&tx, id)?;
-    tx.execute("DELETE FROM document_text WHERE resource_id = ?1", params![id]).map_err(|e| err("Couldn't remove the document", e))?;
+    tx.execute(
+        "DELETE FROM document_text WHERE resource_id = ?1",
+        params![id],
+    )
+    .map_err(|e| err("Couldn't remove the document", e))?;
+    tx.execute(
+        "DELETE FROM document_pages WHERE resource_id = ?1",
+        params![id],
+    )
+    .map_err(|e| err("Couldn't remove the document", e))?;
     store::remove_memberships(&tx, ItemKind::Document, id)?;
     super::purge::purge_search_rows(&tx, "document", id)?;
-    tx.commit().map_err(|e| err("Couldn't remove the document", e))
+    tx.commit()
+        .map_err(|e| err("Couldn't remove the document", e))
 }
 
 /// Saves the extracted text of a document.
@@ -87,6 +124,41 @@ pub fn store_text(conn: &Connection, id: &str, text: &str, token_count: i64) -> 
     .map_err(|e| err("Couldn't save the document text", e))
 }
 
+/// Replaces cached page text. Page numbers are one-based and blank pages are
+/// preserved so that the stored index continues to match the PDF itself.
+pub fn store_pages(conn: &Connection, id: &str, pages: &[String]) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM document_pages WHERE resource_id = ?1",
+        params![id],
+    )
+    .map_err(|e| err("Couldn't update the document pages", e))?;
+    let mut stmt = conn
+        .prepare_cached(
+            "INSERT INTO document_pages (resource_id, page_number, text) VALUES (?1, ?2, ?3)",
+        )
+        .map_err(|e| err("Couldn't update the document pages", e))?;
+    for (index, page) in pages.iter().enumerate() {
+        stmt.execute(params![
+            id,
+            index as i64 + 1,
+            crate::prompt_data::strip_hidden(page)
+        ])
+        .map_err(|e| err("Couldn't update the document pages", e))?;
+    }
+    Ok(())
+}
+
+fn saved_pages(conn: &Connection, id: &str) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare("SELECT text FROM document_pages WHERE resource_id = ?1 ORDER BY page_number")
+        .map_err(|e| err("Couldn't read the document pages", e))?;
+    let rows = stmt
+        .query_map(params![id], |row| row.get::<_, String>(0))
+        .map_err(|e| err("Couldn't read the document pages", e))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| err("Couldn't read the document pages", e))
+}
+
 /// The document could not be read: its row stays and shows as missing.
 pub fn mark_missing(conn: &Connection, id: &str, reason: &str) -> Result<(), String> {
     conn.execute(
@@ -97,7 +169,8 @@ pub fn mark_missing(conn: &Connection, id: &str, reason: &str) -> Result<(), Str
         params![id, reason, now_ms()],
     )
     .map(|_| ())
-    .map_err(|e| err("Couldn't mark the document", e))
+    .map_err(|e| err("Couldn't mark the document", e))?;
+    store_pages(conn, id, &[])
 }
 
 /// The saved text of a document, if there is one.
@@ -105,21 +178,51 @@ pub fn saved_text(conn: &Connection, id: &str) -> Result<Option<SavedText>, Stri
     conn.query_row(
         "SELECT text, token_count, status FROM document_text WHERE resource_id = ?1",
         params![id],
-        |row| Ok(SavedText { text: row.get(0)?, token_count: row.get(1)?, status: row.get(2)? }),
+        |row| {
+            Ok(SavedText {
+                text: row.get(0)?,
+                token_count: row.get(1)?,
+                status: row.get(2)?,
+                pages: Vec::new(),
+            })
+        },
     )
     .optional()
-    .map_err(|e| err("Couldn't read the document text", e))
+    .map_err(|e| err("Couldn't read the document text", e))?
+    .map(|mut saved| {
+        saved.pages = saved_pages(conn, id)?;
+        Ok(saved)
+    })
+    .transpose()
 }
 
 /// Saved texts of many documents at once (startup).
-pub fn saved_texts(conn: &Connection) -> Result<std::collections::HashMap<String, SavedText>, String> {
+pub fn saved_texts(
+    conn: &Connection,
+) -> Result<std::collections::HashMap<String, SavedText>, String> {
     let mut stmt = conn
         .prepare("SELECT resource_id, text, token_count, status FROM document_text")
         .map_err(|e| err("Couldn't read the document text", e))?;
     let rows = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, SavedText { text: row.get(1)?, token_count: row.get(2)?, status: row.get(3)? })))
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                SavedText {
+                    text: row.get(1)?,
+                    token_count: row.get(2)?,
+                    status: row.get(3)?,
+                    pages: Vec::new(),
+                },
+            ))
+        })
         .map_err(|e| err("Couldn't read the document text", e))?;
-    rows.collect::<Result<_, _>>().map_err(|e| err("Couldn't read the document text", e))
+    let mut saved: std::collections::HashMap<String, SavedText> = rows
+        .collect::<Result<_, _>>()
+        .map_err(|e| err("Couldn't read the document text", e))?;
+    for (id, text) in &mut saved {
+        text.pages = saved_pages(conn, id)?;
+    }
+    Ok(saved)
 }
 
 #[cfg(test)]
@@ -148,10 +251,44 @@ mod tests {
         add_document(&conn, &resource("in-a"), "alpha text", Some(&a)).unwrap();
         add_document(&conn, &resource("alone"), "beta text", None).unwrap();
         let members = store::memberships(&conn).unwrap();
-        assert_eq!(members.get(&(ItemKind::Document, "in-a".to_string())), Some(&vec![a]));
+        assert_eq!(
+            members.get(&(ItemKind::Document, "in-a".to_string())),
+            Some(&vec![a])
+        );
         assert!(!members.contains_key(&(ItemKind::Document, "alone".to_string())));
-        assert_eq!(saved_text(&conn, "in-a").unwrap().unwrap().text, "alpha text");
+        assert_eq!(
+            saved_text(&conn, "in-a").unwrap().unwrap().text,
+            "alpha text"
+        );
         assert_eq!(saved_texts(&conn).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn page_text_is_saved_in_order_and_removed_with_the_document() {
+        let conn = memory_db();
+        let pages = vec![
+            "first page".to_string(),
+            String::new(),
+            "third page".to_string(),
+        ];
+        add_document_with_pages(
+            &conn,
+            &resource("pdf"),
+            "first page\nthird page",
+            &pages,
+            Some("general"),
+        )
+        .unwrap();
+        assert_eq!(saved_text(&conn, "pdf").unwrap().unwrap().pages, pages);
+        remove_document(&conn, "pdf").unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM document_pages WHERE resource_id = 'pdf'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]
@@ -166,7 +303,14 @@ mod tests {
         let row = context_db::get_context_resource(&conn, "n").unwrap();
         assert_eq!((row.name.as_str(), row.token_count), ("Renamed", 7));
         let saved = saved_text(&conn, "n").unwrap().unwrap();
-        assert_eq!((saved.text.as_str(), saved.token_count, saved.status.as_str()), ("after", 7, "ready"));
+        assert_eq!(
+            (
+                saved.text.as_str(),
+                saved.token_count,
+                saved.status.as_str()
+            ),
+            ("after", 7, "ready")
+        );
     }
 
     #[test]
@@ -175,13 +319,24 @@ mod tests {
         add_document(&conn, &resource("d"), "text", Some("general")).unwrap();
         mark_missing(&conn, "d", "the file was moved").unwrap();
         let saved = saved_text(&conn, "d").unwrap().unwrap();
-        assert_eq!((saved.status.as_str(), saved.text.as_str()), ("missing", ""));
-        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM context_resources WHERE id = 'd'", [], |r| r.get(0)).unwrap();
+        assert_eq!(
+            (saved.status.as_str(), saved.text.as_str()),
+            ("missing", "")
+        );
+        let rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM context_resources WHERE id = 'd'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(rows, 1);
         remove_document(&conn, "d").unwrap();
         assert!(saved_text(&conn, "d").unwrap().is_none());
         assert!(store::memberships(&conn).unwrap().is_empty());
-        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM context_resources", [], |r| r.get(0)).unwrap();
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM context_resources", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(rows, 0);
     }
 }

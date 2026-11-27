@@ -53,7 +53,7 @@ fn general_workspace() -> String {
 /// Response struct that maps MeetingSpeaker back to frontend SpeakerIdentity format.
 #[derive(Debug, Clone, Serialize)]
 pub struct MeetingSpeakerResponse {
-    pub id: String,           // This is speaker_id (e.g. "speaker_0"), NOT the record UUID
+    pub id: String, // This is speaker_id (e.g. "speaker_0"), NOT the record UUID
     pub display_name: String,
     pub source: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -112,13 +112,17 @@ fn fill_workspace_ids(conn: &Connection, items: &mut [MeetingSummary]) {
         return;
     }
     let ids: Vec<&str> = items.iter().map(|m| m.id.as_str()).collect();
-    let Ok(ids) = serde_json::to_string(&ids) else { return };
+    let Ok(ids) = serde_json::to_string(&ids) else {
+        return;
+    };
     let Ok(mut stmt) = conn.prepare(
         "SELECT id, workspace_id FROM meetings WHERE id IN (SELECT value FROM json_each(?1))",
     ) else {
         return;
     };
-    let Ok(rows) = stmt.query_map(params![ids], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))) else {
+    let Ok(rows) = stmt.query_map(params![ids], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    }) else {
         return;
     };
     let homes: std::collections::HashMap<String, String> = rows.filter_map(Result::ok).collect();
@@ -235,8 +239,7 @@ pub fn get_meeting(conn: &Connection, id: &str) -> Result<Meeting, DatabaseError
                 transcript: serde_json::from_str(&transcript_str).unwrap_or(serde_json::json!([])),
                 ai_interactions: serde_json::from_str(&ai_str).unwrap_or(serde_json::json!([])),
                 summary,
-                config_snapshot: config_str
-                    .and_then(|s| serde_json::from_str(&s).ok()),
+                config_snapshot: config_str.and_then(|s| serde_json::from_str(&s).ok()),
                 speakers: None,
                 bookmarks: None,
                 action_items: None,
@@ -259,7 +262,11 @@ pub fn get_meeting(conn: &Connection, id: &str) -> Result<Meeting, DatabaseError
     let segments = list_transcript_segments(conn, id)?;
     let mut meeting = meeting;
     if super::workspace_migrations::available() {
-        if let Ok(home) = conn.query_row("SELECT workspace_id FROM meetings WHERE id = ?1", params![id], |row| row.get(0)) {
+        if let Ok(home) = conn.query_row(
+            "SELECT workspace_id FROM meetings WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        ) {
             meeting.workspace_id = home;
         }
     }
@@ -272,7 +279,8 @@ pub fn get_meeting(conn: &Connection, id: &str) -> Result<Meeting, DatabaseError
     if !speakers.is_empty() {
         let speaker_responses: Vec<MeetingSpeakerResponse> =
             speakers.into_iter().map(|s| s.into()).collect();
-        meeting.speakers = Some(serde_json::to_value(&speaker_responses).unwrap_or(serde_json::json!([])));
+        meeting.speakers =
+            Some(serde_json::to_value(&speaker_responses).unwrap_or(serde_json::json!([])));
     }
 
     let bookmarks = list_meeting_bookmarks(conn, id)?;
@@ -282,12 +290,14 @@ pub fn get_meeting(conn: &Connection, id: &str) -> Result<Meeting, DatabaseError
 
     let action_items = list_meeting_action_items(conn, id)?;
     if !action_items.is_empty() {
-        meeting.action_items = Some(serde_json::to_value(&action_items).unwrap_or(serde_json::json!([])));
+        meeting.action_items =
+            Some(serde_json::to_value(&action_items).unwrap_or(serde_json::json!([])));
     }
 
     let topic_sections = list_meeting_topic_sections(conn, id)?;
     if !topic_sections.is_empty() {
-        meeting.topic_sections = Some(serde_json::to_value(&topic_sections).unwrap_or(serde_json::json!([])));
+        meeting.topic_sections =
+            Some(serde_json::to_value(&topic_sections).unwrap_or(serde_json::json!([])));
     }
 
     Ok(meeting)
@@ -318,8 +328,12 @@ pub fn list_meetings(
             duration_seconds: row.get(4)?,
             segment_count: row.get(5)?,
             has_summary: row.get::<_, i32>(6)? != 0,
-            audio_mode: row.get::<_, String>(7).unwrap_or_else(|_| "online".to_string()),
-            ai_scenario: row.get::<_, String>(8).unwrap_or_else(|_| "team_meeting".to_string()),
+            audio_mode: row
+                .get::<_, String>(7)
+                .unwrap_or_else(|_| "online".to_string()),
+            ai_scenario: row
+                .get::<_, String>(8)
+                .unwrap_or_else(|_| "team_meeting".to_string()),
             workspace_id: general_workspace(),
             has_recap: false,
         })
@@ -406,10 +420,7 @@ pub fn update_meeting(
 
     let rows_affected = conn.execute(&sql, param_refs.as_slice())?;
     if rows_affected == 0 {
-        return Err(DatabaseError::NotFound(format!(
-            "Meeting {} not found",
-            id
-        )));
+        return Err(DatabaseError::NotFound(format!("Meeting {} not found", id)));
     }
 
     Ok(())
@@ -430,10 +441,7 @@ pub fn update_meeting_recording(
     )?;
 
     if rows == 0 {
-        return Err(DatabaseError::NotFound(format!(
-            "Meeting {} not found",
-            id
-        )));
+        return Err(DatabaseError::NotFound(format!("Meeting {} not found", id)));
     }
 
     Ok(())
@@ -442,10 +450,28 @@ pub fn update_meeting_recording(
 /// Delete a meeting and all its related data (feature tables + segments).
 pub fn delete_meeting(conn: &Connection, id: &str) -> Result<(), DatabaseError> {
     // Delete from feature tables first
-    conn.execute("DELETE FROM meeting_speakers WHERE meeting_id = ?1", params![id])?;
-    conn.execute("DELETE FROM meeting_bookmarks WHERE meeting_id = ?1", params![id])?;
-    conn.execute("DELETE FROM meeting_action_items WHERE meeting_id = ?1", params![id])?;
-    conn.execute("DELETE FROM meeting_topic_sections WHERE meeting_id = ?1", params![id])?;
+    conn.execute(
+        "DELETE FROM meeting_speakers WHERE meeting_id = ?1",
+        params![id],
+    )?;
+    conn.execute(
+        "DELETE FROM meeting_bookmarks WHERE meeting_id = ?1",
+        params![id],
+    )?;
+    // This table was added after the original meeting schema; tolerate an
+    // older database whose workspace migrations have not created it yet.
+    let _ = conn.execute(
+        "DELETE FROM meeting_document_scope WHERE meeting_id = ?1",
+        params![id],
+    );
+    conn.execute(
+        "DELETE FROM meeting_action_items WHERE meeting_id = ?1",
+        params![id],
+    )?;
+    conn.execute(
+        "DELETE FROM meeting_topic_sections WHERE meeting_id = ?1",
+        params![id],
+    )?;
     super::meeting_chat::delete_chat_messages(conn, id)?;
     // Cached translations of the transcript go with it.
     super::translation::delete_meeting_translations(conn, id)?;
@@ -458,10 +484,7 @@ pub fn delete_meeting(conn: &Connection, id: &str) -> Result<(), DatabaseError> 
 
     let rows = conn.execute("DELETE FROM meetings WHERE id = ?1", params![id])?;
     if rows == 0 {
-        return Err(DatabaseError::NotFound(format!(
-            "Meeting {} not found",
-            id
-        )));
+        return Err(DatabaseError::NotFound(format!("Meeting {} not found", id)));
     }
 
     Ok(())
@@ -497,8 +520,12 @@ pub fn search_meetings(
             duration_seconds: row.get(4)?,
             segment_count: row.get(5)?,
             has_summary: row.get::<_, i32>(6)? != 0,
-            audio_mode: row.get::<_, String>(7).unwrap_or_else(|_| "online".to_string()),
-            ai_scenario: row.get::<_, String>(8).unwrap_or_else(|_| "team_meeting".to_string()),
+            audio_mode: row
+                .get::<_, String>(7)
+                .unwrap_or_else(|_| "online".to_string()),
+            ai_scenario: row
+                .get::<_, String>(8)
+                .unwrap_or_else(|_| "team_meeting".to_string()),
             workspace_id: general_workspace(),
             has_recap: false,
         })
@@ -780,10 +807,7 @@ pub fn update_meeting_bookmark_note(
 }
 
 /// Delete a single bookmark.
-pub fn delete_meeting_bookmark(
-    conn: &Connection,
-    bookmark_id: &str,
-) -> Result<(), DatabaseError> {
+pub fn delete_meeting_bookmark(conn: &Connection, bookmark_id: &str) -> Result<(), DatabaseError> {
     conn.execute(
         "DELETE FROM meeting_bookmarks WHERE id = ?1",
         params![bookmark_id],
@@ -875,10 +899,7 @@ pub fn update_action_item_completed(
 }
 
 /// Delete a single action item.
-pub fn delete_action_item(
-    conn: &Connection,
-    item_id: &str,
-) -> Result<(), DatabaseError> {
+pub fn delete_action_item(conn: &Connection, item_id: &str) -> Result<(), DatabaseError> {
     conn.execute(
         "DELETE FROM meeting_action_items WHERE id = ?1",
         params![item_id],
@@ -964,7 +985,13 @@ mod tests {
         conn
     }
 
-    fn segment(meeting_id: &str, id: &str, text: &str, tag: Option<&str>, ts: i64) -> TranscriptSegment {
+    fn segment(
+        meeting_id: &str,
+        id: &str,
+        text: &str,
+        tag: Option<&str>,
+        ts: i64,
+    ) -> TranscriptSegment {
         TranscriptSegment {
             id: id.into(),
             meeting_id: meeting_id.into(),
@@ -984,18 +1011,39 @@ mod tests {
         let conn = db();
         migrations::run(&conn).unwrap(); // the v8 column migration is idempotent
         let meeting = create_meeting(&conn, "Sync").unwrap();
-        append_transcript_segment(&conn, &meeting.id, &segment(&meeting.id, "p1", "We ship", Some("S2"), 1)).unwrap();
-        append_transcript_segment(&conn, &meeting.id, &segment(&meeting.id, "p2", "Ok", None, 2)).unwrap();
+        append_transcript_segment(
+            &conn,
+            &meeting.id,
+            &segment(&meeting.id, "p1", "We ship", Some("S2"), 1),
+        )
+        .unwrap();
+        append_transcript_segment(
+            &conn,
+            &meeting.id,
+            &segment(&meeting.id, "p2", "Ok", None, 2),
+        )
+        .unwrap();
         // The paragraph grew after it was first saved: saving it again replaces it.
-        append_transcript_segment(&conn, &meeting.id, &segment(&meeting.id, "p1", "We ship on Friday", Some("S2"), 1)).unwrap();
+        append_transcript_segment(
+            &conn,
+            &meeting.id,
+            &segment(&meeting.id, "p1", "We ship on Friday", Some("S2"), 1),
+        )
+        .unwrap();
 
         let loaded = list_transcript_segments(&conn, &meeting.id).unwrap();
         assert_eq!(loaded.len(), 2);
-        assert_eq!((loaded[0].text.as_str(), loaded[0].speaker_tag.as_deref()), ("We ship on Friday", Some("S2")));
+        assert_eq!(
+            (loaded[0].text.as_str(), loaded[0].speaker_tag.as_deref()),
+            ("We ship on Friday", Some("S2"))
+        );
         assert_eq!(loaded[1].speaker_tag, None);
         let json = get_meeting(&conn, &meeting.id).unwrap().transcript;
         assert_eq!(json[0]["speaker_tag"], "S2");
-        assert!(json[1].get("speaker_tag").is_none(), "untagged lines omit the field");
+        assert!(
+            json[1].get("speaker_tag").is_none(),
+            "untagged lines omit the field"
+        );
     }
 
     #[test]
@@ -1009,7 +1057,11 @@ mod tests {
         let speakers = list_meeting_speakers(&conn, &meeting.id).unwrap();
         assert_eq!(speakers.len(), 1);
         assert_eq!(
-            (speakers[0].speaker_id.as_str(), speakers[0].display_name.as_str(), speakers[0].source.as_str()),
+            (
+                speakers[0].speaker_id.as_str(),
+                speakers[0].display_name.as_str(),
+                speakers[0].source.as_str()
+            ),
             ("them:S1", "Erin K", "remote_tag")
         );
     }
