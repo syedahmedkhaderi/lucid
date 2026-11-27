@@ -2672,6 +2672,59 @@ mod tests {
     }
 
     #[test]
+    fn meeting_fixture_resolves_all_five_hundred_account_records_exactly() {
+        let csv = include_str!("../../../test-data/meeting-eval/vendor-review/accounts.csv");
+        let normalized = crate::context::extract_csv_text(csv.as_bytes()).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE context_resources (id TEXT, name TEXT, file_type TEXT);
+             CREATE TABLE document_text (resource_id TEXT, text TEXT, status TEXT);
+             INSERT INTO context_resources VALUES ('fixture', 'accounts.csv', 'csv');",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO document_text VALUES ('fixture', ?1, 'ready')",
+            params![normalized],
+        )
+        .unwrap();
+        let scope = crate::workspace::EffectiveScope {
+            document_ids: vec!["fixture".into()],
+            ..Default::default()
+        };
+
+        for account_number in 1..=500 {
+            let id = format!("ACCT-{account_number:04}");
+            let found = exact_csv_lookup(
+                &conn,
+                &scope,
+                &format!("For account {id}, what are the contract details?"),
+            )
+            .unwrap();
+
+            assert_eq!(found.rows.len(), 1, "expected one exact row for {id}");
+            assert_eq!(found.rows[0].source_name, "accounts.csv");
+            assert_eq!(found.rows[0].row_number, account_number + 1);
+            assert!(
+                found.rows[0].text.contains(&format!("Account ID: {id}")),
+                "lookup for {id} returned a different record: {}",
+                found.rows[0].text
+            );
+        }
+
+        let target =
+            exact_csv_lookup(&conn, &scope, "For account ACCT0427, explain the risk").unwrap();
+        assert_eq!(target.rows.len(), 1);
+        assert_eq!(target.rows[0].row_number, 428);
+        assert!(target.rows[0].text.contains("Open Balance USD: 18420"));
+        assert!(target.rows[0].text.contains("Overdue >30 Days USD: 12600"));
+        assert!(target.rows[0].text.contains("Risk Score: 48"));
+        assert!(target.rows[0].text.contains("Risk Band: High"));
+        assert!(target.rows[0]
+            .text
+            .contains("Next Action: Weekly route-variance review"));
+    }
+
+    #[test]
     fn meeting_context_is_loaded_only_for_the_requested_meeting() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
