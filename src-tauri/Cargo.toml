@@ -55,7 +55,7 @@ ndarray = "0.17"  # Must match ort's ndarray version
 rustfft = "6"
 # WebRTC's echo canceller (AEC3), pure Rust: removes the other side's voice
 # that the microphone picks up from the speakers (src/audio/echo_cancel.rs).
-sonora = "0.2"
+sonora = "0.3"
 tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
 tar = "0.4"
 bzip2 = "0.6"
