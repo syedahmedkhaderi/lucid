@@ -22,6 +22,12 @@ Lucid is an active local-first desktop project. This document records current ha
 
 No Lucid-owned public security intake is configured yet. Do not send sensitive meeting data to the upstream NexQ issue tracker. For local evaluation, keep reports and reproduction material on the device until a private reporting channel is established.
 
+## Dependency scan (2026-11-27)
+
+- `npm audit --omit=dev`: 0 vulnerabilities.
+- `cargo-audit` 0.23.0 scanned `src-tauri/Cargo.lock`: 0 vulnerable packages after updating `cookie` 0.18.2 → 0.18.3, `url` 2.5.8 → 2.5.9, and `rustix` 1.1.5 → 1.1.6.
+- Nine non-vulnerability warnings remain: seven unmaintained crates, a yanked `async-executor` release, and an unsoundness advisory for `glib` 0.18.5 in the Linux-only GTK dependency tree. Linux is not a supported product target in this brief; Windows and macOS runtime validation remain outstanding.
+
 ## Release checks still required
 
 Run secret scanning, dependency review, updater-signing review, independent privacy-boundary review, and Windows/macOS permission tests before any distribution. The upstream NexQ updater endpoint must remain disabled until Lucid has its own signing key and release feed.
