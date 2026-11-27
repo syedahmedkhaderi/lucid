@@ -4,6 +4,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct CachedResource {
     pub text: String,
+    pub pages: Vec<String>,
     pub token_count: usize,
     pub loaded_at: String,
 }

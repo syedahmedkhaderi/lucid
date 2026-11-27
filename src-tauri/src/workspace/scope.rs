@@ -9,7 +9,7 @@
 use std::collections::{BTreeSet, HashSet};
 use std::hash::{Hash, Hasher};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use super::rules;
@@ -39,7 +39,11 @@ pub struct EffectiveScope {
 impl EffectiveScope {
     /// No filtering at all (workspaces unavailable, or no database).
     pub fn unrestricted() -> Self {
-        Self { home: GENERAL_ID.to_string(), unrestricted: true, ..Self::default() }
+        Self {
+            home: GENERAL_ID.to_string(),
+            unrestricted: true,
+            ..Self::default()
+        }
     }
 
     pub fn allows_document(&self, id: &str) -> bool {
@@ -93,24 +97,74 @@ pub enum ScopeOwner<'a> {
 pub fn scope_for(conn: &Connection, owner: ScopeOwner<'_>) -> Result<EffectiveScope, String> {
     match owner {
         ScopeOwner::Meeting(id) => {
-            let home = store::home_of(conn, id)?.unwrap_or_else(|| store::default_workspace_id(conn));
+            let home =
+                store::home_of(conn, id)?.unwrap_or_else(|| store::default_workspace_id(conn));
             let borrowed = store::borrowed_of(conn, id)?;
-            scope_for_home(conn, &home, &borrowed)
+            let mut scope = scope_for_home(conn, &home, &borrowed)?;
+            if let Some(selected) = selected_meeting_documents(conn, id)? {
+                let selected: HashSet<&str> = selected.iter().map(String::as_str).collect();
+                scope
+                    .document_ids
+                    .retain(|document| selected.contains(document.as_str()));
+            }
+            Ok(scope)
         }
         ScopeOwner::Chat(id) => {
             let home: String = conn
-                .query_row("SELECT workspace_id FROM workspace_chats WHERE id = ?1", params![id], |row| row.get(0))
+                .query_row(
+                    "SELECT workspace_id FROM workspace_chats WHERE id = ?1",
+                    params![id],
+                    |row| row.get(0),
+                )
                 .map_err(|e| format!("Couldn't find the chat: {e}"))?;
             scope_for_home(conn, &home, &[])
         }
     }
 }
 
+/// `None` means a legacy or shortcut-started meeting uses every document in
+/// its workspace scope. `Some([])` is an explicit choice to use no documents.
+fn selected_meeting_documents(
+    conn: &Connection,
+    meeting_id: &str,
+) -> Result<Option<Vec<String>>, String> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meeting_document_scope')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Couldn't check the meeting's document scope: {e}"))?;
+    if !exists {
+        return Ok(None);
+    }
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT selected_json FROM meeting_document_scope WHERE meeting_id = ?1",
+            params![meeting_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Couldn't read the meeting's document scope: {e}"))?;
+    raw.map(|json| {
+        serde_json::from_str(&json)
+            .map_err(|e| format!("The meeting's document scope is invalid: {e}"))
+    })
+    .transpose()
+}
+
 /// The scope of work filed in `home` that also uses `borrowed`.
-pub fn scope_for_home(conn: &Connection, home_id: &str, borrowed_ids: &[String]) -> Result<EffectiveScope, String> {
+pub fn scope_for_home(
+    conn: &Connection,
+    home_id: &str,
+    borrowed_ids: &[String],
+) -> Result<EffectiveScope, String> {
     // A meeting filed nowhere uses nothing: no material, no instructions, no borrowed workspace.
     if super::types::is_unfiled(home_id) {
-        return Ok(EffectiveScope { home: home_id.to_string(), ..EffectiveScope::default() });
+        return Ok(EffectiveScope {
+            home: home_id.to_string(),
+            ..EffectiveScope::default()
+        });
     }
     let home = store::find_workspace(conn, home_id)?
         .map(Ok)
@@ -134,7 +188,11 @@ pub fn scope_for_home(conn: &Connection, home_id: &str, borrowed_ids: &[String])
 }
 
 /// The material of `workspaces` with `home`'s instructions.
-fn material_scope(conn: &Connection, home: &Workspace, workspaces: Vec<String>) -> Result<EffectiveScope, String> {
+fn material_scope(
+    conn: &Connection,
+    home: &Workspace,
+    workspaces: Vec<String>,
+) -> Result<EffectiveScope, String> {
     let ids_json = serde_json::to_string(&workspaces).map_err(|e| e.to_string())?;
     let mut docs = BTreeSet::new();
     let mut folders = BTreeSet::new();
@@ -147,7 +205,9 @@ fn material_scope(conn: &Connection, home: &Workspace, workspaces: Vec<String>) 
             )
             .map_err(|e| format!("Couldn't read the workspace items: {e}"))?;
         let rows = stmt
-            .query_map(params![ids_json], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .query_map(params![ids_json], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
             .map_err(|e| e.to_string())?;
         for row in rows {
             let (kind, ref_id) = row.map_err(|e| e.to_string())?;
@@ -167,7 +227,9 @@ fn material_scope(conn: &Connection, home: &Workspace, workspaces: Vec<String>) 
                  ORDER BY sort, created_at",
             )
             .map_err(|e| format!("Couldn't read the talking points: {e}"))?;
-        let rows = stmt.query_map(params![ids_json], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![ids_json], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
         for row in rows {
             points.push(row.map_err(|e| e.to_string())?);
         }
@@ -197,13 +259,60 @@ mod tests {
         file(&conn, &a, "document", "doc-a");
         file(&conn, &a, "folder", "folder-a");
         file(&conn, &a, "server", "server-a");
-        conn.execute("INSERT INTO meetings (id, title, start_time, workspace_id) VALUES ('m', 't', 'x', ?1)", params![a]).unwrap();
+        conn.execute(
+            "INSERT INTO meetings (id, title, start_time, workspace_id) VALUES ('m', 't', 'x', ?1)",
+            params![a],
+        )
+        .unwrap();
         let scope = scope_for(&conn, ScopeOwner::Meeting("m")).unwrap();
         assert_eq!(scope.home, a);
         assert_eq!(scope.document_ids, vec!["doc-a"]);
         assert_eq!(scope.folder_ids, vec!["folder-a"]);
         assert_eq!(scope.server_ids, vec!["server-a"]);
         assert!(!scope.allows_document("doc-general"));
+    }
+
+    #[test]
+    fn a_meeting_uses_only_its_explicitly_selected_documents() {
+        let conn = memory_db();
+        let a = new_ws(&conn, "A", false, false);
+        file(&conn, &a, "document", "doc-a");
+        file(&conn, &a, "document", "doc-b");
+        conn.execute(
+            "INSERT INTO meetings (id, title, start_time, workspace_id) VALUES ('m', 't', 'x', ?1)",
+            params![a],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_document_scope (meeting_id, selected_json, updated_at) VALUES ('m', '[\"doc-b\"]', 1)",
+            [],
+        )
+        .unwrap();
+
+        let scope = scope_for(&conn, ScopeOwner::Meeting("m")).unwrap();
+        assert_eq!(scope.document_ids, vec!["doc-b"]);
+        assert!(!scope.allows_document("doc-a"));
+    }
+
+    #[test]
+    fn an_explicit_empty_meeting_document_selection_uses_no_documents() {
+        let conn = memory_db();
+        let a = new_ws(&conn, "A", false, false);
+        file(&conn, &a, "document", "doc-a");
+        conn.execute(
+            "INSERT INTO meetings (id, title, start_time, workspace_id) VALUES ('m', 't', 'x', ?1)",
+            params![a],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_document_scope (meeting_id, selected_json, updated_at) VALUES ('m', '[]', 1)",
+            [],
+        )
+        .unwrap();
+
+        let scope = scope_for(&conn, ScopeOwner::Meeting("m")).unwrap();
+        assert!(scope.document_ids.is_empty());
+        assert!(!scope.allows_document("doc-a"));
     }
 
     #[test]
@@ -214,9 +323,16 @@ mod tests {
         file(&conn, &a, "document", "doc-a");
         let scope = scope_for_home(&conn, &a, &[]).unwrap();
         assert_eq!(scope.document_ids, vec!["doc-a", "doc-general"]);
-        assert_eq!(scope.material_workspaces, vec![a.clone(), "general".to_string()]);
+        assert_eq!(
+            scope.material_workspaces,
+            vec![a.clone(), "general".to_string()]
+        );
         // Kept separate: the flag is ignored and General is out.
-        conn.execute("UPDATE workspaces SET keep_separate = 1 WHERE id = ?1", params![a]).unwrap();
+        conn.execute(
+            "UPDATE workspaces SET keep_separate = 1 WHERE id = ?1",
+            params![a],
+        )
+        .unwrap();
         let scope = scope_for_home(&conn, &a, &[]).unwrap();
         assert_eq!(scope.document_ids, vec!["doc-a"]);
     }
@@ -228,14 +344,31 @@ mod tests {
         let b = new_ws(&conn, "B", false, false);
         file(&conn, &a, "document", "doc-a");
         file(&conn, &b, "document", "doc-b");
-        conn.execute("UPDATE workspaces SET instructions = 'only A' WHERE id = ?1", params![a]).unwrap();
-        conn.execute("UPDATE workspaces SET instructions = 'only B' WHERE id = ?1", params![b]).unwrap();
-        conn.execute("INSERT INTO meetings (id, title, start_time, workspace_id) VALUES ('m', 't', 'x', ?1)", params![a]).unwrap();
-        conn.execute("INSERT INTO meeting_borrowed (meeting_id, workspace_id, added_at) VALUES ('m', ?1, 1)", params![b]).unwrap();
+        conn.execute(
+            "UPDATE workspaces SET instructions = 'only A' WHERE id = ?1",
+            params![a],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE workspaces SET instructions = 'only B' WHERE id = ?1",
+            params![b],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meetings (id, title, start_time, workspace_id) VALUES ('m', 't', 'x', ?1)",
+            params![a],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO meeting_borrowed (meeting_id, workspace_id, added_at) VALUES ('m', ?1, 1)",
+            params![b],
+        )
+        .unwrap();
         let scope = scope_for(&conn, ScopeOwner::Meeting("m")).unwrap();
         assert_eq!(scope.document_ids, vec!["doc-a", "doc-b"]);
         assert_eq!(scope.instructions, "only A");
-        conn.execute("UPDATE meeting_borrowed SET removed_at = 5", []).unwrap();
+        conn.execute("UPDATE meeting_borrowed SET removed_at = 5", [])
+            .unwrap();
         let scope = scope_for(&conn, ScopeOwner::Meeting("m")).unwrap();
         assert_eq!(scope.document_ids, vec!["doc-a"]);
     }

@@ -103,12 +103,12 @@ function App() {
       const { provider } = useTranslationStore.getState();
       if (provider) {
         try {
-          const { setTranslationProvider, getApiKey } = await import("./lib/ipc");
-          // Microsoft needs region to authenticate — load from credential store
+          const { setTranslationProvider, getCredentialSetting } = await import("./lib/ipc");
+          // Microsoft needs a region setting, which contains no credential.
           let region: string | undefined;
           if (provider === "microsoft") {
             try {
-              region = (await getApiKey("translation_microsoft_region")) || undefined;
+              region = (await getCredentialSetting("translation_microsoft_region")) || undefined;
             } catch { /* region not stored yet */ }
           }
           await setTranslationProvider(provider, region).catch(() => {});

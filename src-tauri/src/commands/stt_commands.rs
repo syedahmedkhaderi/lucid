@@ -94,7 +94,13 @@ pub async fn set_stt_provider(app: AppHandle, provider: String) -> Result<(), St
 
 /// Test whether a given STT provider is available and configured correctly.
 #[command]
-pub async fn test_stt_connection(app: AppHandle, provider: String) -> Result<bool, String> {
+pub async fn test_stt_connection(
+    app: AppHandle,
+    provider: String,
+    api_key: Option<String>,
+    replace_saved_key: bool,
+    region: Option<String>,
+) -> Result<bool, String> {
     let provider_type = STTProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown STT provider: {}", provider))?;
     crate::privacy::ensure_stt_allowed(&provider_type)?;
@@ -122,7 +128,8 @@ pub async fn test_stt_connection(app: AppHandle, provider: String) -> Result<boo
         .lock()
         .map_err(|_| "STT state lock poisoned".to_string())?;
 
-    // Load API keys from credentials before testing
+    // Load saved API keys before testing. A typed replacement is only held
+    // for the duration of this probe and is written after a successful test.
     if let Some(ref cred_arc) = state.credentials {
         if let Ok(cred) = cred_arc.lock() {
             match provider_type {
@@ -169,10 +176,115 @@ pub async fn test_stt_connection(app: AppHandle, provider: String) -> Result<boo
         }
     }
 
+    if replace_saved_key {
+        let typed_key = api_key.as_deref().unwrap_or("");
+        match provider_type {
+            STTProviderType::Deepgram => router.set_deepgram_api_key(typed_key),
+            STTProviderType::WhisperApi => {
+                if let Some(ref cred_arc) = state.credentials {
+                    if let Ok(cred) = cred_arc.lock() {
+                        load_whisper_api_credentials_with_override(
+                            &mut router,
+                            &cred,
+                            Some(typed_key),
+                            true,
+                        );
+                    }
+                }
+            }
+            STTProviderType::AzureSpeech => router.set_azure_speech_key(typed_key),
+            STTProviderType::GroqWhisper => router.set_groq_whisper_api_key(typed_key),
+            STTProviderType::Cartesia => router.set_cartesia_api_key(typed_key),
+            STTProviderType::GeminiLive => router.set_gemini_live_api_key(typed_key),
+            STTProviderType::AzureMaiStreaming
+            | STTProviderType::WindowsNative
+            | STTProviderType::WhisperCpp
+            | STTProviderType::WebSpeech
+            | STTProviderType::SherpaOnnx
+            | STTProviderType::OrtStreaming
+            | STTProviderType::ParakeetTdt => {}
+        }
+    }
+    if provider_type == STTProviderType::AzureSpeech {
+        if let Some(region) = region.as_deref().filter(|value| !value.trim().is_empty()) {
+            router.set_azure_speech_region(region.trim());
+        }
+    }
+
     let result = tokio::task::block_in_place(|| {
         let rt = tokio::runtime::Handle::current();
         rt.block_on(async { router.test_provider_connection(&provider_type).await })
-    })?;
+    });
+
+    if !matches!(result, Ok(true)) && replace_saved_key {
+        if let Some(credentials) = state.credentials.as_ref() {
+            if let Ok(credentials) = credentials.lock() {
+                restore_test_provider_credentials(&mut router, &credentials, provider_type.clone());
+            }
+        }
+    }
+    let result = result?;
+
+    if result {
+        if replace_saved_key {
+            let slot = match provider_type {
+                STTProviderType::Deepgram => Some("deepgram"),
+                STTProviderType::WhisperApi => {
+                    let credentials = state.credentials.as_ref();
+                    credentials.and_then(|credentials| {
+                        let credentials = credentials.lock().ok()?;
+                        let base = credentials
+                            .get_key(crate::stt::whisper_api::BASE_URL_CREDENTIAL_KEY)
+                            .ok()
+                            .flatten();
+                        let model = credentials
+                            .get_key(crate::stt::whisper_api::MODEL_CREDENTIAL_KEY)
+                            .ok()
+                            .flatten();
+                        let (base, _) = crate::stt::whisper_api::resolve_endpoint(
+                            base.as_deref(),
+                            model.as_deref(),
+                        )
+                        .ok()?;
+                        Some(if base == crate::stt::whisper_api::DEFAULT_BASE_URL {
+                            crate::stt::whisper_api::OPENAI_KEY_CREDENTIAL_KEY
+                        } else {
+                            crate::stt::whisper_api::CUSTOM_KEY_CREDENTIAL_KEY
+                        })
+                    })
+                }
+                STTProviderType::AzureSpeech => Some("azure_speech"),
+                STTProviderType::GroqWhisper => Some("groq_whisper"),
+                STTProviderType::Cartesia => Some("cartesia"),
+                STTProviderType::GeminiLive => Some("gemini_transcribe_live"),
+                _ => None,
+            };
+            if let (Some(slot), Some(credentials)) = (slot, state.credentials.as_ref()) {
+                let credentials = credentials
+                    .lock()
+                    .map_err(|_| "Credential store lock poisoned".to_string())?;
+                if let Some(key) = api_key.as_deref().filter(|key| !key.trim().is_empty()) {
+                    if let Err(error) = credentials.store_key(slot, key.trim()) {
+                        restore_test_provider_credentials(&mut router, &credentials, provider_type);
+                        return Err(error);
+                    }
+                } else {
+                    if let Err(error) = credentials.delete_key(slot) {
+                        restore_test_provider_credentials(&mut router, &credentials, provider_type);
+                        return Err(error);
+                    }
+                }
+            }
+        }
+        if provider_type == STTProviderType::AzureSpeech {
+            if let (Some(region), Some(credentials)) = (region.as_deref(), state.credentials.as_ref()) {
+                let credentials = credentials
+                    .lock()
+                    .map_err(|_| "Credential store lock poisoned".to_string())?;
+                credentials.store_key("azure_speech_region", region.trim())?;
+            }
+        }
+    }
 
     Ok(result)
 }
@@ -184,6 +296,15 @@ fn load_whisper_api_credentials(
     router: &mut crate::stt::STTRouter,
     cred: &crate::credentials::CredentialManager,
 ) {
+    load_whisper_api_credentials_with_override(router, cred, None, false);
+}
+
+fn load_whisper_api_credentials_with_override(
+    router: &mut crate::stt::STTRouter,
+    cred: &crate::credentials::CredentialManager,
+    replacement: Option<&str>,
+    replace_saved_key: bool,
+) {
     use crate::stt::whisper_api as w;
     let get = |key: &str| {
         cred.get_key(key)
@@ -191,12 +312,65 @@ fn load_whisper_api_credentials(
             .flatten()
             .filter(|v| !v.trim().is_empty())
     };
+    let mut openai_key = get(w::OPENAI_KEY_CREDENTIAL_KEY);
+    let mut custom_key = get(w::CUSTOM_KEY_CREDENTIAL_KEY);
+    let base_url = get(w::BASE_URL_CREDENTIAL_KEY);
+    let model = get(w::MODEL_CREDENTIAL_KEY);
+    if replace_saved_key {
+        let is_custom = w::resolve_endpoint(base_url.as_deref(), model.as_deref())
+            .map(|(base, _)| base != w::DEFAULT_BASE_URL)
+            .unwrap_or(false);
+        let replacement = replacement
+            .filter(|key| !key.trim().is_empty())
+            .map(str::to_string);
+        if is_custom {
+            custom_key = replacement;
+        } else {
+            openai_key = replacement;
+        }
+    }
     router.set_whisper_api_config(
-        get(w::OPENAI_KEY_CREDENTIAL_KEY).as_deref(),
-        get(w::CUSTOM_KEY_CREDENTIAL_KEY).as_deref(),
-        get(w::BASE_URL_CREDENTIAL_KEY).as_deref(),
-        get(w::MODEL_CREDENTIAL_KEY).as_deref(),
+        openai_key.as_deref(),
+        custom_key.as_deref(),
+        base_url.as_deref(),
+        model.as_deref(),
     );
+}
+
+fn restore_test_provider_credentials(
+    router: &mut crate::stt::STTRouter,
+    cred: &crate::credentials::CredentialManager,
+    provider: STTProviderType,
+) {
+    let get = |slot: &str| cred.get_key(slot).ok().flatten();
+    match provider {
+        STTProviderType::Deepgram => {
+            router.set_deepgram_api_key(get("deepgram").as_deref().unwrap_or(""));
+        }
+        STTProviderType::WhisperApi => load_whisper_api_credentials(router, cred),
+        STTProviderType::AzureSpeech => {
+            router.set_azure_speech_key(get("azure_speech").as_deref().unwrap_or(""));
+            router.set_azure_speech_region(
+                get("azure_speech_region").as_deref().unwrap_or(""),
+            );
+        }
+        STTProviderType::GroqWhisper => {
+            router.set_groq_whisper_api_key(get("groq_whisper").as_deref().unwrap_or(""));
+        }
+        STTProviderType::Cartesia => {
+            router.set_cartesia_api_key(get("cartesia").as_deref().unwrap_or(""));
+        }
+        STTProviderType::GeminiLive => {
+            router.set_gemini_live_api_key(get("gemini_transcribe_live").as_deref().unwrap_or(""));
+        }
+        STTProviderType::AzureMaiStreaming
+        | STTProviderType::WindowsNative
+        | STTProviderType::WhisperCpp
+        | STTProviderType::WebSpeech
+        | STTProviderType::SherpaOnnx
+        | STTProviderType::OrtStreaming
+        | STTProviderType::ParakeetTdt => {}
+    }
 }
 
 /// Read Azure MAI credentials directly from secure storage. There is

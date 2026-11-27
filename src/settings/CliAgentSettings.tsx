@@ -13,7 +13,7 @@ import {
   updateCommand,
   updateShell,
 } from "../lib/agentUsage";
-import { getApiKey, listModels, openCliLoginTerminal } from "../lib/ipc";
+import { listModels, openCliLoginTerminal } from "../lib/ipc";
 import { ProviderLogo } from "../components/icons/ProviderLogos";
 import {
   CLAUDE_EFFORT_VALUES,
@@ -780,8 +780,7 @@ function FallbackSettings({ agent }: { agent: CliAgentInfo }) {
     setLoading(true);
     (async () => {
       try {
-        const key = await getApiKey(provider).catch(() => null);
-        const list = await listModels(JSON.stringify({ provider_type: provider, ...(key && { api_key: key }) }));
+        const list = await listModels(JSON.stringify({ provider_type: provider }));
         if (!cancelled) setModels(list.map((m) => m.id));
       } catch {
         // No list (server down, no key): the saved model and the default stay available.

@@ -118,7 +118,18 @@ pub fn replace_source(
             ])?;
         }
     }
-    upsert_source(conn, kind, ref_id, sub_ref.unwrap_or(""), content_hash, mtime, size, "ok", None)
+    super::facts::replace_for_passages(conn, kind, ref_id, sub_ref, passages, content_hash)?;
+    upsert_source(
+        conn,
+        kind,
+        ref_id,
+        sub_ref.unwrap_or(""),
+        content_hash,
+        mtime,
+        size,
+        "ok",
+        None,
+    )
 }
 
 /// Remove everything indexed for a reference: all passages, all source rows
@@ -126,7 +137,8 @@ pub fn replace_source(
 /// document, folder or talking point is deleted.
 pub fn remove_ref(conn: &Connection, kind: PassageKind, ref_id: &str) -> rusqlite::Result<()> {
     // The one purge (passages, embeddings, source rows, a meeting's card).
-    crate::workspace::purge::purge_search_rows(conn, kind.as_str(), ref_id).map_err(rusqlite::Error::InvalidParameterName)
+    crate::workspace::purge::purge_search_rows(conn, kind.as_str(), ref_id)
+        .map_err(rusqlite::Error::InvalidParameterName)
 }
 
 /// Public hook for `delete_meeting`: passages, source rows and the card.
@@ -205,7 +217,11 @@ pub fn counts(conn: &Connection, kind: PassageKind, ref_id: &str) -> rusqlite::R
 }
 
 /// Update only the title of a meeting's passages (rename).
-pub fn rename_meeting_passages(conn: &Connection, meeting_id: &str, title: &str) -> rusqlite::Result<()> {
+pub fn rename_meeting_passages(
+    conn: &Connection,
+    meeting_id: &str,
+    title: &str,
+) -> rusqlite::Result<()> {
     conn.execute(
         "UPDATE search_passages SET title = ?2 WHERE kind = 'transcript' AND ref_id = ?1 AND title != ?2",
         params![meeting_id, title],
@@ -230,17 +246,34 @@ mod tests {
     #[test]
     fn replace_then_remove_leaves_nothing_behind() {
         let conn = mem_db();
-        let p = build_text_passages(PassageKind::Document, "d1", None, "Doc", "alpha beta gamma", None);
+        let p = build_text_passages(
+            PassageKind::Document,
+            "d1",
+            None,
+            "Doc",
+            "alpha beta gamma",
+            None,
+        );
         replace_source(&conn, PassageKind::Document, "d1", None, &p, "h1", 0, 16).unwrap();
         assert_eq!(counts(&conn, PassageKind::Document, "d1").unwrap(), (1, 1));
         // replacing does not duplicate
         replace_source(&conn, PassageKind::Document, "d1", None, &p, "h2", 0, 16).unwrap();
         assert_eq!(counts(&conn, PassageKind::Document, "d1").unwrap(), (1, 1));
-        assert_eq!(get_source(&conn, PassageKind::Document, "d1", "").unwrap().unwrap().content_hash, "h2");
+        assert_eq!(
+            get_source(&conn, PassageKind::Document, "d1", "")
+                .unwrap()
+                .unwrap()
+                .content_hash,
+            "h2"
+        );
         remove_ref(&conn, PassageKind::Document, "d1").unwrap();
         assert_eq!(counts(&conn, PassageKind::Document, "d1").unwrap(), (0, 0));
         let fts: i64 = conn
-            .query_row("SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'alpha'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH 'alpha'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(fts, 0);
     }

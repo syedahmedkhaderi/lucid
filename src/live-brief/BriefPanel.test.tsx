@@ -8,7 +8,6 @@ const hits = vi.hoisted(() => ({ list: [] as unknown[] }));
 vi.mock("../lib/ipc", () => ({
   getAutomaticModel: async () => null,
   cliAgentStatus: async () => null,
-  getApiKey: async () => null,
   getLLMProviders: async () => [],
   listModels: async () => [],
   cliAgentModels: async () => [],
@@ -26,7 +25,7 @@ const calls = vi.hoisted(() => [] as string[]);
 const sheet = (over: Partial<BriefSheet> = {}): BriefSheet => ({
   now: "Pricing for the Berlin launch",
   facts: [
-    { text: "The Berlin plan was set at 40k in March.", source: "Launch notes", passage_id: 7, sources: [{ kind: "transcript", ref_id: "m-old", sub_ref: null, title: "Launch notes", start_ms: 5000 }] },
+    { text: "The Berlin plan was set at 40k in March.", evidence: "The Berlin plan was set at 40k in March.", source: "Launch notes", passage_id: 7, sources: [{ kind: "transcript", ref_id: "m-old", sub_ref: null, title: "Launch notes", start_ms: 5000 }] },
     { text: "Support is covered by Omar.", source: "Weekly sync, 3 Mar", passage_id: 9 },
   ],
   earlier: ["Hiring timeline", "Venue options"],
@@ -75,6 +74,14 @@ describe("BriefPanel", () => {
     const earlier = screen.getByText(/Earlier points \(2\)/).closest("details")!;
     expect(earlier.open).toBe(false);
     expect(screen.getByText(/Answers use this brief/)).toBeInTheDocument();
+  });
+
+  it("shows the exact source excerpt when the evidence disclosure opens", async () => {
+    seed();
+    render(<BriefPanel />);
+    expect(screen.getByText("The Berlin plan was set at 40k in March.", { selector: "blockquote" })).not.toBeVisible();
+    await userEvent.click(screen.getByText("See evidence"));
+    expect(screen.getByText("The Berlin plan was set at 40k in March.", { selector: "blockquote" })).toBeInTheDocument();
   });
 
   it("shows at most six facts and never renders markup from the model", () => {

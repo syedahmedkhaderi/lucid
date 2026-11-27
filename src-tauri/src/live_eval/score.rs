@@ -6,7 +6,9 @@
 //! `check_invariants`, not by the reducer that enforces them), and support
 //! (how much of what the model wrote is grounded in the transcript or passage).
 
-use crate::live_brief::sheet::{parse_sheet, unsupported, FactDrop, SentPassage};
+use crate::live_brief::sheet::{
+    evidence_in_passage, parse_sheet, unsupported, FactDrop, SentPassage,
+};
 use crate::live_common::{content_terms, parse_clock};
 use crate::live_eval::scripted::Lang;
 use crate::live_notes::doc::{strip_tags, NoteDoc};
@@ -38,7 +40,11 @@ pub fn transcript(lang: Lang) -> Vec<TranscriptLine> {
             let t = p.next().unwrap_or("");
             let speaker = p.next().unwrap_or("").to_string();
             let text = p.next().unwrap_or("").to_string();
-            TranscriptLine { ms: parse_clock(t).unwrap_or(0), speaker, text }
+            TranscriptLine {
+                ms: parse_clock(t).unwrap_or(0),
+                speaker,
+                text,
+            }
         })
         .collect()
 }
@@ -104,7 +110,13 @@ pub fn brief_passages(lang: Lang) -> Vec<SentPassage> {
     [a, b, c]
         .iter()
         .enumerate()
-        .map(|(i, t)| SentPassage { label: format!("P{}", i + 1), id: format!("doc:{}#0", i + 1), title: titles[i].to_string(), text: t.to_string(), start_ms: None })
+        .map(|(i, t)| SentPassage {
+            label: format!("P{}", i + 1),
+            id: format!("doc:{}#0", i + 1),
+            title: titles[i].to_string(),
+            text: t.to_string(),
+            start_ms: None,
+        })
         .collect()
 }
 
@@ -134,14 +146,19 @@ impl NotesScore {
 }
 
 fn numbers_of(s: &str) -> HashSet<String> {
-    crate::live_brief::sheet::numbers_in(s).into_iter().collect()
+    crate::live_brief::sheet::numbers_in(s)
+        .into_iter()
+        .collect()
 }
 
 /// Runs one model output over a transcript the way the engine does and scores it.
 pub fn score_notes(lines: &[TranscriptLine], raw: &str, before: &NoteDoc) -> (NoteDoc, NotesScore) {
     let from = lines.first().map(|l| l.ms / 1000 * 1000).unwrap_or(0);
     let to = lines.last().map(|l| l.ms).unwrap_or(0).max(from);
-    let ctx = ReduceCtx { range_start_ms: from, range_end_ms: to };
+    let ctx = ReduceCtx {
+        range_start_ms: from,
+        range_end_ms: to,
+    };
     let limits = ReduceLimits::default();
     let parsed = parse_ops(raw);
     let ok = parsed.mode != ParseMode::None || parsed.explicit_empty;
@@ -150,7 +167,11 @@ pub fn score_notes(lines: &[TranscriptLine], raw: &str, before: &NoteDoc) -> (No
     let report = apply_ops(&mut doc, parsed.ops, ctx, &limits);
     let violations = check_invariants(before, &doc, ctx, &limits);
 
-    let all: String = lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join(" ");
+    let all: String = lines
+        .iter()
+        .map(|l| l.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
     let terms: HashSet<String> = content_terms(&all).into_iter().collect();
     let nums = numbers_of(&all);
     let mut new_blocks = 0;
@@ -159,7 +180,11 @@ pub fn score_notes(lines: &[TranscriptLine], raw: &str, before: &NoteDoc) -> (No
         new_blocks += 1;
         let plain = strip_tags(&b.text);
         let bt = content_terms(&plain);
-        let ratio = if bt.is_empty() { 1.0 } else { bt.iter().filter(|t| terms.contains(*t)).count() as f32 / bt.len() as f32 };
+        let ratio = if bt.is_empty() {
+            1.0
+        } else {
+            bt.iter().filter(|t| terms.contains(*t)).count() as f32 / bt.len() as f32
+        };
         let nums_ok = numbers_of(&plain).iter().all(|n| nums.contains(n));
         if ratio >= 0.5 && nums_ok {
             supported += 1;
@@ -211,7 +236,18 @@ pub fn score_brief(raw: &str, sent: &[SentPassage]) -> BriefScore {
     let unsup = r
         .dropped
         .iter()
-        .filter(|(_, why)| matches!(why, FactDrop::NoSource | FactDrop::UnknownSource | FactDrop::NumberNotInPassage | FactDrop::NameNotInPassage))
+        .filter(|(_, why)| {
+            matches!(
+                why,
+                FactDrop::NoSource
+                    | FactDrop::UnknownSource
+                    | FactDrop::NumberNotInPassage
+                    | FactDrop::NameNotInPassage
+                    | FactDrop::EvidenceMissing
+                    | FactDrop::EvidenceNotInPassage
+                    | FactDrop::ClaimNotAlignedWithEvidence
+            )
+        })
         .count();
     let (shown, bad) = match &r.sheet {
         Some(s) => {
@@ -219,7 +255,10 @@ pub fn score_brief(raw: &str, sent: &[SentPassage]) -> BriefScore {
                 .facts
                 .iter()
                 .filter(|f| match sent.iter().find(|p| p.label == f.source) {
-                    Some(p) => unsupported(&f.text, &p.text).is_some(),
+                    Some(p) => {
+                        !evidence_in_passage(&f.evidence, &p.text)
+                            || unsupported(&f.text, &f.evidence).is_some()
+                    }
                     None => true,
                 })
                 .count();
@@ -227,20 +266,35 @@ pub fn score_brief(raw: &str, sent: &[SentPassage]) -> BriefScore {
         }
         None => (0, 0),
     };
-    BriefScore { parsed: r.sheet.is_some(), facts_in_answer: shown + unsup, facts_shown: shown, dropped_unsupported: unsup, shown_unsupported: bad }
+    BriefScore {
+        parsed: r.sheet.is_some(),
+        facts_in_answer: shown + unsup,
+        facts_shown: shown,
+        dropped_unsupported: unsup,
+        shown_unsupported: bad,
+    }
 }
 
 /// A readable table of every fixture, printed by the eval tests.
 pub fn report() -> String {
     use crate::live_eval::scripted::ALL_LANGS;
-    let mut out = String::from("notes: lang size mode ops applied dropped(parse/rules) violations support\n");
+    let mut out =
+        String::from("notes: lang size mode ops applied dropped(parse/rules) violations support\n");
     for lang in ALL_LANGS {
         let lines = transcript(lang);
         for size in SIZES {
             let (_, s) = score_notes(&lines, notes_output(lang, size), &NoteDoc::new());
             out.push_str(&format!(
                 "  {:?} {:6} {:?} ops={} applied={} dropped={}/{} violations={} support={:.2}\n",
-                lang, size, s.mode, s.ops, s.applied, s.dropped_unparsed, s.dropped_by_rules, s.violations.len(), s.support_rate()
+                lang,
+                size,
+                s.mode,
+                s.ops,
+                s.applied,
+                s.dropped_unparsed,
+                s.dropped_by_rules,
+                s.violations.len(),
+                s.support_rate()
             ));
         }
     }

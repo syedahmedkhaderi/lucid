@@ -32,7 +32,7 @@ The result: the AI can reference your documents when generating responses, makin
 | Plain Text | `.txt` | Any plain text file |
 | Markdown | `.md` | Markdown formatted documents |
 
-Each file must be non-empty and no larger than 50 MB. A workspace can contain up to ten document entries and 500 MiB total source-file size; these are workspace-wide limits, not separate limits for each meeting. Legacy `.doc` and `.ppt` files and OCR for scanned PDFs are not supported.
+Each file must be non-empty and no larger than 50 MB. A workspace can contain up to ten document entries and 500 MiB total source-file size. A meeting can select up to ten documents across its home, borrowed, and included General workspace scope. Legacy `.doc` and `.ppt` files and OCR for scanned PDFs are not supported. Search and chat citations for Library-uploaded, text based PDFs include the source page number when page extraction succeeds; clicking a citation opens the document in the Library.
 
 ## Loading Documents
 
@@ -66,6 +66,8 @@ When the AI needs context during a meeting, Lucid searches your indexed document
 - **Hybrid mode** -- combines both methods for the best results (default)
 
 The top matching chunks are included in the AI prompt, limited by the token budget. In a live answer they are handed to the model as data: each excerpt is fenced, numbered as a source so an answer can cite it, and the prompt says that text inside is never an instruction.
+
+Workspace chat also keeps a local source-fact cache for a limited set of explicitly labeled values, such as `Budget: QAR 50,000`, quantities, measurements, ISO dates, supplier names, model identifiers, materials, payment terms, and obligations. A cache entry keeps the exact quote, source and page/time location, indexed document hash, and extraction method. When a question names one of the supported attributes, matching entries from that chat's current workspace scope are added as cited evidence. Conflicting values for the same captured subject and conditions are flagged. A narrow, precise numeric/date lookup can return directly from the local cache without a generation request when exactly one cited source, subject, value, and condition set match. Broader or ambiguous questions and text-field lookups use the normal model path. These are source-exact candidates, not semantically verified facts; they do not cover unlabeled prose.
 
 ## Live answers and workspace chat
 

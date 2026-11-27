@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use uuid::Uuid;
 
-use resource_cache::{CachedResource, ResourceCache};
 use crate::workspace::runtime::ScopedContext;
 use crate::workspace::EffectiveScope;
+use resource_cache::{CachedResource, ResourceCache};
 use token_counter::{count_tokens, BudgetResource, TokenBudget};
 
 /// A loaded context resource (mirrors the TS ContextResource type).
@@ -59,7 +59,15 @@ pub const NOTE_TYPE: &str = "note";
 pub fn note_title(title: &str, markdown: &str) -> String {
     let one_line = |s: &str| -> String {
         let cleaned = crate::prompt_data::strip_hidden(s);
-        cleaned.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect::<String>().trim().to_string()
+        cleaned
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(80)
+            .collect::<String>()
+            .trim()
+            .to_string()
     };
     let given = one_line(title);
     if !given.is_empty() {
@@ -83,7 +91,13 @@ pub fn file_stem(title: &str) -> String {
     let cleaned = crate::prompt_data::strip_hidden(title.trim());
     let mapped: String = cleaned
         .chars()
-        .map(|c| if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control() { '_' } else { c })
+        .map(|c| {
+            if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
         .take(80)
         .collect();
     let stem = mapped.trim().trim_end_matches(['.', ' ']).to_string();
@@ -92,7 +106,12 @@ pub fn file_stem(title: &str) -> String {
     }
     let upper = stem.split('.').next().unwrap_or("").trim().to_uppercase();
     let reserved = matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || ((upper.starts_with("COM") || upper.starts_with("LPT")) && upper.len() == 4 && upper.chars().last().is_some_and(|d| ('1'..='9').contains(&d)));
+        || ((upper.starts_with("COM") || upper.starts_with("LPT"))
+            && upper.len() == 4
+            && upper
+                .chars()
+                .last()
+                .is_some_and(|d| ('1'..='9').contains(&d)));
     if reserved {
         format!("_{stem}")
     } else {
@@ -106,8 +125,14 @@ mod file_stem_tests {
 
     #[test]
     fn real_writing_keeps_its_joiners_and_vowel_signs() {
-        assert_eq!(file_stem("\u{645}\u{6cc}\u{200c}\u{62e}\u{648}\u{627}\u{647}\u{645}"), "\u{645}\u{6cc}\u{200c}\u{62e}\u{648}\u{627}\u{647}\u{645}");
-        assert_eq!(file_stem("\u{915}\u{94d}\u{200d}\u{937} \u{928}\u{94b}\u{91f}"), "\u{915}\u{94d}\u{200d}\u{937} \u{928}\u{94b}\u{91f}");
+        assert_eq!(
+            file_stem("\u{645}\u{6cc}\u{200c}\u{62e}\u{648}\u{627}\u{647}\u{645}"),
+            "\u{645}\u{6cc}\u{200c}\u{62e}\u{648}\u{627}\u{647}\u{645}"
+        );
+        assert_eq!(
+            file_stem("\u{915}\u{94d}\u{200d}\u{937} \u{928}\u{94b}\u{91f}"),
+            "\u{915}\u{94d}\u{200d}\u{937} \u{928}\u{94b}\u{91f}"
+        );
         assert_eq!(file_stem("Q3 plan (draft), v2"), "Q3 plan (draft), v2");
     }
 
@@ -233,8 +258,8 @@ impl ContextManager {
         let dest_filename = format!("{}_{}", resource_id, file_name);
         let dest_path = self.context_dir.join(&dest_filename);
 
-        let mut source = fs::File::open(source_path)
-            .map_err(|e| format!("Failed to open file: {}", e))?;
+        let mut source =
+            fs::File::open(source_path).map_err(|e| format!("Failed to open file: {}", e))?;
         let mut dest = fs::File::create(&dest_path)
             .map_err(|e| format!("Failed to copy file to context directory: {}", e))?;
         let copied = std::io::copy(
@@ -252,18 +277,12 @@ impl ContextManager {
         }
 
         // Get file size
-        let size_bytes = fs::metadata(&dest_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let size_bytes = fs::metadata(&dest_path).map(|m| m.len()).unwrap_or(0);
 
         // Extract text based on file type — clean up copied file on failure
         let text = match file_type {
-            "pdf" => pdf_extractor::extract_text_from_pdf(
-                dest_path.to_str().unwrap_or(file_path),
-            ),
-            "txt" | "md" => file_loader::load_text_file(
-                dest_path.to_str().unwrap_or(file_path),
-            ),
+            "pdf" => pdf_extractor::extract_text_from_pdf(dest_path.to_str().unwrap_or(file_path)),
+            "txt" | "md" => file_loader::load_text_file(dest_path.to_str().unwrap_or(file_path)),
             "docx" => crate::rag::file_processor::extract_docx_text(
                 dest_path.to_str().unwrap_or(file_path),
             ),
@@ -274,6 +293,24 @@ impl ContextManager {
             let _ = fs::remove_file(&dest_path);
             e
         })?;
+        let pages = if file_type == "pdf" {
+            match pdf_extractor::extract_pdf_pages_from_pdf(
+                dest_path.to_str().unwrap_or(file_path),
+                crate::workspace_search::passages::MAX_SOURCE_CHARS,
+            ) {
+                Ok(pages) => pages,
+                Err(error) => {
+                    log::warn!(
+                        "PDF page extraction unavailable for '{}': {}",
+                        file_name,
+                        error
+                    );
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
 
         // Count tokens
         let token_count = count_tokens(&text);
@@ -298,10 +335,7 @@ impl ContextManager {
             id: resource_id.clone(),
             name: file_name,
             file_type: file_type.to_string(),
-            file_path: dest_path
-                .to_str()
-                .unwrap_or("")
-                .to_string(),
+            file_path: dest_path.to_str().unwrap_or("").to_string(),
             size_bytes,
             token_count,
             preview,
@@ -314,6 +348,7 @@ impl ContextManager {
             resource_id,
             CachedResource {
                 text,
+                pages,
                 token_count,
                 loaded_at,
             },
@@ -346,7 +381,12 @@ impl ContextManager {
                 let token_count = count_tokens(&text);
                 self.cache.insert(
                     resource.id.clone(),
-                    CachedResource { text, token_count, loaded_at: resource.loaded_at.clone() },
+                    CachedResource {
+                        text,
+                        pages: Vec::new(),
+                        token_count,
+                        loaded_at: resource.loaded_at.clone(),
+                    },
                 );
                 resource.status = STATUS_READY.to_string();
             }
@@ -375,7 +415,15 @@ impl ContextManager {
         r.status = STATUS_READY.to_string();
         r.token_count = token_count;
         let loaded_at = r.loaded_at.clone();
-        self.cache.insert(resource_id.to_string(), CachedResource { text, token_count, loaded_at });
+        self.cache.insert(
+            resource_id.to_string(),
+            CachedResource {
+                text,
+                pages: Vec::new(),
+                token_count,
+                loaded_at,
+            },
+        );
     }
 
     /// Adds a Markdown document made from text (an answer saved to the
@@ -401,7 +449,15 @@ impl ContextManager {
             loaded_at: loaded_at.clone(),
             status: STATUS_READY.to_string(),
         };
-        self.cache.insert(resource_id, CachedResource { text: markdown.to_string(), token_count, loaded_at });
+        self.cache.insert(
+            resource_id,
+            CachedResource {
+                text: markdown.to_string(),
+                pages: Vec::new(),
+                token_count,
+                loaded_at,
+            },
+        );
         self.resources.push(resource.clone());
         Ok(resource)
     }
@@ -421,7 +477,12 @@ impl ContextManager {
     }
 
     /// Replaces the title and text of a note. Only notes can be edited this way.
-    pub fn update_note(&mut self, resource_id: &str, title: &str, markdown: &str) -> Result<ContextResource, String> {
+    pub fn update_note(
+        &mut self,
+        resource_id: &str,
+        title: &str,
+        markdown: &str,
+    ) -> Result<ContextResource, String> {
         let idx = self
             .resources
             .iter()
@@ -443,13 +504,26 @@ impl ContextManager {
         r.status = STATUS_READY.to_string();
         let loaded_at = r.loaded_at.clone();
         let out = r.clone();
-        self.cache.insert(resource_id.to_string(), CachedResource { text: markdown.to_string(), token_count, loaded_at });
+        self.cache.insert(
+            resource_id.to_string(),
+            CachedResource {
+                text: markdown.to_string(),
+                pages: Vec::new(),
+                token_count,
+                loaded_at,
+            },
+        );
         Ok(out)
     }
 
     /// The cached text of a resource.
     pub fn cached_text(&self, resource_id: &str) -> Option<String> {
         self.cache.get(resource_id).map(|c| c.text.clone())
+    }
+
+    /// Cached per-page text for PDFs, if available.
+    pub fn cached_pages(&self, resource_id: &str) -> Option<Vec<String>> {
+        self.cache.get(resource_id).map(|c| c.pages.clone())
     }
 
     /// Remove a context resource by its ID.
@@ -511,7 +585,11 @@ impl ContextManager {
         let nonce = document_nonce(scope);
         let mut parts = Vec::new();
         for (resource, text) in self.scoped_documents(scope) {
-            let attrs = format!(" {} \"{}\"", resource.file_type, resource.name.replace('"', " "));
+            let attrs = format!(
+                " {} \"{}\"",
+                resource.file_type,
+                resource.name.replace('"', " ")
+            );
             let built_from = format!("{}|{nonce}|{}|{attrs}", self.revision, text.len());
             if let Ok(kept) = self.wrapped.lock() {
                 if let Some((from, block)) = kept.get(&resource.id) {
@@ -531,16 +609,30 @@ impl ContextManager {
     }
 
     /// The documents of the scope that have text, and that text, unwrapped.
-    fn scoped_documents<'a>(&'a self, scope: &'a EffectiveScope) -> impl Iterator<Item = (&'a ContextResource, &'a str)> + 'a {
-        self.resources.iter().filter(|r| scope.allows_document(&r.id)).filter_map(|r| {
-            self.cache.get(&r.id).filter(|c| !c.text.is_empty()).map(|c| (r, c.text.as_str()))
-        })
+    fn scoped_documents<'a>(
+        &'a self,
+        scope: &'a EffectiveScope,
+    ) -> impl Iterator<Item = (&'a ContextResource, &'a str)> + 'a {
+        self.resources
+            .iter()
+            .filter(|r| scope.allows_document(&r.id))
+            .filter_map(|r| {
+                self.cache
+                    .get(&r.id)
+                    .filter(|c| !c.text.is_empty())
+                    .map(|c| (r, c.text.as_str()))
+            })
     }
 
     /// The raw (unwrapped) documents the scope allows.
     fn document_blocks<'a>(&'a self, scope: &'a EffectiveScope) -> Vec<RawBlock<'a>> {
         self.scoped_documents(scope)
-            .map(|(r, text)| RawBlock { label: "doc", id: r.id.clone(), attrs: format!(" {} \"{}\"", r.file_type, r.name.replace('"', " ")), text })
+            .map(|(r, text)| RawBlock {
+                label: "doc",
+                id: r.id.clone(),
+                attrs: format!(" {} \"{}\"", r.file_type, r.name.replace('"', " ")),
+                text,
+            })
             .collect()
     }
 
@@ -549,25 +641,47 @@ impl ContextManager {
     /// before it is wrapped, so a block is never cut: the one that does not
     /// fit is shortened inside its fence (and says so), the rest are left
     /// out. None when there is nothing.
-    pub fn get_resources_context_capped_for(&self, ctx: &ScopedContext, max_chars: usize) -> Option<String> {
+    pub fn get_resources_context_capped_for(
+        &self,
+        ctx: &ScopedContext,
+        max_chars: usize,
+    ) -> Option<String> {
         self.capped_blocks(ctx, max_chars, true, true)
     }
 
     /// Only the scope's documents (no talking points), capped like
     /// [`get_resources_context_capped_for`]: the Library's share.
-    pub fn documents_context_capped_for(&self, ctx: &ScopedContext, max_chars: usize) -> Option<String> {
+    pub fn documents_context_capped_for(
+        &self,
+        ctx: &ScopedContext,
+        max_chars: usize,
+    ) -> Option<String> {
         self.capped_blocks(ctx, max_chars, false, true)
     }
 
     /// Only the scope's talking points marked as context, in at most
     /// `max_chars`: their reserved share, which no document can take.
-    pub fn points_context_capped_for(&self, ctx: &ScopedContext, max_chars: usize) -> Option<String> {
+    pub fn points_context_capped_for(
+        &self,
+        ctx: &ScopedContext,
+        max_chars: usize,
+    ) -> Option<String> {
         self.capped_blocks(ctx, max_chars, true, false)
     }
 
-    fn capped_blocks(&self, ctx: &ScopedContext, max_chars: usize, points: bool, documents: bool) -> Option<String> {
+    fn capped_blocks(
+        &self,
+        ctx: &ScopedContext,
+        max_chars: usize,
+        points: bool,
+        documents: bool,
+    ) -> Option<String> {
         let nonce = document_nonce(&ctx.scope);
-        let mut blocks = if points { point_blocks(ctx) } else { Vec::new() };
+        let mut blocks = if points {
+            point_blocks(ctx)
+        } else {
+            Vec::new()
+        };
         if documents {
             blocks.extend(self.document_blocks(&ctx.scope));
         }
@@ -581,10 +695,22 @@ impl ContextManager {
             .iter()
             .map(|b| {
                 let body = if b.label == "point" { b.text } else { "" };
-                format!("{}:{}{}:{}{}:{}", b.id.len(), b.id, b.attrs.len(), b.attrs, body.len(), body)
+                format!(
+                    "{}:{}{}:{}{}:{}",
+                    b.id.len(),
+                    b.id,
+                    b.attrs.len(),
+                    b.attrs,
+                    body.len(),
+                    body
+                )
             })
             .collect();
-        let key = format!("{}|{nonce}|{max_chars}|{points}{documents}|{}", self.revision, parts.join("|"));
+        let key = format!(
+            "{}|{nonce}|{max_chars}|{points}{documents}|{}",
+            self.revision,
+            parts.join("|")
+        );
         if let Ok(kept) = self.capped.lock() {
             if let Some((k, v)) = kept.as_ref() {
                 if *k == key {
@@ -605,7 +731,9 @@ impl ContextManager {
         for b in blocks {
             let sep = usize::from(!out.is_empty());
             let room = max_chars.saturating_sub(used + sep);
-            let Some(block) = fit_block(nonce, b, room) else { break };
+            let Some(block) = fit_block(nonce, b, room) else {
+                break;
+            };
             used += sep + block.chars().count();
             out.push(block);
         }
@@ -630,10 +758,16 @@ impl ContextManager {
     pub fn get_assembled_context_for(&self, ctx: &ScopedContext) -> String {
         let mut parts: Vec<String> = Vec::new();
         if !self.custom_instructions.is_empty() {
-            parts.push(format!("## Custom Instructions\n{}\n", self.custom_instructions));
+            parts.push(format!(
+                "## Custom Instructions\n{}\n",
+                self.custom_instructions
+            ));
         }
         if !ctx.scope.instructions.trim().is_empty() {
-            parts.push(format!("## Workspace Instructions\n{}\n", ctx.scope.instructions.trim()));
+            parts.push(format!(
+                "## Workspace Instructions\n{}\n",
+                ctx.scope.instructions.trim()
+            ));
         }
         parts.extend(points_sections(ctx));
         parts.extend(self.document_sections(&ctx.scope));
@@ -646,23 +780,44 @@ impl ContextManager {
     /// documents (empty when `include_documents` is false: the Library pill
     /// was off). Together they are [`get_assembled_context_for`] (without the
     /// documents when they are left out).
-    pub fn assembled_parts_for(&self, ctx: &ScopedContext, include_documents: bool) -> (String, String) {
+    pub fn assembled_parts_for(
+        &self,
+        ctx: &ScopedContext,
+        include_documents: bool,
+    ) -> (String, String) {
         let mut head: Vec<String> = Vec::new();
         if !self.custom_instructions.is_empty() {
-            head.push(format!("## Custom Instructions
+            head.push(format!(
+                "## Custom Instructions
 {}
-", self.custom_instructions));
+",
+                self.custom_instructions
+            ));
         }
         if !ctx.scope.instructions.trim().is_empty() {
-            head.push(format!("## Workspace Instructions
+            head.push(format!(
+                "## Workspace Instructions
 {}
-", ctx.scope.instructions.trim()));
+",
+                ctx.scope.instructions.trim()
+            ));
         }
         head.extend(points_sections(ctx));
-        let documents = if include_documents { self.document_sections(&ctx.scope).join("
-") } else { String::new() };
-        (head.join("
-"), documents)
+        let documents = if include_documents {
+            self.document_sections(&ctx.scope).join(
+                "
+",
+            )
+        } else {
+            String::new()
+        };
+        (
+            head.join(
+                "
+",
+            ),
+            documents,
+        )
     }
 
     /// The scope's documents and context talking points, without instructions
@@ -723,7 +878,10 @@ impl ContextManager {
 pub fn document_nonce(scope: &EffectiveScope) -> String {
     static SALT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     let salt = SALT.get_or_init(crate::prompt_data::new_nonce);
-    crate::workspace_search::store::sha_hex(format!("nexq-documents-{salt}-{}", scope.fingerprint()).as_bytes())[..12].to_string()
+    crate::workspace_search::store::sha_hex(
+        format!("nexq-documents-{salt}-{}", scope.fingerprint()).as_bytes(),
+    )[..12]
+        .to_string()
 }
 
 /// The system-prompt sentence for fenced documents, talking points and
@@ -781,8 +939,17 @@ fn point_blocks(ctx: &ScopedContext) -> Vec<RawBlock<'_>> {
     ctx.points
         .iter()
         .map(|p| {
-            let title = if p.title.trim().is_empty() { "Talking point" } else { p.title.trim() };
-            RawBlock { label: "point", id: String::new(), attrs: format!(" \"{}\"", title.replace('"', " ")), text: p.text.trim() }
+            let title = if p.title.trim().is_empty() {
+                "Talking point"
+            } else {
+                p.title.trim()
+            };
+            RawBlock {
+                label: "point",
+                id: String::new(),
+                attrs: format!(" \"{}\"", title.replace('"', " ")),
+                text: p.text.trim(),
+            }
         })
         .collect()
 }
@@ -790,7 +957,10 @@ fn point_blocks(ctx: &ScopedContext) -> Vec<RawBlock<'_>> {
 /// The talking points marked as context, as prompt sections.
 fn points_sections(ctx: &ScopedContext) -> Vec<String> {
     let nonce = document_nonce(&ctx.scope);
-    point_blocks(ctx).iter().map(|b| crate::prompt_data::wrap_block(&nonce, b.label, &b.attrs, &b.text)).collect()
+    point_blocks(ctx)
+        .iter()
+        .map(|b| crate::prompt_data::wrap_block(&nonce, b.label, &b.attrs, &b.text))
+        .collect()
 }
 
 #[cfg(test)]
@@ -814,7 +984,10 @@ mod tests {
         };
         let empty = root.join("empty.txt");
         fs::write(&empty, b"").unwrap();
-        assert_eq!(manager.load_file(empty.to_str().unwrap()).unwrap_err(), "This file is empty");
+        assert_eq!(
+            manager.load_file(empty.to_str().unwrap()).unwrap_err(),
+            "This file is empty"
+        );
 
         let oversized = root.join("oversized.txt");
         fs::File::create(&oversized)
@@ -864,14 +1037,28 @@ mod tests {
                 instructions: instructions.into(),
                 ..Default::default()
             },
-            points: points.iter().map(|(t, x)| PointText { title: t.to_string(), text: x.to_string() }).collect(),
+            points: points
+                .iter()
+                .map(|(t, x)| PointText {
+                    title: t.to_string(),
+                    text: x.to_string(),
+                })
+                .collect(),
         }
     }
 
     #[test]
     fn assembled_context_holds_only_the_scopes_documents_in_order() {
-        let m = manager_with(&[("a", "CANARY_DOC_A"), ("b", "CANARY_DOC_B"), ("c", "CANARY_DOC_C")]);
-        let text = m.get_assembled_context_for(&scoped(&["a", "c"], "CANARY_WS_RULES", &[("Opening", "CANARY_POINT")]));
+        let m = manager_with(&[
+            ("a", "CANARY_DOC_A"),
+            ("b", "CANARY_DOC_B"),
+            ("c", "CANARY_DOC_C"),
+        ]);
+        let text = m.get_assembled_context_for(&scoped(
+            &["a", "c"],
+            "CANARY_WS_RULES",
+            &[("Opening", "CANARY_POINT")],
+        ));
         assert!(text.contains("CANARY_DOC_A") && text.contains("CANARY_DOC_C"));
         assert!(!text.contains("CANARY_DOC_B"));
         // Custom instructions come first, then the workspace's, then points, then documents.
@@ -886,15 +1073,29 @@ mod tests {
         let m = manager_with(&[("a", "CANARY_DOC_A"), ("b", "CANARY_DOC_B")]);
         let ctx = scoped(&["a"], "CANARY_WS_RULES", &[("Opening", "CANARY_POINT")]);
         let (head, docs) = m.assembled_parts_for(&ctx, true);
-        assert!(head.contains("CANARY_WS_RULES") && head.contains("CANARY_POINT") && !head.contains("CANARY_DOC_A"));
-        assert!(docs.contains("CANARY_DOC_A") && !docs.contains("CANARY_DOC_B"), "another workspace's document never appears");
+        assert!(
+            head.contains("CANARY_WS_RULES")
+                && head.contains("CANARY_POINT")
+                && !head.contains("CANARY_DOC_A")
+        );
+        assert!(
+            docs.contains("CANARY_DOC_A") && !docs.contains("CANARY_DOC_B"),
+            "another workspace's document never appears"
+        );
         // Knowledge off: no document text at all; the points and instructions stay
         let (head, docs) = m.assembled_parts_for(&ctx, false);
-        assert!(docs.is_empty() && head.contains("CANARY_POINT") && head.contains("CANARY_WS_RULES"));
+        assert!(
+            docs.is_empty() && head.contains("CANARY_POINT") && head.contains("CANARY_WS_RULES")
+        );
         // together they are what the one-piece form gave
         let (h, d) = m.assembled_parts_for(&ctx, true);
-        assert_eq!(format!("{h}
-{d}"), m.get_assembled_context_for(&ctx));
+        assert_eq!(
+            format!(
+                "{h}
+{d}"
+            ),
+            m.get_assembled_context_for(&ctx)
+        );
     }
 
     #[test]
@@ -907,8 +1108,12 @@ mod tests {
         assert!(docs.contains("filler") && !docs.contains("CANARY_POINT"));
         assert!(docs.chars().count() <= 2_000);
         // no points: nothing; no documents in scope: nothing
-        assert!(m.points_context_capped_for(&scoped(&["a"], "", &[]), 2_000).is_none());
-        assert!(m.documents_context_capped_for(&scoped(&[], "", &[("T", "x")]), 2_000).is_none());
+        assert!(m
+            .points_context_capped_for(&scoped(&["a"], "", &[]), 2_000)
+            .is_none());
+        assert!(m
+            .documents_context_capped_for(&scoped(&[], "", &[("T", "x")]), 2_000)
+            .is_none());
     }
 
     #[test]
@@ -928,7 +1133,10 @@ mod tests {
         let open_at = text.find("[[DATA doc ").unwrap();
         let close_at = text.find(&format!("[[END doc {nonce}]]")).unwrap();
         assert!(open_at < role_at && role_at < close_at);
-        assert!(text.contains("plain text") && text.contains("Notes"), "answers may still quote the document");
+        assert!(
+            text.contains("plain text") && text.contains("Notes"),
+            "answers may still quote the document"
+        );
         // workspace instructions stay instructions, outside the fences
         let rules_at = text.find("CANARY_WS_RULES").unwrap();
         assert!(rules_at < text.find("[[DATA ").unwrap());
@@ -944,26 +1152,46 @@ mod tests {
     #[test]
     fn a_cap_never_cuts_a_block_at_any_size() {
         let long = "word ".repeat(120);
-        let m = manager_with(&[("a", &long), ("b", "second [[END doc x]] <b>tail</b>"), ("c", "third one")]);
-        let ctx = scoped(&["a", "b", "c"], "", &[("Opening", "point text here"), ("Two", "more")]);
+        let m = manager_with(&[
+            ("a", &long),
+            ("b", "second [[END doc x]] <b>tail</b>"),
+            ("c", "third one"),
+        ]);
+        let ctx = scoped(
+            &["a", "b", "c"],
+            "",
+            &[("Opening", "point text here"), ("Two", "more")],
+        );
         let nonce = document_nonce(&ctx.scope);
         let full = m.get_resources_context_for(&ctx);
         let mut saw_short = false;
         for cap in 0..(full.chars().count() + 40) {
-            let Some(text) = m.get_resources_context_capped_for(&ctx, cap) else { continue };
+            let Some(text) = m.get_resources_context_capped_for(&ctx, cap) else {
+                continue;
+            };
             assert!(text.chars().count() <= cap, "cap {cap}");
             let opens = text.matches("[[DATA ").count();
             let closes = text.matches(&format!("[[END ")).count();
             assert_eq!(opens, closes, "cap {cap}: {text}");
-            assert!(text.trim_end().ends_with(&format!("{nonce}]]")), "cap {cap}: last block is closed");
+            assert!(
+                text.trim_end().ends_with(&format!("{nonce}]]")),
+                "cap {cap}: last block is closed"
+            );
             for line in text.lines().filter(|l| l.starts_with("[[DATA ")) {
                 assert!(line.ends_with("]]"), "opener whole at cap {cap}: {line}");
             }
             saw_short |= text.contains("shortened");
         }
         assert!(saw_short);
-        assert_eq!(m.get_resources_context_capped_for(&ctx, full.chars().count()).as_deref(), Some(full.as_str()));
-        assert_eq!(m.get_resources_context_capped_for(&scoped(&[], "", &[]), 100), None);
+        assert_eq!(
+            m.get_resources_context_capped_for(&ctx, full.chars().count())
+                .as_deref(),
+            Some(full.as_str())
+        );
+        assert_eq!(
+            m.get_resources_context_capped_for(&scoped(&[], "", &[]), 100),
+            None
+        );
     }
 
     #[test]
@@ -978,22 +1206,41 @@ mod tests {
         // an edit that keeps the length and the first characters
         m.finish_extraction("a", b.clone());
         let after = m.get_resources_context_capped_for(&ctx, 5_000).unwrap();
-        assert!(after.contains("BBBB") && !after.contains("AAAA"), "no stale copy");
+        assert!(
+            after.contains("BBBB") && !after.contains("AAAA"),
+            "no stale copy"
+        );
         assert!(m.get_assembled_context_for(&ctx).contains("BBBB"));
         // unfiled mid-session: the scope no longer holds it
         let none = scoped(&[], "", &[]);
         assert_eq!(m.get_resources_context_capped_for(&none, 5_000), None);
         assert!(!m.get_assembled_context_for(&none).contains("BBBB"));
         // filed again
-        assert!(m.get_resources_context_capped_for(&ctx, 5_000).unwrap().contains("BBBB"));
+        assert!(m
+            .get_resources_context_capped_for(&ctx, 5_000)
+            .unwrap()
+            .contains("BBBB"));
         // removed: gone from the answer and from the kept copies
         let _ = m.get_assembled_context_for(&ctx);
         m.remove_file("a").unwrap();
         assert_eq!(m.get_resources_context_capped_for(&ctx, 5_000), None);
-        assert!(m.wrapped.lock().unwrap().is_empty() && m.capped.lock().unwrap().is_none(), "no text kept");
+        assert!(
+            m.wrapped.lock().unwrap().is_empty() && m.capped.lock().unwrap().is_none(),
+            "no text kept"
+        );
         // re-added under the same id with other text
         m.restore_resource(
-            ContextResource { id: "a".into(), name: "a.txt".into(), file_type: "txt".into(), file_path: String::new(), size_bytes: 0, token_count: 0, preview: String::new(), loaded_at: String::new(), status: STATUS_READY.into() },
+            ContextResource {
+                id: "a".into(),
+                name: "a.txt".into(),
+                file_type: "txt".into(),
+                file_path: String::new(),
+                size_bytes: 0,
+                token_count: 0,
+                preview: String::new(),
+                loaded_at: String::new(),
+                status: STATUS_READY.into(),
+            },
             Some("CCCC fresh".into()),
         );
         let again = m.get_resources_context_capped_for(&ctx, 5_000).unwrap();
@@ -1036,12 +1283,17 @@ mod tests {
         }
         times.sort();
         let p95 = times[(times.len() * 95 / 100).min(times.len() - 1)];
-        eprintln!("per-answer p95 = {p95:?}, max = {:?}", times.last().unwrap());
+        eprintln!(
+            "per-answer p95 = {p95:?}, max = {:?}",
+            times.last().unwrap()
+        );
         assert!(p95 < limit, "p95 {p95:?}");
         // the capped text of a library that is mostly one huge line is also cut before wrapping
         let t = std::time::Instant::now();
         let m2 = manager_with(&[("b", &html)]);
-        let _ = m2.get_resources_context_capped_for(&scoped(&["b"], "", &[]), 32_000).unwrap();
+        let _ = m2
+            .get_resources_context_capped_for(&scoped(&["b"], "", &[]), 32_000)
+            .unwrap();
         eprintln!("cold capped html = {:?}", t.elapsed());
     }
 
@@ -1050,7 +1302,11 @@ mod tests {
         let m = manager_with(&[("a", "CANARY_DOC_A"), ("b", "CANARY_DOC_B")]);
         let text = m.get_resources_context_for(&scoped(&["b"], "CANARY_WS_RULES", &[]));
         assert!(text.contains("CANARY_DOC_B"));
-        assert!(!text.contains("CANARY_DOC_A") && !text.contains("CANARY_WS_RULES") && !text.contains("CANARY_CUSTOM"));
+        assert!(
+            !text.contains("CANARY_DOC_A")
+                && !text.contains("CANARY_WS_RULES")
+                && !text.contains("CANARY_CUSTOM")
+        );
         // An empty scope yields nothing at all.
         assert_eq!(m.get_resources_context_for(&scoped(&[], "", &[])), "");
         // Unrestricted (workspaces unavailable) is today's behaviour.
@@ -1074,14 +1330,22 @@ mod tests {
         };
         m.restore_resource(res("one"), None);
         m.restore_resource(res("two"), None);
-        assert!(m.list_resources().iter().all(|r| r.status == STATUS_LOADING));
-        assert_eq!(m.get_resources_context_for(&ScopedContext::unrestricted()), "");
+        assert!(m
+            .list_resources()
+            .iter()
+            .all(|r| r.status == STATUS_LOADING));
+        assert_eq!(
+            m.get_resources_context_for(&ScopedContext::unrestricted()),
+            ""
+        );
         m.finish_extraction("one", "CANARY_LATE_TEXT".into());
         m.mark_missing("two");
         let by_id = |id: &str| m.list_resources().into_iter().find(|r| r.id == id).unwrap();
         assert_eq!(by_id("one").status, STATUS_READY);
         assert_eq!(by_id("two").status, STATUS_MISSING);
-        assert!(m.get_resources_context_for(&ScopedContext::unrestricted()).contains("CANARY_LATE_TEXT"));
+        assert!(m
+            .get_resources_context_for(&ScopedContext::unrestricted())
+            .contains("CANARY_LATE_TEXT"));
         // The row stays and restoring again changes nothing.
         m.restore_resource(res("two"), Some("x".into()));
         assert_eq!(m.list_resources().len(), 2);
@@ -1090,38 +1354,60 @@ mod tests {
     #[test]
     fn text_added_as_a_document_is_cached_and_scoped_like_any_other() {
         let mut m = manager_with(&[]);
-        let r = m.add_text("Q3 plan / draft", "# Plan\nCANARY_SAVED_ANSWER").unwrap();
+        let r = m
+            .add_text("Q3 plan / draft", "# Plan\nCANARY_SAVED_ANSWER")
+            .unwrap();
         assert!(r.name.ends_with(".md") && !r.name.contains('/'));
-        assert!(m.get_assembled_context_for(&scoped(&[&r.id], "", &[])).contains("CANARY_SAVED_ANSWER"));
-        assert!(!m.get_assembled_context_for(&scoped(&[], "", &[])).contains("CANARY_SAVED_ANSWER"));
+        assert!(m
+            .get_assembled_context_for(&scoped(&[&r.id], "", &[]))
+            .contains("CANARY_SAVED_ANSWER"));
+        assert!(!m
+            .get_assembled_context_for(&scoped(&[], "", &[]))
+            .contains("CANARY_SAVED_ANSWER"));
         let _ = fs::remove_file(&r.file_path);
     }
 
     #[test]
     fn a_note_is_named_by_its_title_and_can_be_edited() {
         let mut m = manager_with(&[]);
-        let r = m.add_note("  Kickoff   plan ", "# Plan
-CANARY_ONE").unwrap();
-        assert_eq!((r.name.as_str(), r.file_type.as_str()), ("Kickoff plan", NOTE_TYPE));
+        let r = m
+            .add_note(
+                "  Kickoff   plan ",
+                "# Plan
+CANARY_ONE",
+            )
+            .unwrap();
+        assert_eq!(
+            (r.name.as_str(), r.file_type.as_str()),
+            ("Kickoff plan", NOTE_TYPE)
+        );
         assert_eq!(m.list_resources()[0].file_type, NOTE_TYPE);
         let edited = m.update_note(&r.id, "Kickoff v2", "CANARY_TWO").unwrap();
         assert_eq!(edited.name, "Kickoff v2");
         assert_eq!(fs::read_to_string(&r.file_path).unwrap(), "CANARY_TWO");
         assert_eq!(m.cached_text(&r.id).as_deref(), Some("CANARY_TWO"));
-        assert!(!m.get_assembled_context_for(&scoped(&[&r.id], "", &[])).contains("CANARY_ONE"));
-        assert!(m.get_assembled_context_for(&scoped(&[&r.id], "", &[])).contains("CANARY_TWO"));
+        assert!(!m
+            .get_assembled_context_for(&scoped(&[&r.id], "", &[]))
+            .contains("CANARY_ONE"));
+        assert!(m
+            .get_assembled_context_for(&scoped(&[&r.id], "", &[]))
+            .contains("CANARY_TWO"));
         let _ = fs::remove_file(&r.file_path);
     }
 
     #[test]
     fn a_note_without_a_title_takes_its_first_line_and_only_notes_are_editable() {
-        assert_eq!(note_title("", "
+        assert_eq!(
+            note_title(
+                "",
+                "
 ## Budget talk
-more"), "Budget talk");
+more"
+            ),
+            "Budget talk"
+        );
         assert_eq!(note_title("   ", "- first item"), "first item");
-        assert_eq!(note_title("", "  
- 
-"), "Note");
+        assert_eq!(note_title("", "  \n \n"), "Note");
         assert_eq!(note_title(&"x".repeat(200), "").chars().count(), 80);
         let mut m = manager_with(&[]);
         let doc = m.add_text("A", "text").unwrap();

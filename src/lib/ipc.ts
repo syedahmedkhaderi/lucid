@@ -195,8 +195,18 @@ export async function setSTTLanguage(language: string): Promise<void> {
   return invoke("set_stt_language", { language });
 }
 
-export async function testSTTConnection(provider: string): Promise<boolean> {
-  return invoke("test_stt_connection", { provider });
+export async function testSTTConnection(
+  provider: string,
+  apiKey?: string,
+  replaceSavedKey = false,
+  region?: string,
+): Promise<boolean> {
+  return invoke("test_stt_connection", {
+    provider,
+    apiKey: apiKey ?? null,
+    replaceSavedKey,
+    region: region ?? null,
+  });
 }
 
 /** Test Azure MAI Streaming credentials before saving them to the credential store. */
@@ -375,8 +385,8 @@ export async function storeApiKey(
   return invoke("store_api_key", { provider, key });
 }
 
-export async function getApiKey(provider: string): Promise<string | null> {
-  return invoke("get_api_key", { provider });
+export async function getCredentialSetting(setting: string): Promise<string | null> {
+  return invoke("get_credential_setting", { setting });
 }
 
 export async function deleteApiKey(provider: string): Promise<void> {
@@ -387,13 +397,45 @@ export async function hasApiKey(provider: string): Promise<boolean> {
   return invoke("has_api_key", { provider });
 }
 
+export async function addCredentialProfile(
+  provider: string,
+  key: string,
+  label: string,
+  projectId?: string,
+): Promise<import("./types").CredentialProfile> {
+  return invoke("add_credential_profile", { provider, key, label, projectId });
+}
+
+export async function listCredentialProfiles(provider?: string): Promise<import("./types").CredentialProfile[]> {
+  return invoke("list_credential_profiles", { provider: provider ?? null });
+}
+
+export async function activateCredentialProfile(id: string): Promise<import("./types").CredentialProfile> {
+  return invoke("activate_credential_profile", { id });
+}
+
+export async function setCredentialProfileEnabled(id: string, enabled: boolean): Promise<import("./types").CredentialProfile> {
+  return invoke("set_credential_profile_enabled", { id, enabled });
+}
+
+export async function deleteCredentialProfile(id: string): Promise<void> {
+  return invoke("delete_credential_profile", { id });
+}
+
 // == IPC: Meetings (Sub-PRD 1/8) ==
 
 export async function startMeeting(
   title?: string,
   workspaceId?: string,
+  borrowedWorkspaceIds?: string[],
+  documentIds?: string[],
 ): Promise<Meeting> {
-  const result = await invoke<string>("start_meeting", { title, ...(workspaceId ? { workspaceId } : {}) });
+  const result = await invoke<string>("start_meeting", {
+    title,
+    ...(workspaceId ? { workspaceId } : {}),
+    ...(borrowedWorkspaceIds ? { borrowedWorkspaceIds } : {}),
+    ...(documentIds ? { documentIds } : {}),
+  });
   return JSON.parse(result);
 }
 
@@ -677,8 +719,8 @@ export async function deleteRecording(meetingId: string): Promise<void> {
 
 // == IPC: Translation ==
 
-export async function setTranslationProvider(provider: string, region?: string): Promise<void> {
-  return invoke("set_translation_provider", { provider, region });
+export async function setTranslationProvider(provider: string, region?: string, apiKey?: string): Promise<void> {
+  return invoke("set_translation_provider", { provider, region: region ?? null, apiKey: apiKey ?? null });
 }
 
 export async function translateText(text: string, targetLang: string, sourceLang?: string): Promise<TranslationResult> {
@@ -697,8 +739,16 @@ export async function detectLanguage(text: string): Promise<{ lang: string; conf
   return invoke("detect_language", { text });
 }
 
-export async function testTranslationConnection(provider: string): Promise<TranslationConnectionStatus> {
-  return invoke<TranslationConnectionStatus>("test_translation_connection", { provider });
+export async function testTranslationConnection(
+  provider: string,
+  apiKey?: string,
+  region?: string,
+): Promise<TranslationConnectionStatus> {
+  return invoke<TranslationConnectionStatus>("test_translation_connection", {
+    provider,
+    apiKey: apiKey ?? null,
+    region: region ?? null,
+  });
 }
 
 export async function getTranslationLanguages(): Promise<TranslationLanguage[]> {

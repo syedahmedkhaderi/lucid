@@ -223,13 +223,13 @@ describe("configStore: stealth mode and the custom endpoint across windows", () 
     expect(saved.has("stealthMode")).toBe(false);
   });
 
-  it("activating the custom provider sends the saved endpoint and token", async () => {
+  it("activating the custom provider keeps the saved token out of renderer IPC", async () => {
     const launcher = await openWindow();
     launcher.getState().setCustomLlmConfig("http://localhost:8000/v1", "bearer");
-    invoke.mockImplementation(async (cmd: string) => (cmd === "get_api_key" ? "tok" : null));
     await launcher.getState().activateLLMProvider("custom", { model: "m" });
     expect(invoke).toHaveBeenCalledWith("set_llm_provider", {
-      provider: JSON.stringify({ provider_type: "custom", base_url: "http://localhost:8000/v1", auth_type: "bearer", auth_value: "tok" }),
+      provider: JSON.stringify({ provider_type: "custom", base_url: "http://localhost:8000/v1", auth_type: "bearer" }),
     });
+    expect(invoke).not.toHaveBeenCalledWith("get_credential_setting", { setting: "custom" });
   });
 });

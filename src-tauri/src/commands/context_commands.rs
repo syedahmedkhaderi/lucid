@@ -25,19 +25,24 @@ pub async fn load_context_file(
     })
 }
 
-fn load_context_file_now(file_path: &str, workspace_id: Option<&str>, state: &AppState) -> Result<String, String> {
+fn load_context_file_now(
+    file_path: &str,
+    workspace_id: Option<&str>,
+    state: &AppState,
+) -> Result<String, String> {
     let ctx_mgr = state
         .context
         .as_ref()
         .ok_or_else(|| "Context manager not initialized".to_string())?;
 
-    let (resource, text) = {
+    let (resource, text, pages) = {
         let mut ctx = ctx_mgr
             .lock()
             .map_err(|e| format!("Failed to lock context manager: {}", e))?;
         let resource = ctx.load_file(file_path)?;
         let text = ctx.cached_text(&resource.id).unwrap_or_default();
-        (resource, text)
+        let pages = ctx.cached_pages(&resource.id).unwrap_or_default();
+        (resource, text, pages)
     };
 
     // Persist to DB so the resource survives app restarts, with its text (so a
@@ -45,19 +50,28 @@ fn load_context_file_now(file_path: &str, workspace_id: Option<&str>, state: &Ap
     // Without a workspace it is filed nowhere and no meeting uses it.
     let saved = if let Some(db_arc) = state.database.as_ref() {
         match db_arc.lock() {
-            Ok(db_guard) if crate::workspace::available() =>
-                crate::workspace::documents::add_document(
-                    db_guard.connection(), &resource, &text, workspace_id,
-                ),
+            Ok(db_guard) if crate::workspace::available() => {
+                crate::workspace::documents::add_document_with_pages(
+                    db_guard.connection(),
+                    &resource,
+                    &text,
+                    &pages,
+                    workspace_id,
+                )
+            }
             Ok(db_guard) if workspace_id.is_none() => crate::db::context::add_context_resource(
                 db_guard.connection(),
                 &crate::workspace::documents::db_row(&resource),
-            ).map_err(|e| e.to_string()),
+            )
+            .map_err(|e| e.to_string()),
             Ok(_) => Err("Workspace persistence is unavailable".to_string()),
             Err(e) => Err(format!("Failed to lock the database: {e}")),
         }
     } else if workspace_id.is_some() {
-        Err("The database is unavailable, so the document could not be added to this workspace".to_string())
+        Err(
+            "The database is unavailable, so the document could not be added to this workspace"
+                .to_string(),
+        )
     } else {
         Ok(())
     };
@@ -69,8 +83,7 @@ fn load_context_file_now(file_path: &str, workspace_id: Option<&str>, state: &Ap
     }
 
     crate::workspace_chat::runtime::documents_changed(&state.workspace_chat);
-    serde_json::to_string(&resource)
-        .map_err(|e| format!("Failed to serialize resource: {}", e))
+    serde_json::to_string(&resource).map_err(|e| format!("Failed to serialize resource: {}", e))
 }
 
 /// Removes a document from the library and from every workspace; the sessions
@@ -111,9 +124,13 @@ fn remove_context_file_now(resource_id: &str, state: &AppState) -> Result<(), St
         if let Ok(db_guard) = db_arc.lock() {
             if crate::workspace::available() {
                 // Row, saved text, index chunks and every workspace membership.
-                let _ = crate::workspace::documents::remove_document(db_guard.connection(), resource_id);
+                let _ = crate::workspace::documents::remove_document(
+                    db_guard.connection(),
+                    resource_id,
+                );
             } else {
-                let _ = crate::db::context::delete_context_resource(db_guard.connection(), resource_id);
+                let _ =
+                    crate::db::context::delete_context_resource(db_guard.connection(), resource_id);
                 let _ = crate::db::rag::delete_chunks_by_file(db_guard.connection(), resource_id);
             }
         }
@@ -122,9 +139,7 @@ fn remove_context_file_now(resource_id: &str, state: &AppState) -> Result<(), St
 }
 
 #[command]
-pub async fn list_context_resources(
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn list_context_resources(state: State<'_, AppState>) -> Result<String, String> {
     let ctx_mgr = state
         .context
         .as_ref()
@@ -136,8 +151,7 @@ pub async fn list_context_resources(
 
     let resources = ctx.list_resources();
 
-    serde_json::to_string(&resources)
-        .map_err(|e| format!("Failed to serialize resources: {}", e))
+    serde_json::to_string(&resources).map_err(|e| format!("Failed to serialize resources: {}", e))
 }
 
 #[command]
@@ -160,9 +174,7 @@ pub async fn set_custom_instructions(
 }
 
 #[command]
-pub async fn get_token_budget(
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn get_token_budget(state: State<'_, AppState>) -> Result<String, String> {
     let ctx_mgr = state
         .context
         .as_ref()
@@ -179,6 +191,5 @@ pub async fn get_token_budget(
 
     let budget = ctx.get_token_budget(model_context_window, transcript_tokens);
 
-    serde_json::to_string(&budget)
-        .map_err(|e| format!("Failed to serialize token budget: {}", e))
+    serde_json::to_string(&budget).map_err(|e| format!("Failed to serialize token budget: {}", e))
 }

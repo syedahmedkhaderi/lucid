@@ -2,9 +2,9 @@ use std::sync::Arc;
 use tauri::{command, State};
 use tokio::sync::Mutex as TokioMutex;
 
+use crate::llm::openrouter_models;
 use crate::llm::provider::LLMProvider;
 use crate::llm::{create_provider, LLMRouter, ProviderConfig, ProviderType};
-use crate::llm::openrouter_models;
 use crate::state::AppState;
 
 /// Resolve the provider for a read-only operation (model listing, connection test).
@@ -14,9 +14,12 @@ use crate::state::AppState;
 fn resolve_provider(
     llm: &std::sync::Mutex<LLMRouter>,
     provider: &str,
+    credentials: Option<&Arc<std::sync::Mutex<crate::credentials::CredentialManager>>>,
 ) -> Result<Arc<TokioMutex<Box<dyn LLMProvider>>>, String> {
-    if let Ok(config) = serde_json::from_str::<ProviderConfig>(provider) {
-        let temp = create_provider(&config).map_err(|e| format!("Failed to create provider: {}", e))?;
+    if let Ok(mut config) = serde_json::from_str::<ProviderConfig>(provider) {
+        restore_saved_secret(&mut config, credentials)?;
+        let temp =
+            create_provider(&config).map_err(|e| format!("Failed to create provider: {}", e))?;
         return Ok(Arc::new(TokioMutex::new(temp)));
     }
 
@@ -28,13 +31,117 @@ fn resolve_provider(
         .map_err(|e| format!("No active provider: {}", e))
 }
 
-#[command]
-pub async fn set_llm_provider(
-    provider: String,
-    state: State<'_, AppState>,
+/// Renderer calls can pass provider settings without copying a saved key out
+/// of the OS credential store. A just-entered key remains an explicit,
+/// short-lived field in `ProviderConfig` for test-before-store flows.
+fn restore_saved_secret(
+    config: &mut ProviderConfig,
+    credentials: Option<&Arc<std::sync::Mutex<crate::credentials::CredentialManager>>>,
 ) -> Result<(), String> {
+    restore_saved_secret_with(config, |slot| {
+        let Some(manager) = credentials else {
+            return Ok(None);
+        };
+        let manager = manager
+            .lock()
+            .map_err(|e| format!("Failed to lock credential manager: {e}"))?;
+        manager.get_key(slot)
+    })
+}
+
+fn restore_saved_secret_with<F>(config: &mut ProviderConfig, mut load: F) -> Result<(), String>
+where
+    F: FnMut(&str) -> Result<Option<String>, String>,
+{
+    let saved_slot = match config.provider_type.as_str() {
+        "openai" | "anthropic" | "groq" | "gemini" | "openrouter" if config.api_key.is_none() => {
+            Some(config.provider_type.as_str())
+        }
+        "custom"
+            if config
+                .auth_type
+                .as_deref()
+                .is_some_and(|value| value != "none")
+                && config.auth_value.is_none() =>
+        {
+            Some("custom")
+        }
+        _ => None,
+    };
+    let Some(slot) = saved_slot else {
+        return Ok(());
+    };
+    let saved = load(slot)?;
+    if slot == "custom" {
+        config.auth_value = saved;
+    } else {
+        config.api_key = saved;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod saved_secret_tests {
+    use super::restore_saved_secret_with;
+    use crate::llm::ProviderConfig;
+
+    fn config(provider_type: &str) -> ProviderConfig {
+        ProviderConfig {
+            provider_type: provider_type.into(),
+            api_key: None,
+            base_url: None,
+            auth_type: None,
+            auth_value: None,
+            auth_header: None,
+            thinking: Default::default(),
+            extra_request_json: None,
+        }
+    }
+
+    #[test]
+    fn saved_provider_key_is_loaded_in_rust_when_renderer_omits_it() {
+        let mut config = config("gemini");
+        let mut loaded_slot = None;
+        restore_saved_secret_with(&mut config, |slot| {
+            loaded_slot = Some(slot.to_string());
+            Ok(Some("test-key".into()))
+        })
+        .unwrap();
+        assert_eq!(loaded_slot.as_deref(), Some("gemini"));
+        assert_eq!(config.api_key.as_deref(), Some("test-key"));
+    }
+
+    #[test]
+    fn just_entered_key_is_not_replaced_or_looked_up() {
+        let mut config = config("openai");
+        config.api_key = Some("typed-key".into());
+        let mut looked_up = false;
+        restore_saved_secret_with(&mut config, |_| {
+            looked_up = true;
+            Ok(Some("saved-key".into()))
+        })
+        .unwrap();
+        assert!(!looked_up);
+        assert_eq!(config.api_key.as_deref(), Some("typed-key"));
+    }
+
+    #[test]
+    fn custom_saved_auth_is_resolved_without_returning_it_to_the_renderer() {
+        let mut config = config("custom");
+        config.auth_type = Some("bearer".into());
+        restore_saved_secret_with(&mut config, |slot| {
+            assert_eq!(slot, "custom");
+            Ok(Some("custom-token".into()))
+        })
+        .unwrap();
+        assert_eq!(config.auth_value.as_deref(), Some("custom-token"));
+    }
+}
+
+#[command]
+pub async fn set_llm_provider(provider: String, state: State<'_, AppState>) -> Result<(), String> {
     // Parse the provider config from the JSON string, or create a simple one from the provider name
-    let config: ProviderConfig = match serde_json::from_str(&provider) {
+    let mut config: ProviderConfig = match serde_json::from_str(&provider) {
         Ok(config) => config,
         Err(_) => {
             // Treat the input as just a provider type name
@@ -51,6 +158,8 @@ pub async fn set_llm_provider(
         }
     };
 
+    restore_saved_secret(&mut config, state.credentials.as_ref())?;
+
     let llm = state
         .llm
         .as_ref()
@@ -64,7 +173,10 @@ pub async fn set_llm_provider(
     let provider_type = config.provider_type.clone();
     // Which local server live answers use, so background AI runs on the same one yield.
     if let Ok(pt) = ProviderType::from_str(&provider_type) {
-        crate::ai_runs::LiveGate::global().set_target(crate::ai_runs::LiveTarget::for_provider(&pt, config.base_url.as_deref()));
+        crate::ai_runs::LiveGate::global().set_target(crate::ai_runs::LiveTarget::for_provider(
+            &pt,
+            config.base_url.as_deref(),
+        ));
     }
     // Background AI runs find this provider's endpoint (a custom or remote
     // Ollama address) here; the key is never kept.
@@ -78,7 +190,10 @@ pub async fn set_llm_provider(
     // A CLI agent provider: its sessions are the ones to keep. The previous CLI's
     // sessions close in the background, and its health no longer applies.
     drop(router);
-    if let Some(kind) = ProviderType::from_str(&provider_type).ok().and_then(|p| p.cli_agent_kind()) {
+    if let Some(kind) = ProviderType::from_str(&provider_type)
+        .ok()
+        .and_then(|p| p.cli_agent_kind())
+    {
         if state.cli_settings.set_active(kind) {
             state.claude_health.mark_healthy();
             let sessions = state.agent_sessions.clone();
@@ -104,17 +219,14 @@ pub async fn set_llm_provider(
 }
 
 #[command]
-pub async fn list_models(
-    provider: String,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn list_models(provider: String, state: State<'_, AppState>) -> Result<String, String> {
     let llm = state
         .llm
         .as_ref()
         .ok_or_else(|| "LLM router not initialized".to_string())?;
 
     // A JSON config uses a temporary provider; the active provider is never switched.
-    let provider_arc = resolve_provider(llm, &provider)?;
+    let provider_arc = resolve_provider(llm, &provider, state.credentials.as_ref())?;
 
     let provider_guard = provider_arc.lock().await;
     let models = provider_guard
@@ -156,7 +268,7 @@ pub async fn test_llm_connection(
         .ok_or_else(|| "LLM router not initialized".to_string())?;
 
     // A JSON config uses a temporary provider; the active provider is never switched.
-    let provider_arc = resolve_provider(llm, &provider)?;
+    let provider_arc = resolve_provider(llm, &provider, state.credentials.as_ref())?;
 
     let provider_guard = provider_arc.lock().await;
     provider_guard
@@ -168,8 +280,7 @@ pub async fn test_llm_connection(
 #[command]
 pub async fn get_llm_providers() -> Result<String, String> {
     let providers = LLMRouter::get_all_providers();
-    serde_json::to_string(&providers)
-        .map_err(|e| format!("Failed to serialize providers: {}", e))
+    serde_json::to_string(&providers).map_err(|e| format!("Failed to serialize providers: {}", e))
 }
 
 #[command]
@@ -207,7 +318,9 @@ pub async fn list_openrouter_models(
             .map_err(|e| format!("Failed to lock credential manager: {}", e))?;
         cred.get_key("openrouter")
             .map_err(|e| format!("Failed to get API key: {}", e))?
-            .ok_or_else(|| "OpenRouter API key not found. Please enter your API key first.".to_string())?
+            .ok_or_else(|| {
+                "OpenRouter API key not found. Please enter your API key first.".to_string()
+            })?
     };
 
     // Fetch from API

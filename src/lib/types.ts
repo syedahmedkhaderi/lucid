@@ -74,6 +74,22 @@ export type TurnSignal = "eager_end" | "resumed" | "end";
 
 export type Speaker = "User" | "Interviewer" | "Them" | "Unknown";
 
+// == CREDENTIAL PROFILE METADATA ==
+
+/** No API key material is included in this OS-keychain profile metadata. */
+export interface CredentialProfile {
+  id: string;
+  provider: string;
+  label: string;
+  project_id: string | null;
+  key_suffix: string;
+  enabled: boolean;
+  active: boolean;
+  verified_at: number;
+  last_used_at: number | null;
+  last_error: string | null;
+}
+
 // == MEETING TYPES ==
 
 export interface Meeting {
@@ -1937,6 +1953,8 @@ export type NoteEdit =
 
 export interface BriefFact {
   text: string;
+  /** Exact excerpt from the cited passage that supports this fact. */
+  evidence?: string;
   /** Title of the cited passage (chip label). */
   source: string;
   passage_id?: number | null;

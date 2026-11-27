@@ -32,7 +32,6 @@ const ipc = vi.hoisted(() => ({
   getAgentSessions: vi.fn(),
   openCliLoginTerminal: vi.fn(),
   listModels: vi.fn(),
-  getApiKey: vi.fn(),
   setActiveModel: vi.fn(),
 }));
 
@@ -44,7 +43,6 @@ vi.mock("../lib/ipc", async (importOriginal) => ({
   getAgentSessions: () => ipc.getAgentSessions(),
   openCliLoginTerminal: (...args: unknown[]) => ipc.openCliLoginTerminal(...args),
   listModels: (...args: unknown[]) => ipc.listModels(...args),
-  getApiKey: (...args: unknown[]) => ipc.getApiKey(...args),
   setActiveModel: (...args: unknown[]) => ipc.setActiveModel(...args),
 }));
 
@@ -145,7 +143,6 @@ describe("CliAgentSettings", () => {
     ipc.getAgentSessions.mockReset().mockResolvedValue([]);
     ipc.openCliLoginTerminal.mockReset().mockResolvedValue(undefined);
     ipc.listModels.mockReset().mockResolvedValue([]);
-    ipc.getApiKey.mockReset().mockResolvedValue(null);
     ipc.setActiveModel.mockReset().mockResolvedValue(undefined);
   });
 
@@ -579,7 +576,6 @@ describe("CliAgentSettings: Antigravity and Codex", () => {
     ipc.getAgentSessions.mockReset().mockResolvedValue([]);
     ipc.openCliLoginTerminal.mockReset().mockResolvedValue(undefined);
     ipc.listModels.mockReset().mockResolvedValue([]);
-    ipc.getApiKey.mockReset().mockResolvedValue(null);
     ipc.setActiveModel.mockReset().mockResolvedValue(undefined);
   });
 

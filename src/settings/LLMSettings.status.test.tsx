@@ -16,6 +16,8 @@ vi.mock("@tauri-apps/plugin-shell", () => ({ open: vi.fn() }));
 const ipc = vi.hoisted(() => ({
   cliAgentStatus: vi.fn(),
   testLLMConnection: vi.fn(),
+  storeApiKey: vi.fn(),
+  getCredentialSetting: vi.fn(),
   hasApiKey: vi.fn(),
 }));
 
@@ -25,8 +27,9 @@ vi.mock("../lib/ipc", async (importOriginal) => ({
   cliAgentModels: async () => [],
   getAgentSessions: async () => [],
   testLLMConnection: (...a: unknown[]) => ipc.testLLMConnection(...a),
+  storeApiKey: (...a: unknown[]) => ipc.storeApiKey(...a),
+  getCredentialSetting: (...a: unknown[]) => ipc.getCredentialSetting(...a),
   hasApiKey: (...a: unknown[]) => ipc.hasApiKey(...a),
-  getApiKey: async () => null,
   listModels: async () => [],
   listLocalSTTEngines: async () => [],
   getLLMProviders: async () => [],
@@ -81,6 +84,8 @@ describe("LLM provider cards: in use, viewing, status", () => {
     ipc.testLLMConnection
       .mockReset()
       .mockImplementation(async (json: string) => localUp[JSON.parse(json).provider_type] ?? false);
+    ipc.storeApiKey.mockReset().mockResolvedValue(undefined);
+    ipc.getCredentialSetting.mockReset().mockResolvedValue(null);
     ipc.hasApiKey.mockReset().mockImplementation(async (p: string) => p === "groq");
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
@@ -267,5 +272,70 @@ describe("Custom Test Connection errors", () => {
     expect(screen.getByText(/Auth Type Bearer Token/)).toBeInTheDocument();
     expect(screen.queryByText("Connection failed")).not.toBeInTheDocument();
     expect(screen.queryByText(/Connection test failed/)).not.toBeInTheDocument();
+  });
+});
+
+describe("LLM API key replacement", () => {
+  beforeEach(() => {
+    resetAgentStoreForTests();
+    useConfigStore.setState({
+      llmProvider: "ollama",
+      llmModel: "llama3.2",
+      lastModelByProvider: {},
+      cliAgentConfigs: DEFAULT_CLI_AGENT_CONFIGS,
+      verifiedCloudProviders: [],
+      customLlmBaseUrl: "",
+    });
+    ipc.cliAgentStatus.mockReset().mockResolvedValue(LOGGED_IN);
+    ipc.hasApiKey.mockReset().mockResolvedValue(false);
+    ipc.testLLMConnection.mockReset().mockResolvedValue(false);
+    ipc.storeApiKey.mockReset().mockResolvedValue(undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps an unverified replacement out of the credential store", async () => {
+    render(<LLMSettings />);
+    fireEvent.click(card(/^Google Gemini\b/));
+    const key = await screen.findByPlaceholderText("Enter Google Gemini API key");
+    fireEvent.change(key, { target: { value: "replacement-key" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Test Connection/ }));
+
+    await screen.findByText("Connection failed");
+    expect(ipc.storeApiKey).not.toHaveBeenCalled();
+  });
+
+  it("stores a replacement only after its connection check succeeds", async () => {
+    ipc.testLLMConnection.mockImplementation(async (json: string) => JSON.parse(json).provider_type === "gemini");
+    render(<LLMSettings />);
+    fireEvent.click(card(/^Google Gemini\b/));
+    const key = await screen.findByPlaceholderText("Enter Google Gemini API key");
+    fireEvent.change(key, { target: { value: "verified-key" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Test Connection/ }));
+
+    await screen.findByText("Connected successfully");
+    const geminiCheckIndex = ipc.testLLMConnection.mock.calls.findIndex(
+      ([json]) => JSON.parse(json as string).provider_type === "gemini",
+    );
+    expect(geminiCheckIndex).toBeGreaterThanOrEqual(0);
+    expect(ipc.testLLMConnection.mock.invocationCallOrder[geminiCheckIndex]).toBeLessThan(
+      ipc.storeApiKey.mock.invocationCallOrder[0],
+    );
+    expect(ipc.storeApiKey).toHaveBeenCalledWith("gemini", "verified-key");
+  });
+
+  it("does not read a saved key back into the renderer or the key input", async () => {
+    ipc.hasApiKey.mockReset().mockResolvedValue(true);
+    render(<LLMSettings />);
+    fireEvent.click(card(/^Google Gemini\b/));
+    const key = await screen.findByPlaceholderText("Key saved securely — enter a replacement only if needed");
+    expect(key).toHaveValue("");
+    expect(ipc.getCredentialSetting).not.toHaveBeenCalledWith("gemini");
   });
 });

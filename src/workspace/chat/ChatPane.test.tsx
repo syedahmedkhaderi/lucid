@@ -32,7 +32,6 @@ const ipc = vi.hoisted(() => ({
   saveAnswerToLibrary: vi.fn(),
   addAnswerToInstructions: vi.fn(),
   listModels: vi.fn(),
-  getApiKey: vi.fn(),
   listChatMeetingPrefs: vi.fn(),
   setChatItemPref: vi.fn(),
   getChatCapabilities: vi.fn(),

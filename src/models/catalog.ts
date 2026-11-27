@@ -3,7 +3,7 @@ import type { CliAgentKind, ClaudeModelInfo, ModelInfo, WorkspaceChat } from "..
 import { CLI_AGENTS, cliAgentInfo, cliEffectiveEffort, cliModelLabel, isCliAgent, resolveListedModel } from "../lib/cliAgents";
 import { STATIC_CLAUDE_MODELS, findClaudeModel } from "../lib/claudeModels";
 import { isOutdated } from "../lib/agentUsage";
-import { getApiKey, listModels } from "../lib/ipc";
+import { listModels } from "../lib/ipc";
 import { useConfigStore } from "../stores/configStore";
 import { useAgentStore } from "../stores/agentStore";
 import { PROVIDER_LABELS, providerLabel } from "./labels";
@@ -93,8 +93,8 @@ async function loadApi(provider: string): Promise<void> {
   if (running) return running;
   const job = (async () => {
     try {
-      const key = await getApiKey(provider).catch(() => null);
-      const config = JSON.stringify({ provider_type: provider, ...(key ? { api_key: key } : {}) });
+      // Rust retrieves saved credentials directly from the OS credential store.
+      const config = JSON.stringify({ provider_type: provider });
       const list: ModelInfo[] = await listModels(config);
       const models = list
         .filter((m) => !EMBEDDING.some((p) => m.id.toLowerCase().includes(p)))

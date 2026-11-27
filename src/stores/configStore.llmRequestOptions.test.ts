@@ -103,15 +103,28 @@ describe("configStore: LLM thinking and extra request JSON", () => {
     await vi.waitFor(() => expect(pushedConfigs().length).toBeGreaterThan(0));
     invoke.mockClear();
 
-    // Groq's credentials take a while to load: the option update is in flight.
-    let releaseKey!: (key: string) => void;
-    const keyLoaded = new Promise<string>((resolve) => (releaseKey = resolve));
-    invoke.mockImplementation(async (cmd: string) => (cmd === "get_api_key" ? keyLoaded : null));
+    // The backend is still applying Groq's option when the user switches.
+    let releaseProvider!: () => void;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => (signalStarted = resolve));
+    invoke.mockImplementation(async (cmd: string, args?: unknown) => {
+      const provider = cmd === "set_llm_provider" && args
+        ? JSON.parse((args as { provider: string }).provider).provider_type
+        : null;
+      if (provider === "groq") {
+        return new Promise((resolve) => {
+          releaseProvider = () => resolve(null);
+          signalStarted();
+        });
+      }
+      return null;
+    });
 
     win.getState().setLlmThinking("groq", "off");
+    await started;
     // Meanwhile the user switches to Ollama.
     const switched = win.getState().activateLLMProvider("ollama", { model: "llama3.2" });
-    releaseKey("gsk-test");
+    releaseProvider();
     await switched;
     await vi.waitFor(() => expect(win.getState().llmProvider).toBe("ollama"));
     await new Promise((r) => setTimeout(r, 20));

@@ -39,7 +39,7 @@ describe("LauncherView starting meetings", () => {
     await userEvent.click(within(setup).getByRole("button", { name: "In-Person Mic only, shared room" }));
     await userEvent.click(within(setup).getByRole("button", { name: "Start Meeting" }));
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
-    expect(start).toHaveBeenCalledWith(undefined, "in_person", "interview", { workspaceId: "bio", borrowed: [] });
+    expect(start).toHaveBeenCalledWith(undefined, "in_person", "interview", { workspaceId: "bio", borrowed: [], documentIds: [] });
   });
 
   it("End and start new keeps the mode, scenario and workspace that were chosen", async () => {
@@ -57,7 +57,7 @@ describe("LauncherView starting meetings", () => {
     await userEvent.click(within(conflict).getByRole("button", { name: "End current and start new" }));
     await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
     expect(ended.end).toHaveBeenCalledTimes(1);
-    expect(start).toHaveBeenCalledWith(undefined, "in_person", "team_meeting", { workspaceId: "general", borrowed: [] });
+    expect(start).toHaveBeenCalledWith(undefined, "in_person", "team_meeting", { workspaceId: "general", borrowed: [], documentIds: [] });
   });
 
   it("cancelling the conflict forgets the choice and starts nothing", async () => {

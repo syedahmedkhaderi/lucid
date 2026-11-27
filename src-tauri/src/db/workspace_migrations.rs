@@ -25,15 +25,76 @@ pub struct Step {
 
 /// The steps in version order. Add a line here for each new step.
 pub const STEPS: &[Step] = &[
-    Step { version: 9, name: "workspaces", run: v9_workspaces },
-    Step { version: 10, name: "search", run: crate::workspace_search::migrate::migrate_conn },
-    Step { version: 11, name: "chat", run: crate::workspace_chat::migrate::migrate },
-    Step { version: 12, name: "notes", run: crate::live_notes::migrate::migrate_notes_conn },
-    Step { version: 13, name: "talking_points", run: v13_talking_points },
-    Step { version: 14, name: "brief", run: v14_brief },
-    Step { version: 15, name: "memory", run: v15_memory },
-    Step { version: 16, name: "chat_provenance", run: crate::workspace_chat::migrate::migrate_provenance },
-    Step { version: 17, name: "recap_state", run: crate::workspace_search::migrate::migrate_recap_state },
+    Step {
+        version: 9,
+        name: "workspaces",
+        run: v9_workspaces,
+    },
+    Step {
+        version: 10,
+        name: "search",
+        run: crate::workspace_search::migrate::migrate_conn,
+    },
+    Step {
+        version: 11,
+        name: "chat",
+        run: crate::workspace_chat::migrate::migrate,
+    },
+    Step {
+        version: 12,
+        name: "notes",
+        run: crate::live_notes::migrate::migrate_notes_conn,
+    },
+    Step {
+        version: 13,
+        name: "talking_points",
+        run: v13_talking_points,
+    },
+    Step {
+        version: 14,
+        name: "brief",
+        run: v14_brief,
+    },
+    Step {
+        version: 15,
+        name: "memory",
+        run: v15_memory,
+    },
+    Step {
+        version: 16,
+        name: "chat_provenance",
+        run: crate::workspace_chat::migrate::migrate_provenance,
+    },
+    Step {
+        version: 17,
+        name: "recap_state",
+        run: crate::workspace_search::migrate::migrate_recap_state,
+    },
+    Step {
+        version: 18,
+        name: "meeting_document_scope",
+        run: v18_meeting_document_scope,
+    },
+    Step {
+        version: 19,
+        name: "document_page_text",
+        run: v19_document_page_text,
+    },
+    Step {
+        version: 20,
+        name: "source_facts",
+        run: crate::workspace_search::facts::migrate,
+    },
+    Step {
+        version: 21,
+        name: "source_text_facts",
+        run: crate::workspace_search::facts::migrate,
+    },
+    Step {
+        version: 22,
+        name: "credential_profiles",
+        run: crate::db::credentials::migrate,
+    },
 ];
 
 const BACKUP_NAME: &str = "nexq-before-workspaces.db";
@@ -85,7 +146,11 @@ pub fn tables_state() -> TablesState {
 
 /// Looks for the workspaces table. A failing query is Unknown, never Absent.
 pub fn probe_tables(conn: &Connection) -> TablesState {
-    classify(conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workspaces'", [], |r| r.get::<_, i64>(0)))
+    classify(conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'workspaces'",
+        [],
+        |r| r.get::<_, i64>(0),
+    ))
 }
 
 /// The state an answer to "how many workspaces tables?" means: only a
@@ -132,7 +197,10 @@ pub fn run_steps(conn: &Connection, db_path: Option<&Path>, steps: &[Step]) -> R
     .map_err(|e| format!("Couldn't prepare the upgrade: {e}"))?;
 
     let applied = applied_versions(conn)?;
-    let mut pending: Vec<&Step> = steps.iter().filter(|s| !applied.contains(&s.version)).collect();
+    let mut pending: Vec<&Step> = steps
+        .iter()
+        .filter(|s| !applied.contains(&s.version))
+        .collect();
     pending.sort_by_key(|s| s.version);
     if pending.is_empty() {
         return Ok(());
@@ -164,7 +232,8 @@ fn applied_versions(conn: &Connection) -> Result<Vec<i64>, String> {
     let rows = stmt
         .query_map([], |row| row.get::<_, i64>(0))
         .map_err(|e| format!("Couldn't read the upgrade state: {e}"))?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| format!("Couldn't read the upgrade state: {e}"))
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Couldn't read the upgrade state: {e}"))
 }
 
 /// The pending steps in one transaction; dropping it on error rolls back.
@@ -181,12 +250,36 @@ fn apply(conn: &Connection, pending: &[&Step]) -> Result<(), String> {
         top = top.max(step.version);
     }
     let marker = current_user_version(&tx).max(top);
-    tx.execute_batch(&format!("PRAGMA user_version = {marker};")).map_err(|e| e.to_string())?;
+    tx.execute_batch(&format!("PRAGMA user_version = {marker};"))
+        .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())
 }
 
 fn current_user_version(conn: &Connection) -> i64 {
-    conn.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap_or(0)
+    conn.query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap_or(0)
+}
+
+fn v18_meeting_document_scope(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS meeting_document_scope (
+            meeting_id TEXT PRIMARY KEY NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+            selected_json TEXT NOT NULL CHECK (json_valid(selected_json)),
+            updated_at INTEGER NOT NULL
+        );",
+    )
+}
+
+fn v19_document_page_text(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS document_pages (
+            resource_id TEXT NOT NULL,
+            page_number INTEGER NOT NULL CHECK (page_number > 0),
+            text TEXT NOT NULL,
+            PRIMARY KEY (resource_id, page_number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_document_pages_resource ON document_pages(resource_id, page_number);",
+    )
 }
 
 fn record_error(conn: &Connection, message: &str) {
@@ -202,7 +295,12 @@ fn clear_error(conn: &Connection) {
 
 /// The error a previous run recorded (it stays until a migration succeeds).
 pub fn recorded_error(conn: &Connection) -> Option<String> {
-    conn.query_row("SELECT value FROM app_state WHERE key = ?1", params![ERROR_KEY], |row| row.get(0)).ok()
+    conn.query_row(
+        "SELECT value FROM app_state WHERE key = ?1",
+        params![ERROR_KEY],
+        |row| row.get(0),
+    )
+    .ok()
 }
 
 pub fn now_ms() -> i64 {
@@ -239,7 +337,10 @@ fn backup_before_workspaces(conn: &Connection, db_path: &Path) {
         .map_err(|e| e.to_string())
         .and_then(|_| std::fs::rename(&tmp, &target).map_err(|e| e.to_string()));
     match copied {
-        Ok(()) => log::info!("Copied the database to {} before the upgrade", target.display()),
+        Ok(()) => log::info!(
+            "Copied the database to {} before the upgrade",
+            target.display()
+        ),
         Err(e) => {
             let _ = std::fs::remove_file(&tmp);
             log::warn!("Couldn't copy the database before the upgrade, going on: {e}");
@@ -255,7 +356,9 @@ pub fn cleanup_old_backup(db_path: &Path) {
     let Ok(modified) = std::fs::metadata(&target).and_then(|m| m.modified()) else {
         return;
     };
-    let age = SystemTime::now().duration_since(modified).unwrap_or_default();
+    let age = SystemTime::now()
+        .duration_since(modified)
+        .unwrap_or_default();
     if age >= BACKUP_KEEP {
         match std::fs::remove_file(&target) {
             Ok(()) => log::info!("Removed the pre-upgrade database copy (older than 14 days)"),
@@ -334,9 +437,13 @@ fn v9_workspaces(conn: &Connection) -> rusqlite::Result<()> {
     )?;
 
     if !column_exists(conn, "meetings", "workspace_id")? {
-        conn.execute_batch("ALTER TABLE meetings ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'general'")?;
+        conn.execute_batch(
+            "ALTER TABLE meetings ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'general'",
+        )?;
     }
-    conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_meetings_workspace ON meetings(workspace_id, start_time)")?;
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_meetings_workspace ON meetings(workspace_id, start_time)",
+    )?;
 
     seed_general_once(conn)
 }
@@ -364,7 +471,10 @@ fn seed_general_once(conn: &Connection) -> rusqlite::Result<()> {
          SELECT 'general', 'document', id, ?1 FROM context_resources",
         params![now],
     )?;
-    conn.execute("INSERT OR REPLACE INTO app_state (key, value) VALUES ('workspaces_seeded', '1')", [])?;
+    conn.execute(
+        "INSERT OR REPLACE INTO app_state (key, value) VALUES ('workspaces_seeded', '1')",
+        [],
+    )?;
     Ok(())
 }
 
@@ -418,7 +528,12 @@ fn v14_brief(conn: &Connection) -> rusqlite::Result<()> {
         );
         ",
     )?;
-    add_column_if_missing(conn, "meeting_briefs", "fingerprint", "TEXT NOT NULL DEFAULT ''")
+    add_column_if_missing(
+        conn,
+        "meeting_briefs",
+        "fingerprint",
+        "TEXT NOT NULL DEFAULT ''",
+    )
 }
 
 /// v15: workspace memory.
@@ -441,11 +556,21 @@ fn v15_memory(conn: &Connection) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_workspace_memory_ws ON workspace_memory(workspace_id, status);
         ",
     )?;
-    add_column_if_missing(conn, "workspace_memory", "unsupported", "INTEGER NOT NULL DEFAULT 0")
+    add_column_if_missing(
+        conn,
+        "workspace_memory",
+        "unsupported",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
 }
 
 /// Adds a column to a table made by an earlier build of an unreleased step.
-fn add_column_if_missing(conn: &Connection, table: &str, column: &str, ddl: &str) -> rusqlite::Result<()> {
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    ddl: &str,
+) -> rusqlite::Result<()> {
     let has: bool = conn
         .prepare(&format!("PRAGMA table_info({table})"))?
         .query_map([], |r| r.get::<_, String>(1))?
@@ -495,27 +620,50 @@ mod tests {
     }
 
     fn table_exists(conn: &Connection, name: &str) -> bool {
-        count(conn, &format!("SELECT COUNT(*) FROM sqlite_master WHERE name = '{name}'")) > 0
+        count(
+            conn,
+            &format!("SELECT COUNT(*) FROM sqlite_master WHERE name = '{name}'"),
+        ) > 0
     }
 
     #[test]
     fn a_v16_database_gets_the_recap_tables_and_keeps_its_recaps() {
         let dir = temp_dir("v16");
         let (conn, path) = v8_database(&dir);
-        let upto16: Vec<Step> = STEPS.iter().filter(|s| s.version <= 16).map(|s| Step { version: s.version, name: s.name, run: s.run }).collect();
+        let upto16: Vec<Step> = STEPS
+            .iter()
+            .filter(|s| s.version <= 16)
+            .map(|s| Step {
+                version: s.version,
+                name: s.name,
+                run: s.run,
+            })
+            .collect();
         run_steps(&conn, Some(&path), &upto16).unwrap();
         assert_eq!(count(&conn, "PRAGMA user_version"), 16);
-        assert!(!table_exists(&conn, "meeting_recap_failed") && !table_exists(&conn, "meeting_recap_off"));
+        assert!(
+            !table_exists(&conn, "meeting_recap_failed")
+                && !table_exists(&conn, "meeting_recap_off")
+        );
         conn.execute("INSERT INTO meeting_cards (meeting_id, recap, origin) VALUES ('m1', 'An AI recap', 'ai')", []).unwrap();
         run_steps(&conn, Some(&path), STEPS).unwrap();
-        assert_eq!(count(&conn, "PRAGMA user_version"), 17);
+        assert_eq!(count(&conn, "PRAGMA user_version"), 22);
         for table in ["meeting_recap_failed", "meeting_recap_off"] {
             assert!(table_exists(&conn, table), "{table} missing");
         }
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM meeting_cards WHERE meeting_id = 'm1' AND origin = 'ai'"), 1, "the recap is kept");
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM meeting_cards WHERE meeting_id = 'm1' AND origin = 'ai'"
+            ),
+            1,
+            "the recap is kept"
+        );
         // and they work: a failure is recorded and read back through the real functions
         crate::workspace_search::cards::record_recap_failure(&conn, "m1", "h", "boom");
-        assert!(crate::workspace_search::cards::recap_failed(&conn, "m1", "h"));
+        assert!(crate::workspace_search::cards::recap_failed(
+            &conn, "m1", "h"
+        ));
         crate::workspace_search::cards::decline_recap(&conn, "m1").unwrap();
         assert!(crate::workspace_search::cards::recap_declined(&conn, "m1"));
         let _ = std::fs::remove_dir_all(dir);
@@ -527,21 +675,86 @@ mod tests {
         let (conn, path) = v8_database(&dir);
         run_steps(&conn, Some(&path), STEPS).unwrap();
 
-        for table in ["workspaces", "workspace_items", "meeting_borrowed", "talking_points", "meeting_briefs", "workspace_memory", "meeting_notes"] {
+        for table in [
+            "workspaces",
+            "workspace_items",
+            "meeting_borrowed",
+            "meeting_document_scope",
+            "talking_points",
+            "meeting_briefs",
+            "workspace_memory",
+            "meeting_notes",
+        ] {
             assert!(table_exists(&conn, table), "{table} missing");
         }
-        assert_eq!(count(&conn, "PRAGMA user_version"), 17);
+        assert_eq!(count(&conn, "PRAGMA user_version"), 22);
         for table in ["meeting_recap_off", "meeting_recap_failed"] {
             assert!(table_exists(&conn, table), "{table} missing");
         }
         // General is the default and holds every existing document.
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM workspaces WHERE id = 'general' AND is_default = 1"), 1);
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM workspaces WHERE id = 'general' AND is_default = 1"
+            ),
+            1
+        );
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM workspace_items WHERE workspace_id = 'general' AND kind = 'document'"), 2);
         // The old meeting is in General.
-        let home: String = conn.query_row("SELECT workspace_id FROM meetings WHERE id = 'm1'", [], |r| r.get(0)).unwrap();
+        let home: String = conn
+            .query_row(
+                "SELECT workspace_id FROM meetings WHERE id = 'm1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(home, "general");
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM meetings"), 1);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM context_resources"), 2);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn v21_rebuilds_existing_fact_cache_with_labeled_text_fields() {
+        let dir = temp_dir("fact-text");
+        let (conn, path) = v8_database(&dir);
+        let through_v20: Vec<Step> = STEPS
+            .iter()
+            .filter(|s| s.version <= 20)
+            .map(|s| Step {
+                version: s.version,
+                name: s.name,
+                run: s.run,
+            })
+            .collect();
+        run_steps(&conn, Some(&path), &through_v20).unwrap();
+        conn.execute(
+            "INSERT INTO search_sources(kind, ref_id, sub_ref, content_hash, status)
+             VALUES ('document', 'supplier-doc', '', 'supplier-hash', 'ok')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO search_passages(kind, ref_id, title, text, tokens, cjk)
+             VALUES ('document', 'supplier-doc', 'Supplier Sheet',
+                     'Supplier: Acme Industrial Ltd.', 8, 0)",
+            [],
+        )
+        .unwrap();
+
+        run_steps(&conn, Some(&path), STEPS).unwrap();
+        let row: (String, String) = conn
+            .query_row(
+                "SELECT value, extraction_method FROM source_facts WHERE ref_id = 'supplier-doc'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            ("Acme Industrial Ltd.".into(), "labeled_text_v1".into())
+        );
+        assert_eq!(count(&conn, "PRAGMA user_version"), 22);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -551,7 +764,8 @@ mod tests {
         let (conn, path) = v8_database(&dir);
         run_steps(&conn, Some(&path), STEPS).unwrap();
         // The user takes a document out of General and adds an unfiled one.
-        conn.execute("DELETE FROM workspace_items WHERE ref_id = 'd2'", []).unwrap();
+        conn.execute("DELETE FROM workspace_items WHERE ref_id = 'd2'", [])
+            .unwrap();
         conn.execute(
             "INSERT INTO context_resources (id, name, file_type, file_path, loaded_at) VALUES ('d3', 'd3', 'txt', 'x', 'now')",
             [],
@@ -560,7 +774,10 @@ mod tests {
         run_steps(&conn, Some(&path), STEPS).unwrap();
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM workspace_items"), 1);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM workspaces"), 1);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM schema_steps"), STEPS.len() as i64);
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM schema_steps"),
+            STEPS.len() as i64
+        );
         // Even with the steps forgotten, running them again is harmless and does not reseed.
         conn.execute("DELETE FROM schema_steps", []).unwrap();
         run_steps(&conn, Some(&path), STEPS).unwrap();
@@ -578,9 +795,21 @@ mod tests {
         let dir = temp_dir("fail");
         let (conn, path) = v8_database(&dir);
         let broken = [
-            Step { version: 9, name: "workspaces", run: v9_workspaces },
-            Step { version: 13, name: "talking_points", run: v13_talking_points },
-            Step { version: 16, name: "broken", run: failing_step },
+            Step {
+                version: 9,
+                name: "workspaces",
+                run: v9_workspaces,
+            },
+            Step {
+                version: 13,
+                name: "talking_points",
+                run: v13_talking_points,
+            },
+            Step {
+                version: 16,
+                name: "broken",
+                run: failing_step,
+            },
         ];
         let err = run_steps(&conn, Some(&path), &broken).unwrap_err();
         assert!(err.contains("v16"), "{err}");
@@ -616,7 +845,10 @@ mod tests {
         let stamp = std::fs::metadata(&backup).unwrap().modified().unwrap();
         conn.execute("DELETE FROM schema_steps", []).unwrap();
         run_steps(&conn, Some(&path), STEPS).unwrap();
-        assert_eq!(std::fs::metadata(&backup).unwrap().modified().unwrap(), stamp);
+        assert_eq!(
+            std::fs::metadata(&backup).unwrap().modified().unwrap(),
+            stamp
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -630,8 +862,16 @@ mod tests {
         // A step added later fails: the earlier ones stay, and the tables are still there.
         let steps: Vec<Step> = STEPS
             .iter()
-            .map(|s| Step { version: s.version, name: s.name, run: s.run })
-            .chain([Step { version: 40, name: "broken", run: failing_step }])
+            .map(|s| Step {
+                version: s.version,
+                name: s.name,
+                run: s.run,
+            })
+            .chain([Step {
+                version: 40,
+                name: "broken",
+                run: failing_step,
+            }])
             .collect();
         assert!(run_steps(&conn, Some(&path), &steps).is_err());
         assert!(tables_present(&conn));
@@ -642,16 +882,32 @@ mod tests {
     fn a_failing_look_is_unknown_never_absent() {
         let dir = temp_dir("probe");
         let (conn, _) = v8_database(&dir);
-        assert_eq!(probe_tables(&conn), TablesState::Absent, "the query worked and there is no table");
+        assert_eq!(
+            probe_tables(&conn),
+            TablesState::Absent,
+            "the query worked and there is no table"
+        );
         run_steps(&conn, None, STEPS).unwrap();
         assert_eq!(probe_tables(&conn), TablesState::Present);
         // A look that failed is Unknown, never Absent.
-        assert_eq!(classify(Err(rusqlite::Error::InvalidQuery)), TablesState::Unknown);
+        assert_eq!(
+            classify(Err(rusqlite::Error::InvalidQuery)),
+            TablesState::Unknown
+        );
         assert_eq!(classify(Ok(0)), TablesState::Absent);
         assert_eq!(classify(Ok(1)), TablesState::Present);
-        assert_eq!(TablesState::from_code(TablesState::Unknown.code()), TablesState::Unknown);
-        assert_eq!(TablesState::from_code(TablesState::Absent.code()), TablesState::Absent);
-        assert_eq!(TablesState::from_code(TablesState::Present.code()), TablesState::Present);
+        assert_eq!(
+            TablesState::from_code(TablesState::Unknown.code()),
+            TablesState::Unknown
+        );
+        assert_eq!(
+            TablesState::from_code(TablesState::Absent.code()),
+            TablesState::Absent
+        );
+        assert_eq!(
+            TablesState::from_code(TablesState::Present.code()),
+            TablesState::Present
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -701,12 +957,20 @@ mod tests {
         cleanup_old_backup(&path);
         run_steps(&conn, Some(&path), STEPS).unwrap();
         let again = second.elapsed();
-        let (meetings, segments): (i64, i64) =
-            (count(&conn, "SELECT COUNT(*) FROM meetings"), count(&conn, "SELECT COUNT(*) FROM transcript_segments"));
+        let (meetings, segments): (i64, i64) = (
+            count(&conn, "SELECT COUNT(*) FROM meetings"),
+            count(&conn, "SELECT COUNT(*) FROM transcript_segments"),
+        );
         println!("startup timing: upgrade of {meetings} meetings / {segments} segments {upgrade:?}, next start {again:?}");
         assert_eq!((meetings, segments), (60, 24_000));
-        assert!(upgrade < Duration::from_secs(10), "the upgrade took {upgrade:?}");
-        assert!(again < Duration::from_secs(2), "the next start took {again:?}");
+        assert!(
+            upgrade < Duration::from_secs(10),
+            "the upgrade took {upgrade:?}"
+        );
+        assert!(
+            again < Duration::from_secs(2),
+            "the next start took {again:?}"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -741,7 +1005,12 @@ mod tests {
         cleanup_old_backup(&path);
         assert!(backup.exists());
         let old = SystemTime::now() - Duration::from_secs(15 * 24 * 3600);
-        std::fs::File::options().write(true).open(&backup).unwrap().set_modified(old).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&backup)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
         cleanup_old_backup(&path);
         assert!(!backup.exists());
         let _ = std::fs::remove_dir_all(dir);
@@ -755,11 +1024,22 @@ mod tests {
         fn v10(conn: &Connection) -> rusqlite::Result<()> {
             conn.execute_batch("CREATE TABLE IF NOT EXISTS later_thing (id TEXT)")
         }
-        let mut with_v10: Vec<Step> = STEPS.iter().map(|s| Step { version: s.version, name: s.name, run: s.run }).collect();
-        with_v10.push(Step { version: 20, name: "later", run: v10 });
+        let mut with_v10: Vec<Step> = STEPS
+            .iter()
+            .map(|s| Step {
+                version: s.version,
+                name: s.name,
+                run: s.run,
+            })
+            .collect();
+        with_v10.push(Step {
+            version: 23,
+            name: "later",
+            run: v10,
+        });
         run_steps(&conn, Some(&path), &with_v10).unwrap();
         assert!(table_exists(&conn, "later_thing"));
-        assert_eq!(count(&conn, "PRAGMA user_version"), 20);
+        assert_eq!(count(&conn, "PRAGMA user_version"), 23);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

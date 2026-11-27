@@ -8,8 +8,7 @@ import {
   setTranslationProvider,
   testTranslationConnection,
   getTranslationLanguages,
-  storeApiKey,
-  getApiKey,
+  getCredentialSetting,
   hasApiKey,
 } from "../lib/ipc";
 import type { TranslationProviderType, TranslationLanguage, TranslationConnectionStatus } from "../lib/types";
@@ -301,21 +300,14 @@ export function TranslationSettings() {
       try {
         const keyExists = await hasApiKey(credKey);
         setHasStoredKey(keyExists);
-        if (keyExists) {
-          const stored = await getApiKey(credKey);
-          if (stored) setApiKey(stored);
-        }
       } catch (e) {
         console.warn("Failed to load translation API key:", e);
       }
 
       if (currentProviderOption.needsRegion) {
         try {
-          const regionExists = await hasApiKey("translation_microsoft_region");
-          if (regionExists) {
-            const stored = await getApiKey("translation_microsoft_region");
-            if (stored) setAzureRegion(stored);
-          }
+          const region = await getCredentialSetting("translation_microsoft_region");
+          if (region) setAzureRegion(region);
         } catch (e) {
           console.warn("Failed to load Azure region:", e);
         }
@@ -356,35 +348,30 @@ export function TranslationSettings() {
 
   const handleSaveAndTest = useCallback(async () => {
     if (!currentProviderOption?.requiresApiKey) return;
-    if (!apiKey.trim()) return;
+    if (!apiKey.trim() && !hasStoredKey) return;
 
     setConnectionStatus("testing");
     setStatusMessage("Testing connection...");
     setResponseMs(null);
 
+    const previousProvider = provider;
+    const typedKey = apiKey.trim();
+    const region = currentProviderOption.needsRegion ? azureRegion.trim() : undefined;
     try {
-      // Store the key in CredentialManager
-      await storeApiKey(currentProviderOption.credentialKey, apiKey.trim());
-
-      // Store region for Microsoft
-      if (currentProviderOption.needsRegion && azureRegion.trim()) {
-        await storeApiKey("translation_microsoft_region", azureRegion.trim());
-      }
-
-      // Temporarily set this provider on backend to test it
-      const previousProvider = provider; // the currently active provider
       await setTranslationProvider(
         selectedProvider,
-        currentProviderOption.needsRegion ? azureRegion : undefined
+        region,
+        typedKey || undefined,
       );
 
-      // Test the connection
-      const result: TranslationConnectionStatus = await testTranslationConnection(selectedProvider);
+      // The backend saves a typed key only if this probe succeeds.
+      const result: TranslationConnectionStatus = await testTranslationConnection(selectedProvider, typedKey || undefined, region);
 
       if (result.connected) {
         // Test passed — keep this provider active on backend
         setHasStoredKey(true);
         setKeyDirty(false);
+        setApiKey("");
         setConnectionStatus("success");
         setResponseMs(result.response_ms);
         setStatusMessage(
@@ -404,18 +391,17 @@ export function TranslationSettings() {
           await setTranslationProvider(previousProvider).catch(() => {});
         }
       } else {
-        // Test failed — restore previous provider on backend
-        if (previousProvider) {
-          await setTranslationProvider(previousProvider).catch(() => {});
-        }
+        // Reload the saved credentials so a rejected typed key is discarded.
+        await setTranslationProvider(previousProvider ?? selectedProvider).catch(() => {});
         setConnectionStatus("error");
         setStatusMessage(result.error || "Connection failed");
       }
     } catch (e) {
+      await setTranslationProvider(previousProvider ?? selectedProvider).catch(() => {});
       setConnectionStatus("error");
       setStatusMessage(typeof e === "string" ? e : e instanceof Error ? e.message : String(e));
     }
-  }, [apiKey, azureRegion, selectedProvider, currentProviderOption, setStoreProvider]);
+  }, [apiKey, azureRegion, hasStoredKey, provider, selectedProvider, currentProviderOption, setStoreProvider]);
 
   const handleTestLocal = useCallback(async () => {
     setConnectionStatus("testing");
@@ -455,16 +441,14 @@ export function TranslationSettings() {
 
   const handleMakeActive = useCallback(async () => {
     try {
-      if (currentProviderOption?.requiresApiKey && apiKey) {
-        await storeApiKey(currentProviderOption.credentialKey, apiKey).catch(() => {});
-      }
+      if (currentProviderOption?.requiresApiKey && !hasStoredKey) return;
       await setTranslationProvider(
         selectedProvider,
         currentProviderOption?.needsRegion ? azureRegion : undefined
       );
       setStoreProvider(selectedProvider);
     } catch { /* ignore */ }
-  }, [selectedProvider, apiKey, azureRegion, currentProviderOption, setStoreProvider]);
+  }, [selectedProvider, azureRegion, currentProviderOption, hasStoredKey, setStoreProvider]);
 
   // ── Language list for dropdowns ──
   // Always use the comprehensive default list as the base.

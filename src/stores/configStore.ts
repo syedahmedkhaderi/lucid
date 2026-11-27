@@ -140,12 +140,11 @@ function normalizeContextScope(value: Partial<ContextScopeSetting> | null | unde
 }
 
 /**
- * Backend config JSON for `provider` from what is stored: its API key, or for
- * the custom provider the persisted base URL, auth type and token (saved in
- * the credential manager under "custom").
+ * Non-secret backend config for `provider`. Rust resolves any saved provider
+ * key directly from the OS credential store; saved secrets never need to
+ * cross back into renderer state.
  */
 async function storedProviderConfig(provider: LLMProviderType): Promise<string> {
-  const { getApiKey } = await import("../lib/ipc");
   const config: Record<string, unknown> = { provider_type: provider };
   const { llmThinking, llmExtraRequestJson } = useConfigStore.getState();
   Object.assign(config, requestOptionFields(provider, llmThinking[provider], llmExtraRequestJson[provider]));
@@ -154,12 +153,7 @@ async function storedProviderConfig(provider: LLMProviderType): Promise<string> 
     if (customLlmBaseUrl) config.base_url = customLlmBaseUrl;
     if (customLlmAuthType !== "none") {
       config.auth_type = customLlmAuthType;
-      const token = await getApiKey("custom").catch(() => null);
-      if (token) config.auth_value = token;
     }
-  } else if (!isCliAgent(provider)) {
-    const key = await getApiKey(provider).catch(() => null);
-    if (key) config.api_key = key;
   }
   return JSON.stringify(config);
 }

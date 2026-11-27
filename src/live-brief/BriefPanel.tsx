@@ -213,6 +213,12 @@ export function BriefPanel() {
                   <li key={`${f.passage_id ?? "x"}-${i}`} className="lb-fact">
                     <div className="lb-fact-text"><NoteText text={f.text} /></div>
                     <SourceChip fact={f} />
+                    {f.evidence && (
+                      <details className="lb-evidence">
+                        <summary>See evidence</summary>
+                        <blockquote>{f.evidence}</blockquote>
+                      </details>
+                    )}
                   </li>
                 ))}
               </ul>

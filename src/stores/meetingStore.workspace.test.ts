@@ -11,8 +11,10 @@ let scopeError: string | null = null;
 
 function backend() {
   return mockBackend({
-    start_meeting: (a: Record<string, unknown>) =>
-      JSON.stringify({ id: "m-1", title: "Standup", workspace_id: (a.workspaceId as string) ?? "general" }),
+    start_meeting: (a: Record<string, unknown>) => {
+      if (scopeError) throw scopeError;
+      return JSON.stringify({ id: "m-1", title: "Standup", workspace_id: (a.workspaceId as string) ?? "general" });
+    },
     set_meeting_scope: (a: Record<string, unknown>) => {
       if (scopeError) throw scopeError;
       return { meeting_id: "m-1", home: "acme", borrowed: a.borrowed, effective: ["acme", ...(a.borrowed as string[])] };
@@ -68,18 +70,19 @@ describe("startMeetingFlow and workspaces", () => {
     expect(useMeetingStore.getState().aiScenario).toBe("webinar");
   });
 
-  it("sets the borrowed workspaces after the start, and keeps them in the store", async () => {
+  it("commits the borrowed workspaces with the meeting and keeps them in the store", async () => {
     const b = backend();
     await useMeetingStore.getState().startMeetingFlow("Standup", "online", "team_meeting", { workspaceId: "acme", borrowed: ["docs"] });
-    expect(b.called("set_meeting_scope")[0].args).toMatchObject({ meetingId: "m-1", borrowed: ["docs"] });
+    expect(b.called("start_meeting")[0].args).toMatchObject({ workspaceId: "acme", borrowedWorkspaceIds: ["docs"] });
+    expect(b.called("set_meeting_scope")).toHaveLength(0);
     expect(useMeetingStore.getState().activeBorrowed).toEqual(["docs"]);
   });
 
-  it("still starts when the backend refuses the borrowed ones, and says so", async () => {
+  it("fails closed when the backend refuses a requested borrowed workspace", async () => {
     backend();
     scopeError = "Vault is kept separate";
-    await useMeetingStore.getState().startMeetingFlow("Standup", "online", "team_meeting", { workspaceId: "acme", borrowed: ["docs"] });
-    expect(useMeetingStore.getState().activeMeeting?.id).toBe("m-1");
+    await expect(useMeetingStore.getState().startMeetingFlow("Standup", "online", "team_meeting", { workspaceId: "acme", borrowed: ["docs"] })).rejects.toContain("Vault is kept separate");
+    expect(useMeetingStore.getState().activeMeeting).toBeNull();
     expect(useMeetingStore.getState().activeBorrowed).toEqual([]);
   });
 

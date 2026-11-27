@@ -9,7 +9,6 @@ import {
   setLLMProvider,
   testLLMConnection,
   storeApiKey,
-  getApiKey,
   hasApiKey,
   listOpenRouterModels,
 } from "../lib/ipc";
@@ -19,6 +18,7 @@ import { CliAgentSettings } from "./CliAgentSettings";
 import { cliTierLabel, isCliAgent } from "../lib/cliAgents";
 import { ThinkingSettings } from "./ThinkingSettings";
 import { ProviderCard, type StatusTone } from "./ProviderCard";
+import { CredentialProfiles } from "./CredentialProfiles";
 import { requestOptionFields } from "../lib/llmRequestOptions";
 import { useAgentStore } from "../stores/agentStore";
 import {
@@ -210,15 +210,21 @@ export function LLMSettings() {
     };
   }, []);
 
-  // Load API key when provider changes
+  // Read only whether a key exists. Saved secrets stay in Rust and the OS
+  // credential store; this field is for a replacement the user is entering.
   useEffect(() => {
     const info = PROVIDER_DISPLAY[selectedProvider];
+    setApiKeyValue("");
     if (info?.requiresKey) {
-      getApiKey(selectedProvider)
-        .then((key) => setApiKeyValue(key || ""))
-        .catch(() => setApiKeyValue(""));
-    } else {
-      setApiKeyValue("");
+      let cancelled = false;
+      hasApiKey(selectedProvider)
+        .then((present) => {
+          if (!cancelled) setKeyStatusMap((prev) => ({ ...prev, [selectedProvider]: present }));
+        })
+        .catch(() => {
+          if (!cancelled) setKeyStatusMap((prev) => ({ ...prev, [selectedProvider]: false }));
+        });
+      return () => { cancelled = true; };
     }
     setConnectionStatus("idle");
     setConnectionMessage("");
@@ -233,9 +239,16 @@ export function LLMSettings() {
     if (selectedProvider !== "custom") return;
     setCustomBaseUrl(useConfigStore.getState().customLlmBaseUrl);
     setCustomAuthType(useConfigStore.getState().customLlmAuthType);
-    getApiKey("custom")
-      .then((v) => setCustomAuthValue(v || ""))
-      .catch(() => setCustomAuthValue(""));
+    setCustomAuthValue("");
+    let cancelled = false;
+    hasApiKey("custom")
+      .then((present) => {
+        if (!cancelled) setKeyStatusMap((prev) => ({ ...prev, custom: present }));
+      })
+      .catch(() => {
+        if (!cancelled) setKeyStatusMap((prev) => ({ ...prev, custom: false }));
+      });
+    return () => { cancelled = true; };
   }, [selectedProvider]);
 
   // Persist base URL / auth type as the user edits them (token is saved on blur).
@@ -246,20 +259,24 @@ export function LLMSettings() {
 
   // Build the provider config JSON for backend calls
   // `custom` overrides a Custom field changed in this same event (its state isn't updated yet).
-  const buildProviderConfig = useCallback((custom: { authType?: CustomAuthType; authValue?: string } = {}) => {
+  const buildProviderConfig = useCallback((
+    custom: { authType?: CustomAuthType; authValue?: string } = {},
+    includeEnteredSecret = true,
+  ) => {
     const config: Record<string, unknown> = { provider_type: selectedProvider };
     const { llmThinking, llmExtraRequestJson } = useConfigStore.getState();
     Object.assign(
       config,
       requestOptionFields(selectedProvider, llmThinking[selectedProvider], llmExtraRequestJson[selectedProvider]),
     );
-    if (apiKey) config.api_key = apiKey;
+    if (includeEnteredSecret && apiKey.trim()) config.api_key = apiKey.trim();
     if (selectedProvider === "custom") {
       const authType = custom.authType ?? customAuthType;
       if (customBaseUrl) config.base_url = customBaseUrl;
       if (authType !== "none") {
         config.auth_type = authType;
-        config.auth_value = (custom.authValue ?? customAuthValue).trim();
+        const authValue = (custom.authValue ?? customAuthValue).trim();
+        if (includeEnteredSecret && authValue) config.auth_value = authValue;
       }
     }
     return JSON.stringify(config);
@@ -267,9 +284,12 @@ export function LLMSettings() {
 
   // Custom is the provider in use: a changed base URL, auth type or token
   // applies to it at once, not only after a restart or a provider switch.
-  const applyCustomIfActive = (custom: { authType?: CustomAuthType; authValue?: string } = {}) => {
+  const applyCustomIfActive = (
+    custom: { authType?: CustomAuthType; authValue?: string } = {},
+    includeEnteredSecret = true,
+  ) => {
     if (selectedProvider !== "custom" || useConfigStore.getState().llmProvider !== "custom" || !customBaseUrl.trim()) return;
-    setLLMProvider(buildProviderConfig(custom)).catch((e) =>
+    setLLMProvider(buildProviderConfig(custom, includeEnteredSecret)).catch((e) =>
       showToast(`Couldn't apply the custom endpoint: ${e instanceof Error ? e.message : String(e)}`, "error"),
     );
   };
@@ -277,13 +297,17 @@ export function LLMSettings() {
   // The token is saved without spaces around it (a pasted key often has some).
   const saveCustomToken = async () => {
     const token = customAuthValue.trim();
-    if (token !== customAuthValue) setCustomAuthValue(token);
-    await storeApiKey("custom", token).catch(() => {});
-    applyCustomIfActive({ authValue: token });
+    if (!token) return;
+    await storeApiKey("custom", token);
+    setKeyStatusMap((prev) => ({ ...prev, custom: true }));
+    applyCustomIfActive({}, false);
+    setCustomAuthValue("");
   };
 
   const handleProviderChange = (provider: LLMProviderType) => {
     setSelectedProvider(provider);
+    setApiKeyValue("");
+    setCustomAuthValue("");
     setSelectedModel("");
     setModels([]);
     setOpenRouterModels([]);
@@ -292,28 +316,23 @@ export function LLMSettings() {
     setModelsError("");
   };
 
-  const handleSaveApiKey = async () => {
-    if (!apiKey) return;
-    try {
-      await storeApiKey(selectedProvider, apiKey);
-      setKeyStatusMap((prev) => ({ ...prev, [selectedProvider]: true }));
-    } catch {
-      showToast("Failed to save API key", "error");
-    }
-  };
-
-  // Test connection — on success, add to verifiedCloudProviders
+  // Only replace a saved provider credential after it has passed a real
+  // connection check. A typo or revoked replacement must not destroy the
+  // previously working key.
   const handleTestConnection = async () => {
     setConnectionStatus("testing");
     setConnectionMessage("");
     try {
-      if (apiKey) await storeApiKey(selectedProvider, apiKey).catch(() => {});
       const configJson = buildProviderConfig();
       const success = await testLLMConnection(configJson);
       if (LOCAL_PROVIDERS.includes(selectedProvider)) {
         setLocalReach((prev) => ({ ...prev, [selectedProvider]: success ? "up" : "down" }));
       }
       if (success) {
+        if (PROVIDER_DISPLAY[selectedProvider]?.requiresKey && apiKey.trim()) {
+          await storeApiKey(selectedProvider, apiKey.trim());
+          setApiKeyValue("");
+        }
         setConnectionStatus("success");
         setConnectionMessage("Connected successfully");
         // Mark as verified
@@ -340,7 +359,16 @@ export function LLMSettings() {
     setModels([]);
     // Don't clear openRouterModels here — keep showing existing catalog during refresh
     try {
-      if (apiKey) await storeApiKey(selectedProvider, apiKey).catch(() => {});
+      // Model discovery is also an explicit validation path. Validate the
+      // entered credential before persisting it, then use the secure store
+      // for provider-specific catalogs such as OpenRouter's enriched list.
+      if (PROVIDER_DISPLAY[selectedProvider]?.requiresKey && apiKey.trim()) {
+        const valid = await testLLMConnection(buildProviderConfig());
+        if (!valid) throw new Error("Connection failed");
+        await storeApiKey(selectedProvider, apiKey.trim());
+        setApiKeyValue("");
+        setKeyStatusMap((prev) => ({ ...prev, [selectedProvider]: true }));
+      }
 
       if (selectedProvider === "openrouter") {
         // Browsing only: the key is already stored, so this never touches the active provider
@@ -352,7 +380,7 @@ export function LLMSettings() {
         }
       } else {
         // Use generic model listing for other providers
-        const configJson = buildProviderConfig();
+        const configJson = buildProviderConfig({}, false);
         const modelList = await listModels(configJson);
         const chatModels = filterChatModels(modelList);
         setModels(chatModels);
@@ -398,14 +426,27 @@ export function LLMSettings() {
   const handleActivate = async () => {
     try {
       if (selectedProvider === "custom") {
-        if (customAuthValue) await storeApiKey("custom", customAuthValue).catch(() => {});
+        if (customAuthValue.trim()) {
+          await storeApiKey("custom", customAuthValue.trim());
+          setCustomAuthValue("");
+          setKeyStatusMap((prev) => ({ ...prev, custom: true }));
+        }
         setCustomLlmConfig(customBaseUrl, customAuthType);
-      } else if (apiKey) {
-        await storeApiKey(selectedProvider, apiKey).catch(() => {});
+      } else if (PROVIDER_DISPLAY[selectedProvider]?.requiresKey) {
+        if (!apiKey.trim() && !keyStatusMap[selectedProvider]) {
+          throw new Error("Enter an API key and test the connection first.");
+        }
+        const valid = await testLLMConnection(buildProviderConfig());
+        if (!valid) throw new Error("The saved or entered API key did not pass the connection test.");
+        if (apiKey.trim()) {
+          await storeApiKey(selectedProvider, apiKey.trim());
+          setApiKeyValue("");
+          setKeyStatusMap((prev) => ({ ...prev, [selectedProvider]: true }));
+        }
       }
       await activateLLMProvider(selectedProvider, {
         model: selectedModel,
-        providerConfig: buildProviderConfig(),
+        providerConfig: buildProviderConfig({}, false),
       });
     } catch (e) {
       showToast(`Couldn't switch the AI provider: ${e instanceof Error ? e.message : String(e)}`, "error");
@@ -507,8 +548,9 @@ export function LLMSettings() {
                 type={showApiKey ? "text" : "password"}
                 value={apiKey}
                 onChange={(e) => setApiKeyValue(e.target.value)}
-                onBlur={handleSaveApiKey}
-                placeholder={`Enter ${PROVIDER_DISPLAY[selectedProvider]?.label || selectedProvider} API key`}
+                placeholder={keyStatusMap[selectedProvider]
+                  ? "Key saved securely — enter a replacement only if needed"
+                  : `Enter ${PROVIDER_DISPLAY[selectedProvider]?.label || selectedProvider} API key`}
                 maxLength={256}
                 className="w-full rounded-lg border border-border/50 bg-background px-3.5 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
               />
@@ -524,8 +566,17 @@ export function LLMSettings() {
             </div>
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Stored securely in your system keychain
+            {keyStatusMap[selectedProvider]
+              ? "A key is saved in your system credential store. The saved value is never loaded into this field."
+              : "The key is saved to your system credential store only after a successful connection test."}
           </p>
+          <CredentialProfiles
+            provider={selectedProvider}
+            providerLabel={PROVIDER_DISPLAY[selectedProvider]?.label || selectedProvider}
+            onProfileActivated={() => {
+              setKeyStatusMap((prev) => ({ ...prev, [selectedProvider]: true }));
+            }}
+          />
         </div>
       )}
 
@@ -572,7 +623,9 @@ export function LLMSettings() {
                   value={customAuthValue}
                   onChange={(e) => setCustomAuthValue(e.target.value)}
                   onBlur={() => { void saveCustomToken(); }}
-                  placeholder={customAuthType === "bearer" ? "Bearer token..." : "API key..."}
+                  placeholder={keyStatusMap.custom
+                    ? "Saved securely — enter a replacement if needed"
+                    : customAuthType === "bearer" ? "Bearer token..." : "API key..."}
                   maxLength={256}
                   className="w-full rounded-lg border border-border/50 bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
                 />
@@ -601,7 +654,7 @@ export function LLMSettings() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleTestConnection}
-              disabled={connectionStatus === "testing" || (requiresApiKey && !apiKey) || (isCustom && !customBaseUrl)}
+              disabled={connectionStatus === "testing" || (requiresApiKey && !apiKey.trim() && !keyStatusMap[selectedProvider]) || (isCustom && !customBaseUrl)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-background px-4 py-2 text-sm font-medium text-foreground transition-all duration-150 hover:bg-accent hover:-translate-y-px active:translate-y-px active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:active:scale-100 cursor-pointer"
             >
               {connectionStatus === "testing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
@@ -609,7 +662,7 @@ export function LLMSettings() {
             </button>
             <button
               onClick={handleLoadModels}
-              disabled={modelsLoading || (requiresApiKey && !apiKey) || (isCustom && !customBaseUrl)}
+              disabled={modelsLoading || (requiresApiKey && !apiKey.trim() && !keyStatusMap[selectedProvider]) || (isCustom && !customBaseUrl)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-background px-4 py-2 text-sm font-medium text-foreground transition-all duration-150 hover:bg-accent hover:-translate-y-px active:translate-y-px active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:active:scale-100 cursor-pointer"
             >
               {modelsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}

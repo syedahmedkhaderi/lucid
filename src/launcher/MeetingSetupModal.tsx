@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useConfigStore } from "../stores/configStore";
-import { setRecordingEnabled } from "../lib/ipc";
+import { getWorkspace, setRecordingEnabled } from "../lib/ipc";
 import { useMeetingScenarios, useScenarioStore } from "../stores/scenarioStore";
 import { MODE_COLORS } from "../lib/speakerColors";
 import { readableOn, useIsLight } from "../lib/themeText";
@@ -12,6 +12,7 @@ import { Combobox, useFocusTrap } from "../ui";
 
 /** Past this many workspaces the picker is a searchable field, not a row of chips. */
 export const MANY_WORKSPACES = 6;
+export const MAX_MEETING_DOCUMENTS = 10;
 import type { AudioMode, AIScenario } from "../lib/types";
 import {
   Monitor,
@@ -22,12 +23,21 @@ import {
   RotateCcw,
   CheckSquare,
   Square,
+  FileText,
 } from "lucide-react";
 
 /** Where the meeting is filed and what it also uses. */
 export interface MeetingSetupChoice {
   workspaceId: string;
   borrowed: string[];
+  documentIds: string[];
+}
+
+interface SetupDocument {
+  id: string;
+  name: string;
+  workspaceName: string;
+  status: string;
 }
 
 interface MeetingSetupModalProps {
@@ -46,6 +56,10 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
   const archivedNote = requested?.archived ? `"${requested.name}" is archived, so this meeting goes to ${workspaceById(workspaces, startWorkspace)?.name ?? "General"}.` : null;
   const [homeId, setHomeId] = useState(startWorkspace);
   const [borrowed, setBorrowed] = useState<string[]>([]);
+  const [documents, setDocuments] = useState<SetupDocument[]>([]);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const documentSelectionTouched = useRef(false);
   // A scenario picked here beats the workspace's own; until then the workspace decides.
   const [scenarioPicked, setScenarioPicked] = useState(false);
   const selectable = workspaces.filter((w) => !w.archived);
@@ -94,12 +108,51 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
     const start = asked && !asked.archived ? asked : defaultWorkspaceOf(all);
     setHomeId(start.id);
     setBorrowed([]);
+    setDocuments([]);
+    setSelectedDocumentIds([]);
+    documentSelectionTouched.current = false;
+    setDocumentsLoading(true);
     setScenarioPicked(false);
     setScenario(pickScenario({ workspaceDefault: start.default_scenario, remembered: rememberedSetup?.scenario }));
     setRemember(hasRemembered);
     setIsExpanded(!hasRemembered);
     setShowScenarioPicker(false);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const borrowedKey = borrowed.join("\u0000");
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setDocumentsLoading(true);
+    const ids = new Set([homeId, ...borrowed]);
+    if (homeId === "general" || home?.include_general) ids.add("general");
+    const candidates = [...ids]
+      .map((id) => workspaceById(useWorkspaceStore.getState().workspaces, id))
+      .filter((w) => !!w && !w.archived);
+    void Promise.allSettled(candidates.map(async (workspace) => {
+      const detail = await getWorkspace(workspace!.id);
+      return detail.items
+        .filter((item) => item.kind === "document")
+        .map((item) => ({ id: item.ref_id, name: item.label || item.name, workspaceName: workspace!.name, status: item.status }));
+    })).then((results) => {
+      if (cancelled) return;
+      const byId = new Map<string, SetupDocument>();
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        for (const item of result.value) if (!byId.has(item.id)) byId.set(item.id, item);
+      }
+      const next = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      setDocuments(next);
+      const available = new Set(next.map((item) => item.id));
+      setSelectedDocumentIds((current) => {
+        if (!documentSelectionTouched.current) return next.slice(0, MAX_MEETING_DOCUMENTS).map((item) => item.id);
+        return current.filter((id) => available.has(id)).slice(0, MAX_MEETING_DOCUMENTS);
+      });
+    }).finally(() => {
+      if (!cancelled) setDocumentsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [open, homeId, borrowedKey, home?.include_general]);
 
   // Close on Escape
   useEffect(() => {
@@ -119,14 +172,24 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
   );
 
   const handleStart = useCallback(() => {
+    if (documentsLoading) return;
     if (remember) {
       setRememberedMeetingSetup({ audioMode, scenario });
     } else {
       // If unchecked, clear any existing remembered setup
       setRememberedMeetingSetup(null);
     }
-    onStart(audioMode, scenario, { workspaceId: homeId, borrowed });
-  }, [audioMode, scenario, remember, setRememberedMeetingSetup, onStart, homeId, borrowed]);
+    onStart(audioMode, scenario, { workspaceId: homeId, borrowed, documentIds: selectedDocumentIds });
+  }, [audioMode, scenario, remember, setRememberedMeetingSetup, onStart, homeId, borrowed, selectedDocumentIds, documentsLoading]);
+
+  const toggleDocument = useCallback((id: string) => {
+    documentSelectionTouched.current = true;
+    setSelectedDocumentIds((current) => {
+      if (current.includes(id)) return current.filter((item) => item !== id);
+      if (current.length >= MAX_MEETING_DOCUMENTS) return current;
+      return [...current, id];
+    });
+  }, []);
 
   // Another home: its scenario applies unless one was picked here, and what can be borrowed changes.
   const changeHome = useCallback(
@@ -264,7 +327,8 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
             {/* Big start button */}
             <button
               onClick={handleStart}
-              className="group w-full flex items-center justify-center gap-2.5 rounded-xl bg-primary py-3.5 font-semibold text-white shadow-md shadow-primary/20 transition-all duration-150 hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-px active:translate-y-px active:scale-[0.98] cursor-pointer"
+              disabled={documentsLoading}
+              className="group w-full flex items-center justify-center gap-2.5 rounded-xl bg-primary py-3.5 font-semibold text-white shadow-md shadow-primary/20 transition-all duration-150 hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-px active:translate-y-px active:scale-[0.98] cursor-pointer disabled:cursor-wait disabled:opacity-60"
             >
               <Play className="h-4 w-4 ml-0.5" fill="white" />
               <span className="text-sm">Start Meeting</span>
@@ -354,6 +418,46 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
                 )}
               </div>
             )}
+
+            {/* ── Documents available to this meeting ── */}
+            <fieldset>
+              <legend className="mb-1.5 flex w-full items-center justify-between text-xs font-semibold text-foreground/80">
+                <span>Documents</span>
+                <span className="font-normal text-muted-foreground">{selectedDocumentIds.length}/{MAX_MEETING_DOCUMENTS} selected</span>
+              </legend>
+              <p className="mb-2 text-[10px] leading-relaxed text-muted-foreground/70">
+                Choose which workspace documents Lucid can use in this meeting.
+              </p>
+              {documentsLoading ? (
+                <p className="rounded-lg border border-border/30 px-3 py-2 text-xs text-muted-foreground" role="status">Loading workspace documents…</p>
+              ) : documents.length === 0 ? (
+                <p className="rounded-lg border border-border/30 px-3 py-2 text-xs text-muted-foreground">No documents are available in this meeting scope.</p>
+              ) : (
+                <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-border/30 p-2">
+                  {documents.map((document) => {
+                    const checked = selectedDocumentIds.includes(document.id);
+                    const unavailable = document.status === "missing" || document.status === "error";
+                    const atLimit = !checked && selectedDocumentIds.length >= MAX_MEETING_DOCUMENTS;
+                    return (
+                      <label key={document.id} className={`flex items-center gap-2 rounded-md px-1.5 py-1 text-xs ${unavailable || atLimit ? "opacity-55" : "cursor-pointer hover:bg-accent/40"}`}>
+                        <input
+                          type="checkbox"
+                          aria-label={`${document.name} in ${document.workspaceName}`}
+                          checked={checked}
+                          disabled={unavailable || atLimit}
+                          onChange={() => toggleDocument(document.id)}
+                          className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
+                        />
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate text-foreground/85">{document.name}</span>
+                        <span className="max-w-24 truncate text-[10px] text-muted-foreground">{document.workspaceName}</span>
+                        {unavailable && <span className="text-[10px] text-destructive">Unavailable</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </fieldset>
 
             {/* ── Scenario Picker ── */}
             <div>
@@ -548,7 +652,8 @@ export function MeetingSetupModal({ open, onStart, onCancel, workspaceId }: Meet
             <div className="flex flex-col gap-2 pt-1">
               <button
                 onClick={handleStart}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-white shadow-md shadow-primary/20 transition-all duration-150 hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-px active:translate-y-px active:scale-[0.98] cursor-pointer"
+                disabled={documentsLoading}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-white shadow-md shadow-primary/20 transition-all duration-150 hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-px active:translate-y-px active:scale-[0.98] cursor-pointer disabled:cursor-wait disabled:opacity-60"
               >
                 <Play className="h-4 w-4 ml-0.5" fill="white" />
                 <span className="text-sm">Start Meeting</span>

@@ -220,17 +220,24 @@ impl TranslationRouter {
         self.active_type.as_ref()
     }
 
-    pub fn set_microsoft_credentials(&mut self, key: String, region: Option<String>) {
-        self.microsoft_api_key = Some(key);
+    /// Drop the active provider after a failed credential restore so a
+    /// rejected, short-lived key cannot remain usable in the router.
+    pub fn clear_active_provider(&mut self) {
+        self.active_provider = None;
+        self.active_type = None;
+    }
+
+    pub fn set_microsoft_credentials(&mut self, key: Option<String>, region: Option<String>) {
+        self.microsoft_api_key = key;
         self.microsoft_region = region;
     }
 
-    pub fn set_google_credentials(&mut self, key: String) {
-        self.google_api_key = Some(key);
+    pub fn set_google_credentials(&mut self, key: Option<String>) {
+        self.google_api_key = key;
     }
 
-    pub fn set_deepl_credentials(&mut self, key: String) {
-        self.deepl_api_key = Some(key);
+    pub fn set_deepl_credentials(&mut self, key: Option<String>) {
+        self.deepl_api_key = key;
     }
 
     pub fn set_default_target_lang(&mut self, lang: String) {

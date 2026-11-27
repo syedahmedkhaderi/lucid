@@ -1,8 +1,11 @@
 //! The brief sheet: what the model may say, what code lets through, and what
 //! live answers see. A fact is shown only when it cites a passage that was
-//! sent and its numbers and names occur in that passage.
+//! sent, includes an exact excerpt from it, and its numbers and names occur in
+//! that excerpt.
 
-use crate::live_common::{estimate_tokens, fmt_clock, is_cjk, is_stopword, parse_loose_where, str_field};
+use crate::live_common::{
+    estimate_tokens, fmt_clock, is_cjk, is_stopword, parse_loose_where, str_field,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -11,6 +14,7 @@ pub const MAX_FACTS: usize = 6;
 pub const STALE_MS: u64 = 4 * 60 * 1000;
 const MAX_NOW_CHARS: usize = 120;
 const MAX_FACT_CHARS: usize = 220;
+const MAX_EVIDENCE_CHARS: usize = 280;
 const MAX_EARLIER: usize = 4;
 const MAX_EARLIER_CHARS: usize = 100;
 
@@ -29,6 +33,9 @@ pub struct SentPassage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Fact {
     pub text: String,
+    /// Exact excerpt from the cited passage that supports this fact.
+    #[serde(default)]
+    pub evidence: String,
     /// Label of the cited passage ("P2").
     pub source: String,
     /// The passage's id in the search index (`kind:ref_id#n`).
@@ -54,6 +61,9 @@ pub enum FactDrop {
     UnknownSource,
     NumberNotInPassage,
     NameNotInPassage,
+    EvidenceMissing,
+    EvidenceNotInPassage,
+    ClaimNotAlignedWithEvidence,
     OverLimit,
     /// Reads like an order to the model.
     Instruction,
@@ -96,7 +106,12 @@ pub fn numbers_in(s: &str) -> Vec<String> {
                     digits.push(c);
                 } else if is_wide_digit(c) {
                     digits.push(char::from_digit(c as u32 - 0xFF10, 10).unwrap_or('0'));
-                } else if (c == ',' || c == '.' || c == '，' || c == '．' || c == '\u{202f}' || c == '\u{a0}')
+                } else if (c == ','
+                    || c == '.'
+                    || c == '，'
+                    || c == '．'
+                    || c == '\u{202f}'
+                    || c == '\u{a0}')
                     && i + 1 < chars.len()
                     && (chars[i + 1].is_ascii_digit() || is_wide_digit(chars[i + 1]))
                 {
@@ -120,11 +135,64 @@ fn is_wide_digit(c: char) -> bool {
 
 /// Words that start sentences without being names (checked case-insensitively).
 const STARTERS: &[&str] = &[
-    "someone", "everyone", "anyone", "nobody", "today", "tomorrow", "yesterday", "next", "then", "also", "still",
-    "however", "since", "after", "before", "once", "please", "send", "ask", "check", "confirm", "review", "share",
-    "update", "schedule", "follow", "remind", "make", "prepare", "call", "email", "book", "decide", "renew",
-    "approve", "keep", "use", "add", "set", "plan", "open", "close", "agree", "agreed", "need", "needs", "must",
-    "alguien", "todos", "hoy", "mañana", "ayer", "luego", "también", "enviar", "revisar", "confirmar", "preparar",
+    "someone",
+    "everyone",
+    "anyone",
+    "nobody",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "next",
+    "then",
+    "also",
+    "still",
+    "however",
+    "since",
+    "after",
+    "before",
+    "once",
+    "please",
+    "send",
+    "ask",
+    "check",
+    "confirm",
+    "review",
+    "share",
+    "update",
+    "schedule",
+    "follow",
+    "remind",
+    "make",
+    "prepare",
+    "call",
+    "email",
+    "book",
+    "decide",
+    "renew",
+    "approve",
+    "keep",
+    "use",
+    "add",
+    "set",
+    "plan",
+    "open",
+    "close",
+    "agree",
+    "agreed",
+    "need",
+    "needs",
+    "must",
+    "alguien",
+    "todos",
+    "hoy",
+    "mañana",
+    "ayer",
+    "luego",
+    "también",
+    "enviar",
+    "revisar",
+    "confirmar",
+    "preparar",
 ];
 
 /// Capitalised words (Latin scripts), length 2+, without the apostrophe tail.
@@ -139,16 +207,27 @@ fn capitalised_words(s: &str) -> Vec<String> {
         let (_, c) = chars[i];
         if c.is_alphanumeric() {
             let start = i;
-            while i < chars.len() && (chars[i].1.is_alphanumeric() || chars[i].1 == '\'' || chars[i].1 == '’') {
+            while i < chars.len()
+                && (chars[i].1.is_alphanumeric() || chars[i].1 == '\'' || chars[i].1 == '’')
+            {
                 i += 1;
             }
             let end_byte = if i < chars.len() { chars[i].0 } else { s.len() };
             let w = s[chars[start].0..end_byte].trim_matches(|c| c == '\'' || c == '’');
-            let base: String = w.split(|c| c == '\'' || c == '’').next().unwrap_or(w).to_string();
-            let first_upper = base.chars().next().map(|f| f.is_uppercase() && !is_cjk(f)).unwrap_or(false);
+            let base: String = w
+                .split(|c| c == '\'' || c == '’')
+                .next()
+                .unwrap_or(w)
+                .to_string();
+            let first_upper = base
+                .chars()
+                .next()
+                .map(|f| f.is_uppercase() && !is_cjk(f))
+                .unwrap_or(false);
             if first_upper && base.chars().count() >= 2 {
                 let lower = base.to_lowercase();
-                let grammar = sentence_start && (is_stopword(&lower) || STARTERS.contains(&lower.as_str()));
+                let grammar =
+                    sentence_start && (is_stopword(&lower) || STARTERS.contains(&lower.as_str()));
                 if !grammar {
                     out.push(base);
                 }
@@ -220,7 +299,10 @@ fn find_passage<'a>(source: &str, sent: &'a [SentPassage]) -> Option<&'a SentPas
     if s.is_empty() {
         return None;
     }
-    if let Some(p) = sent.iter().find(|p| p.label.eq_ignore_ascii_case(s) || p.id == s) {
+    if let Some(p) = sent
+        .iter()
+        .find(|p| p.label.eq_ignore_ascii_case(s) || p.id == s)
+    {
         return Some(p);
     }
     // "[P2]", "p2", "passage 2", "2"
@@ -235,6 +317,7 @@ fn find_passage<'a>(source: &str, sent: &'a [SentPassage]) -> Option<&'a SentPas
 struct RawFact {
     text: String,
     source: String,
+    evidence: String,
 }
 
 struct RawSheet {
@@ -249,34 +332,61 @@ fn raw_from_value(v: &Value) -> Option<RawSheet> {
     if !o.contains_key("now") && facts_v.is_none() {
         return None;
     }
-    let now = str_field(v, &["now", "topic", "current"]).unwrap_or("").to_string();
+    let now = str_field(v, &["now", "topic", "current"])
+        .unwrap_or("")
+        .to_string();
     let mut facts = Vec::new();
     if let Some(Value::Array(items)) = facts_v {
         for it in items {
             match it {
                 Value::Object(_) => {
-                    let text = str_field(it, &["text", "fact", "content"]).unwrap_or("").to_string();
-                    let source = match it.get("source").or_else(|| it.get("src")).or_else(|| it.get("cite")).or_else(|| it.get("passage")) {
+                    let text = str_field(it, &["text", "fact", "content"])
+                        .unwrap_or("")
+                        .to_string();
+                    let source = match it
+                        .get("source")
+                        .or_else(|| it.get("src"))
+                        .or_else(|| it.get("cite"))
+                        .or_else(|| it.get("passage"))
+                    {
                         Some(Value::String(s)) => s.clone(),
                         Some(Value::Number(n)) => n.to_string(),
                         _ => String::new(),
                     };
-                    facts.push(RawFact { text, source });
+                    let evidence = str_field(it, &["evidence", "quote", "support"])
+                        .unwrap_or("")
+                        .to_string();
+                    facts.push(RawFact {
+                        text,
+                        source,
+                        evidence,
+                    });
                 }
                 Value::String(s) => {
                     let (text, source) = split_inline_cite(s);
-                    facts.push(RawFact { text, source });
+                    facts.push(RawFact {
+                        text,
+                        source,
+                        evidence: String::new(),
+                    });
                 }
                 _ => {}
             }
         }
     }
     let earlier = match o.get("earlier") {
-        Some(Value::Array(a)) => a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect(),
+        Some(Value::Array(a)) => a
+            .iter()
+            .filter_map(|x| x.as_str().map(|s| s.to_string()))
+            .collect(),
         Some(Value::String(s)) => vec![s.clone()],
         _ => vec![],
     };
-    Some(RawSheet { now, facts, earlier })
+    Some(RawSheet {
+        now,
+        facts,
+        earlier,
+    })
 }
 
 /// "Revenue was 4.2M [P2]" -> ("Revenue was 4.2M", "P2")
@@ -293,7 +403,10 @@ fn split_inline_cite(s: &str) -> (String, String) {
 }
 
 fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
-    if s.len() >= prefix.len() && s.is_char_boundary(prefix.len()) && s[..prefix.len()].eq_ignore_ascii_case(prefix) {
+    if s.len() >= prefix.len()
+        && s.is_char_boundary(prefix.len())
+        && s[..prefix.len()].eq_ignore_ascii_case(prefix)
+    {
         Some(&s[prefix.len()..])
     } else {
         None
@@ -310,28 +423,70 @@ fn raw_from_lines(raw: &str) -> Option<RawSheet> {
         if let Some(r) = strip_prefix_ci(l, "now:") {
             now = r.trim().to_string();
         } else if let Some(r) = strip_prefix_ci(l, "earlier:") {
-            earlier.extend(r.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()));
-        } else if let Some(r) = l.strip_prefix("- ").or_else(|| l.strip_prefix("* ")).or_else(|| l.strip_prefix("• ")) {
+            earlier.extend(
+                r.split(';')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
+            );
+        } else if let Some(r) = l
+            .strip_prefix("- ")
+            .or_else(|| l.strip_prefix("* "))
+            .or_else(|| l.strip_prefix("• "))
+        {
             let (text, source) = split_inline_cite(r);
-            facts.push(RawFact { text, source });
+            facts.push(RawFact {
+                text,
+                source,
+                evidence: String::new(),
+            });
         }
     }
     if now.is_empty() && facts.is_empty() {
         None
     } else {
-        Some(RawSheet { now, facts, earlier })
+        Some(RawSheet {
+            now,
+            facts,
+            earlier,
+        })
     }
 }
 
 fn sheet_tokens(s: &Sheet) -> u32 {
     let mut t = estimate_tokens(&s.now);
     for f in &s.facts {
-        t += estimate_tokens(&f.text) + 3;
+        t += estimate_tokens(&f.text) + estimate_tokens(&f.evidence) + 3;
     }
     for e in &s.earlier {
         t += estimate_tokens(e) + 1;
     }
     t
+}
+
+fn compact_whitespace(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+pub fn evidence_in_passage(quote: &str, passage: &str) -> bool {
+    let quote = compact_whitespace(quote);
+    !quote.is_empty() && compact_whitespace(passage).contains(&quote)
+}
+
+/// Reject a quote that is verbatim but unrelated to the claim. This is a
+/// conservative lexical check; it cannot prove the full meaning of a claim.
+fn claim_aligned_with_evidence(claim: &str, evidence: &str) -> bool {
+    let terms: std::collections::HashSet<String> = crate::live_common::content_terms(claim)
+        .into_iter()
+        .collect();
+    if terms.is_empty() {
+        return true;
+    }
+    let evidence_terms: std::collections::HashSet<String> =
+        crate::live_common::content_terms(evidence)
+            .into_iter()
+            .collect();
+    let matching = terms.iter().filter(|t| evidence_terms.contains(*t)).count();
+    matching as f32 / terms.len() as f32 >= 0.5
 }
 
 /// Reads and validates the model's answer. `sheet` is None when nothing
@@ -343,7 +498,6 @@ pub fn parse_sheet(raw: &str, sent: &[SentPassage]) -> SheetParse {
 /// A title line (`now`, an earlier point) is grounded when its numbers and
 /// names (the first word excepted) occur in the sent passages or the recent conversation.
 fn title_grounded(text: &str, ground: &str) -> bool {
-
     let gn = numbers_in(ground);
     if numbers_in(text).iter().any(|n| !gn.contains(n)) {
         return false;
@@ -371,10 +525,15 @@ fn label_grounded(label: &str, recent: &str, ground: &str) -> bool {
     if terms.is_empty() {
         return false;
     }
-    let known: std::collections::HashSet<String> = crate::live_common::content_terms(&format!("{recent} {ground}")).iter().map(|t| stem(t)).collect();
+    let known: std::collections::HashSet<String> =
+        crate::live_common::content_terms(&format!("{recent} {ground}"))
+            .iter()
+            .map(|t| stem(t))
+            .collect();
     let hit = terms.iter().filter(|t| known.contains(&stem(t))).count();
     let all_numbers = numbers_in(&format!("{recent} {ground}"));
-    hit as f32 / terms.len() as f32 >= 0.5 && numbers_in(label).iter().all(|n| all_numbers.contains(n))
+    hit as f32 / terms.len() as f32 >= 0.5
+        && numbers_in(label).iter().all(|n| all_numbers.contains(n))
 }
 
 /// The most frequent content words of the recent talk, as a label.
@@ -384,16 +543,33 @@ fn fallback_label(recent: &str) -> String {
         *counts.entry(t).or_insert(0) += 1;
     }
     let mut v: Vec<(String, u32)> = counts.into_iter().collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.chars().count().cmp(&a.0.chars().count())).then(a.0.cmp(&b.0)));
+    v.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then(b.0.chars().count().cmp(&a.0.chars().count()))
+            .then(a.0.cmp(&b.0))
+    });
     let mut seen = std::collections::HashSet::new();
-    let words: Vec<String> = v.into_iter().map(|(t, _)| t).filter(|t| seen.insert(stem(t))).take(3).collect();
+    let words: Vec<String> = v
+        .into_iter()
+        .map(|(t, _)| t)
+        .filter(|t| seen.insert(stem(t)))
+        .take(3)
+        .collect();
     words.join(", ")
 }
 
 /// `parse_sheet` with extra text (the recent conversation) that `now` and `earlier` may be grounded in.
 pub fn parse_sheet_with(raw: &str, sent: &[SentPassage], extra_ground: &str) -> SheetParse {
-    let parsed = parse_loose_where(raw, |v| raw_from_value(v).is_some()).and_then(|v| raw_from_value(&v)).or_else(|| raw_from_lines(raw));
-    let Some(rs) = parsed else { return SheetParse { sheet: None, dropped: vec![], kept_facts: 0 } };
+    let parsed = parse_loose_where(raw, |v| raw_from_value(v).is_some())
+        .and_then(|v| raw_from_value(&v))
+        .or_else(|| raw_from_lines(raw));
+    let Some(rs) = parsed else {
+        return SheetParse {
+            sheet: None,
+            dropped: vec![],
+            kept_facts: 0,
+        };
+    };
 
     let mut dropped = Vec::new();
     let mut facts: Vec<Fact> = Vec::new();
@@ -401,7 +577,11 @@ pub fn parse_sheet_with(raw: &str, sent: &[SentPassage], extra_ground: &str) -> 
         let text = match crate::prompt_data::plain_fact(&rf.text, MAX_FACT_CHARS) {
             Some(t) => t,
             None => {
-                let kind = if rf.text.trim().is_empty() { FactDrop::Empty } else { FactDrop::Instruction };
+                let kind = if rf.text.trim().is_empty() {
+                    FactDrop::Empty
+                } else {
+                    FactDrop::Instruction
+                };
                 dropped.push((clip(&rf.text, 80), kind));
                 continue;
             }
@@ -418,8 +598,33 @@ pub fn parse_sheet_with(raw: &str, sent: &[SentPassage], extra_ground: &str) -> 
             dropped.push((text, FactDrop::UnknownSource));
             continue;
         };
-        if let Some(why) = unsupported(&text, &p.text) {
+        let evidence = if rf.evidence.trim().is_empty() {
+            // Older clients and compact line output can still pass when the
+            // fact itself is a verbatim quote.
+            if evidence_in_passage(&text, &p.text) {
+                text.clone()
+            } else {
+                dropped.push((text, FactDrop::EvidenceMissing));
+                continue;
+            }
+        } else {
+            let cleaned = compact_whitespace(rf.evidence.trim());
+            if cleaned.chars().count() > MAX_EVIDENCE_CHARS {
+                dropped.push((text, FactDrop::OverLimit));
+                continue;
+            }
+            cleaned
+        };
+        if !evidence_in_passage(&evidence, &p.text) {
+            dropped.push((text, FactDrop::EvidenceNotInPassage));
+            continue;
+        }
+        if let Some(why) = unsupported(&text, &evidence) {
             dropped.push((text, why));
+            continue;
+        }
+        if !claim_aligned_with_evidence(&text, &evidence) {
+            dropped.push((text, FactDrop::ClaimNotAlignedWithEvidence));
             continue;
         }
         if facts.iter().any(|f| f.text == text) {
@@ -429,7 +634,14 @@ pub fn parse_sheet_with(raw: &str, sent: &[SentPassage], extra_ground: &str) -> 
             dropped.push((text, FactDrop::OverLimit));
             continue;
         }
-        facts.push(Fact { text, source: p.label.clone(), source_id: p.id.clone(), source_title: p.title.clone(), source_ms: p.start_ms });
+        facts.push(Fact {
+            text,
+            evidence,
+            source: p.label.clone(),
+            source_id: p.id.clone(),
+            source_title: p.title.clone(),
+            source_ms: p.start_ms,
+        });
     }
     let kept_facts = facts.len();
     let mut ground = String::from(extra_ground);
@@ -440,7 +652,9 @@ pub fn parse_sheet_with(raw: &str, sent: &[SentPassage], extra_ground: &str) -> 
     // The topic line is a label: it only has to be about the conversation
     // (half of its content words are in the recent talk or the passages). When it is not,
     // or the model gave none, a label is made locally from the most frequent recent words.
-    let mut now = crate::prompt_data::plain_fact(&rs.now, MAX_NOW_CHARS).filter(|n| label_grounded(n, extra_ground, &ground)).unwrap_or_default();
+    let mut now = crate::prompt_data::plain_fact(&rs.now, MAX_NOW_CHARS)
+        .filter(|n| label_grounded(n, extra_ground, &ground))
+        .unwrap_or_default();
     if now.is_empty() && !facts.is_empty() {
         now = fallback_label(extra_ground);
         if now.is_empty() {
@@ -456,8 +670,17 @@ pub fn parse_sheet_with(raw: &str, sent: &[SentPassage], extra_ground: &str) -> 
             None
         }
     };
-    let earlier: Vec<String> = rs.earlier.iter().filter_map(|e| keep_title(e, MAX_EARLIER_CHARS)).take(MAX_EARLIER).collect();
-    let mut sheet = Sheet { now, facts, earlier };
+    let earlier: Vec<String> = rs
+        .earlier
+        .iter()
+        .filter_map(|e| keep_title(e, MAX_EARLIER_CHARS))
+        .take(MAX_EARLIER)
+        .collect();
+    let mut sheet = Sheet {
+        now,
+        facts,
+        earlier,
+    };
     // token budget: earlier points first, then the last facts
     while sheet_tokens(&sheet) > MAX_SHEET_TOKENS && !sheet.earlier.is_empty() {
         sheet.earlier.pop();
@@ -467,9 +690,17 @@ pub fn parse_sheet_with(raw: &str, sent: &[SentPassage], extra_ground: &str) -> 
         dropped.push((f.text, FactDrop::OverLimit));
     }
     if sheet.now.is_empty() && sheet.facts.is_empty() {
-        return SheetParse { sheet: None, dropped, kept_facts };
+        return SheetParse {
+            sheet: None,
+            dropped,
+            kept_facts,
+        };
     }
-    SheetParse { sheet: Some(sheet), dropped, kept_facts }
+    SheetParse {
+        sheet: Some(sheet),
+        dropped,
+        kept_facts,
+    }
 }
 
 // ---------------------------------------------------------------- what the app holds
@@ -501,7 +732,10 @@ pub struct SheetHolder {
 
 impl SheetHolder {
     pub fn new(scope: &str) -> Self {
-        Self { scope: scope.to_string(), ..Default::default() }
+        Self {
+            scope: scope.to_string(),
+            ..Default::default()
+        }
     }
 
     pub fn scope(&self) -> &str {
@@ -522,7 +756,11 @@ impl SheetHolder {
 
     pub fn set(&mut self, sheet: Sheet, now: u64) -> u64 {
         self.rev += 1;
-        self.stored = Some(Stored { sheet, at_ms: now, rev: self.rev });
+        self.stored = Some(Stored {
+            sheet,
+            at_ms: now,
+            rev: self.rev,
+        });
         self.hidden = false;
         self.rev
     }
@@ -553,9 +791,17 @@ impl SheetHolder {
     }
 
     pub fn view(&self, now: u64) -> SheetView {
-        let stale = self.stored.as_ref().map(|s| now.saturating_sub(s.at_ms) > STALE_MS).unwrap_or(false);
+        let stale = self
+            .stored
+            .as_ref()
+            .map(|s| now.saturating_sub(s.at_ms) > STALE_MS)
+            .unwrap_or(false);
         SheetView {
-            sheet: if self.hidden { None } else { self.stored.as_ref().map(|s| s.sheet.clone()) },
+            sheet: if self.hidden {
+                None
+            } else {
+                self.stored.as_ref().map(|s| s.sheet.clone())
+            },
             age_ms: self.stored.as_ref().map(|s| now.saturating_sub(s.at_ms)),
             hidden: self.hidden,
             stale,
@@ -570,7 +816,12 @@ impl SheetHolder {
     }
 
     /// For a running CLI session: the text only when it changed since `last_sent`.
-    pub fn changed_since(&self, now: u64, scope: &str, last_sent: Option<u64>) -> Option<(String, u64)> {
+    pub fn changed_since(
+        &self,
+        now: u64,
+        scope: &str,
+        last_sent: Option<u64>,
+    ) -> Option<(String, u64)> {
         let s = self.live(now, scope)?;
         if last_sent == Some(s.rev) {
             return None;
@@ -590,8 +841,15 @@ pub fn render_compact(s: &Sheet) -> String {
         out.push_str(&format!("Now: {}\n", s.now));
     }
     for f in &s.facts {
-        let at = f.source_ms.map(|m| format!(" @{}", fmt_clock(m))).unwrap_or_default();
+        let at = f
+            .source_ms
+            .map(|m| format!(" @{}", fmt_clock(m)))
+            .unwrap_or_default();
         out.push_str(&format!("- {} [{}{}]\n", f.text, f.source_title, at));
+        out.push_str(&format!(
+            "  Evidence: {}\n",
+            crate::prompt_data::neutralise(&f.evidence)
+        ));
     }
     if !s.earlier.is_empty() {
         out.push_str(&format!("Earlier: {}\n", s.earlier.join("; ")));
@@ -631,7 +889,10 @@ mod tests {
 
     #[test]
     fn numbers_normalise() {
-        assert_eq!(numbers_in("$1,200.50 and 15% in 2024"), ["120050", "15", "2024"]);
+        assert_eq!(
+            numbers_in("$1,200.50 and 15% in 2024"),
+            ["120050", "15", "2024"]
+        );
         assert_eq!(numbers_in("４，５００"), ["4500"]);
         assert_eq!(numbers_in("no digits"), Vec::<String>::new());
         assert_eq!(numbers_in("3 5"), ["3", "5"]);
@@ -640,10 +901,10 @@ mod tests {
     #[test]
     fn supported_facts_pass() {
         let raw = r#"{"now":"Acme renewal","facts":[
-            {"text":"Acme renewed at $1,200.50 per seat","source":"P1"},
-            {"text":"The discount is 15% until March","source":"[P1]"},
-            {"text":"María García: presupuesto de 4.500 euros aprobado el viernes en Madrid","source":"p2"},
-            {"text":"田中さんが来月の予算を承認、300万円","source":"P3"}],
+            {"text":"Acme renewed at $1,200.50 per seat","source":"P1","evidence":"Acme renewed the annual plan at $1,200.50 per seat."},
+            {"text":"The discount is 15% until March","source":"[P1]","evidence":"The discount is 15% until March."},
+            {"text":"María García: presupuesto de 4.500 euros aprobado el viernes en Madrid","source":"p2","evidence":"María García dijo que el presupuesto de 4.500 euros se aprueba el viernes en Madrid."},
+            {"text":"田中さんが来月の予算を承認、300万円","source":"P3","evidence":"田中さんが来月の予算を承認しました。金額は３００万円です。"}],
             "earlier":["Acme intro"]}"#;
         let r = parse_sheet(raw, &passages());
         let s = r.sheet.unwrap();
@@ -657,30 +918,61 @@ mod tests {
     #[test]
     fn unsupported_numbers_names_and_sources_are_dropped() {
         let raw = r#"{"now":"x","facts":[
-            {"text":"Acme renewed at $1,300 per seat","source":"P1"},
-            {"text":"Globex renewed the plan","source":"P1"},
+            {"text":"Acme renewed at $1,300 per seat","source":"P1","evidence":"Acme renewed the annual plan at $1,200.50 per seat."},
+            {"text":"Globex renewed the plan","source":"P1","evidence":"Acme renewed the annual plan at $1,200.50 per seat."},
             {"text":"Acme renewed the plan","source":"P9"},
             {"text":"Acme renewed the plan"},
             {"text":"","source":"P1"},
-            {"text":"鈴木さんが承認しました","source":"P3"},
-            {"text":"Acme renewed the annual plan","source":"P1"}]}"#;
+            {"text":"鈴木さんが承認しました","source":"P3","evidence":"田中さんが来月の予算を承認しました。金額は３００万円です。"},
+            {"text":"Acme renewed the annual plan","source":"P1","evidence":"Acme renewed the annual plan at $1,200.50 per seat."}]}"#;
         let r = parse_sheet(raw, &passages());
         let reasons: Vec<FactDrop> = r.dropped.iter().map(|d| d.1).collect();
         assert_eq!(
             reasons,
-            [FactDrop::NumberNotInPassage, FactDrop::NameNotInPassage, FactDrop::UnknownSource, FactDrop::NoSource, FactDrop::Empty, FactDrop::NameNotInPassage]
+            [
+                FactDrop::NumberNotInPassage,
+                FactDrop::NameNotInPassage,
+                FactDrop::UnknownSource,
+                FactDrop::NoSource,
+                FactDrop::Empty,
+                FactDrop::NameNotInPassage
+            ]
+        );
+        assert_eq!(r.sheet.unwrap().facts.len(), 1);
+    }
+
+    #[test]
+    fn evidence_must_be_present_exact_and_related_to_the_claim() {
+        let raw = r#"{"now":"Acme renewal","facts":[
+            {"text":"Acme renewed at $1,200.50 per seat","source":"P1","evidence":"Acme renewed the annual plan at $1,200.50 per seat."},
+            {"text":"Acme renewed at $1,200.50 per seat","source":"P1"},
+            {"text":"Acme renewal costs $1,200.50 per seat","source":"P1","evidence":"Acme renewed the annual plan at $1,200 per seat."},
+            {"text":"The discount ends in summer","source":"P1","evidence":"Acme renewed the annual plan at $1,200.50 per seat."}]}"#;
+        let r = parse_sheet(raw, &passages());
+        assert_eq!(
+            r.dropped.iter().map(|d| d.1).collect::<Vec<_>>(),
+            [
+                FactDrop::EvidenceMissing,
+                FactDrop::EvidenceNotInPassage,
+                FactDrop::ClaimNotAlignedWithEvidence
+            ]
         );
         assert_eq!(r.sheet.unwrap().facts.len(), 1);
     }
 
     #[test]
     fn max_six_facts_and_dedupe() {
-        let words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india"];
+        let words = [
+            "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india",
+        ];
         let mut facts = String::new();
         for w in words {
-            facts.push_str(&format!(r#"{{"text":"Acme renewed the annual plan {}","source":"P1"}},"#, w));
+            facts.push_str(&format!(r#"{{"text":"Acme renewed the annual plan {}","source":"P1","evidence":"Acme renewed the annual plan at $1,200.50 per seat."}},"#, w));
         }
-        let raw = format!(r#"{{"now":"n","facts":[{}{{"text":"Acme renewed the annual plan alpha","source":"P1"}}]}}"#, facts);
+        let raw = format!(
+            r#"{{"now":"n","facts":[{}{{"text":"Acme renewed the annual plan alpha","source":"P1","evidence":"Acme renewed the annual plan at $1,200.50 per seat."}}]}}"#,
+            facts
+        );
         let r = parse_sheet(&raw, &passages());
         assert_eq!(r.sheet.unwrap().facts.len(), 6);
         assert!(r.dropped.iter().any(|d| d.1 == FactDrop::OverLimit));
@@ -690,9 +982,15 @@ mod tests {
     fn token_budget_trims_earlier_then_facts() {
         let long = "Acme renewed the annual plan ".repeat(8);
         let words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"];
-        let facts: Vec<String> = words.iter().map(|w| format!(r#"{{"text":"{} {}","source":"P1"}}"#, w, long.trim())).collect();
-        let earlier: Vec<String> = (0..4).map(|_| format!("\"{}\"", "earlier point ".repeat(8))).collect();
-        let raw = format!(r#"{{"now":"n","facts":[{}],"earlier":[{}]}}"#, facts.join(","), earlier.join(","));
+        let facts: Vec<String> = words.iter().map(|w| format!(r#"{{"text":"{} {}","source":"P1","evidence":"Acme renewed the annual plan at $1,200.50 per seat."}}"#, w, long.trim())).collect();
+        let earlier: Vec<String> = (0..4)
+            .map(|_| format!("\"{}\"", "earlier point ".repeat(8)))
+            .collect();
+        let raw = format!(
+            r#"{{"now":"n","facts":[{}],"earlier":[{}]}}"#,
+            facts.join(","),
+            earlier.join(",")
+        );
         let s = parse_sheet(&raw, &passages()).sheet.unwrap();
         assert!(sheet_tokens(&s) <= MAX_SHEET_TOKENS, "{}", sheet_tokens(&s));
         assert!(s.earlier.is_empty());
@@ -701,16 +999,31 @@ mod tests {
     #[test]
     fn tolerant_and_line_formats() {
         let fenced = "```json\n{'now':'Pricing','facts':[{'text':'Acme renewed the annual plan','source':'P1'},],}\n```";
-        assert_eq!(parse_sheet(fenced, &passages()).sheet.unwrap().facts.len(), 1);
+        assert_eq!(
+            parse_sheet(fenced, &passages()).sheet.unwrap().facts.len(),
+            1
+        );
         let truncated = r#"{"now":"Acme pricing","facts":[{"text":"Acme renewed the annual plan","source":"P1"},{"text":"The disc"#;
-        assert_eq!(parse_sheet(truncated, &passages()).sheet.unwrap().facts.len(), 1);
+        assert_eq!(
+            parse_sheet(truncated, &passages())
+                .sheet
+                .unwrap()
+                .facts
+                .len(),
+            1
+        );
         let inline = r#"{"now":"x","facts":["Acme renewed the annual plan [P1]","The discount is 15% [P2]"]}"#;
         let r = parse_sheet(inline, &passages());
         assert_eq!(r.sheet.unwrap().facts.len(), 1);
         let lines = "NOW: Acme talk\n- Acme renewed the annual plan [P1]\n- Invented claim about Initech [P1]\nEARLIER: intro; greetings";
         let s = parse_sheet(lines, &passages()).sheet.unwrap();
-        assert_eq!((s.now.as_str(), s.facts.len(), s.earlier.len()), ("Acme talk", 1, 2));
-        assert!(parse_sheet("I could not find anything.", &passages()).sheet.is_none());
+        assert_eq!(
+            (s.now.as_str(), s.facts.len(), s.earlier.len()),
+            ("Acme talk", 1, 2)
+        );
+        assert!(parse_sheet("I could not find anything.", &passages())
+            .sheet
+            .is_none());
         assert!(parse_sheet("", &passages()).sheet.is_none());
     }
 
@@ -733,10 +1046,17 @@ mod tests {
     fn answer_sees_fresh_sheet_only() {
         let h = holder_with_sheet(1_000);
         let t = h.sheet_for_answer(60_000, "ws:a").unwrap();
-        assert!(t.contains("Now: Acme pricing") && t.contains("[Pricing.pdf]") && t.contains("Earlier: Acme intro"));
+        assert!(
+            t.contains("Now: Acme pricing")
+                && t.contains("[Pricing.pdf]")
+                && t.contains("Earlier: Acme intro")
+        );
         assert!(estimate_tokens(&t) < 450);
         assert!(h.sheet_for_answer(1_000 + STALE_MS, "ws:a").is_some());
-        assert!(h.sheet_for_answer(1_001 + STALE_MS, "ws:a").is_none(), "stale after 4 minutes");
+        assert!(
+            h.sheet_for_answer(1_001 + STALE_MS, "ws:a").is_none(),
+            "stale after 4 minutes"
+        );
         assert!(h.sheet_for_answer(60_000, "ws:b").is_none(), "other scope");
         assert!(h.view(1_001 + STALE_MS).stale);
     }
@@ -749,7 +1069,11 @@ mod tests {
         assert!(h.sheet_for_answer(10, "ws:a").is_none());
         assert!(h.view(10).hidden && h.view(10).sheet.is_none());
         assert!(h.view(10).rev > rev);
-        let s = Sheet { now: "New".into(), facts: vec![], earlier: vec![] };
+        let s = Sheet {
+            now: "New".into(),
+            facts: vec![],
+            earlier: vec![],
+        };
         h.set(s, 20);
         assert!(h.sheet_for_answer(30, "ws:a").unwrap().contains("Now: New"));
     }
@@ -769,7 +1093,14 @@ mod tests {
         let (text, rev) = h.changed_since(10, "ws:a", None).unwrap();
         assert!(text.contains("Pricing"));
         assert!(h.changed_since(20, "ws:a", Some(rev)).is_none());
-        h.set(Sheet { now: "Other".into(), facts: vec![], earlier: vec![] }, 30);
+        h.set(
+            Sheet {
+                now: "Other".into(),
+                facts: vec![],
+                earlier: vec![],
+            },
+            30,
+        );
         let (t2, rev2) = h.changed_since(40, "ws:a", Some(rev)).unwrap();
         assert!(t2.contains("Other") && rev2 > rev);
         h.hide_on_topic_change();
@@ -779,23 +1110,45 @@ mod tests {
     #[test]
     fn a_topic_label_is_grounded_in_the_talk_or_made_locally_and_never_empty_with_facts() {
         let facts = r#""facts":[{"text":"Acme renewed the annual plan","source":"P1"}]"#;
-        let talk = "we keep coming back to the renewal pricing and the annual seats for the renewal";
+        let talk =
+            "we keep coming back to the renewal pricing and the annual seats for the renewal";
         // the model's own label about the conversation is kept (stems: renewals ~ renewal)
         let raw = format!(r#"{{"now":"Renewals and seat pricing",{facts}}}"#);
-        assert_eq!(parse_sheet_with(&raw, &passages(), talk).sheet.unwrap().now, "Renewals and seat pricing");
+        assert_eq!(
+            parse_sheet_with(&raw, &passages(), talk).sheet.unwrap().now,
+            "Renewals and seat pricing"
+        );
         // a label that is about something else, or none at all: a label from the recent words
         let raw = format!(r#"{{"now":"Quantum gardening retreat",{facts}}}"#);
         let now = parse_sheet_with(&raw, &passages(), talk).sheet.unwrap().now;
-        assert!(!now.is_empty() && !now.contains("Quantum") && (now.contains("renewal") || now.contains("pricing")), "{now}");
+        assert!(
+            !now.is_empty()
+                && !now.contains("Quantum")
+                && (now.contains("renewal") || now.contains("pricing")),
+            "{now}"
+        );
         let raw = format!(r#"{{{facts}}}"#);
-        assert!(!parse_sheet_with(&raw, &passages(), talk).sheet.unwrap().now.is_empty());
+        assert!(!parse_sheet_with(&raw, &passages(), talk)
+            .sheet
+            .unwrap()
+            .now
+            .is_empty());
         // no recent words either: the first source's title
-        assert_eq!(parse_sheet_with(&raw, &passages(), "").sheet.unwrap().now, "Pricing.pdf");
+        assert_eq!(
+            parse_sheet_with(&raw, &passages(), "").sheet.unwrap().now,
+            "Pricing.pdf"
+        );
         // Japanese
         let ja = "来月の予算の承認について何度も話しています。予算の承認が遅れています。";
         let raw = format!(r#"{{"now":"予算の承認",{facts}}}"#);
-        assert_eq!(parse_sheet_with(&raw, &passages(), ja).sheet.unwrap().now, "予算の承認");
+        assert_eq!(
+            parse_sheet_with(&raw, &passages(), ja).sheet.unwrap().now,
+            "予算の承認"
+        );
         // nothing to show without facts
-        assert!(parse_sheet_with(r#"{"now":"Whatever"}"#, &passages(), talk).sheet.map(|s| s.now.is_empty() || s.now == "Whatever").unwrap_or(true));
+        assert!(parse_sheet_with(r#"{"now":"Whatever"}"#, &passages(), talk)
+            .sheet
+            .map(|s| s.now.is_empty() || s.now == "Whatever")
+            .unwrap_or(true));
     }
 }

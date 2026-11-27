@@ -4,7 +4,9 @@
 //! never shown under another).
 
 use crate::ai_runs::AiPurpose;
-use crate::live_brief::engine::{BriefConfig, BriefEngine, BriefLine, BriefSink, BriefSnapshot, BriefStatus, BriefStore};
+use crate::live_brief::engine::{
+    BriefConfig, BriefEngine, BriefLine, BriefSink, BriefSnapshot, BriefStatus, BriefStore,
+};
 use crate::live_brief::search::{LocalSearch, Passage};
 use crate::live_brief::sheet::{Sheet, SheetHolder, SheetView};
 use crate::live_common::{Clock, LlmCall};
@@ -20,7 +22,10 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
 pub enum BriefCmd {
-    Line { ms: u64, text: String },
+    Line {
+        ms: u64,
+        text: String,
+    },
     Refresh,
     /// The meeting's scope changed: resolve it again now.
     ScopeChanged,
@@ -62,7 +67,10 @@ impl BriefShared {
     /// answer will be dropped, before this returns.
     pub fn invalidate(&self) {
         let n = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
-        self.holder.lock().unwrap().set_scope(&format!("invalid#{n}"));
+        self.holder
+            .lock()
+            .unwrap()
+            .set_scope(&format!("invalid#{n}"));
         self.swap.cancel_and_renew();
     }
 }
@@ -112,7 +120,14 @@ impl BriefStore for DbStore {
             return Ok(());
         }
         let fp = self.scope.lock().unwrap().fingerprint.clone();
-        self.db.save_brief(&self.meeting_id, s.sheet.as_ref(), &s.status, s.tokens_used, s.cap, &fp)
+        self.db.save_brief(
+            &self.meeting_id,
+            s.sheet.as_ref(),
+            &s.status,
+            s.tokens_used,
+            s.cap,
+            &fp,
+        )
     }
 }
 
@@ -147,7 +162,7 @@ pub fn sheet_to_contract(sheet: &Sheet, generated_at: i64) -> Value {
             let ref_id = rest.rsplit_once('#').map(|(r, _)| r).unwrap_or(rest);
             let pid = rest.rsplit_once('#').and_then(|(_, n)| n.parse::<i64>().ok());
             json!({
-                "text": f.text, "source": f.source_title, "passage_id": pid,
+                "text": f.text, "evidence": f.evidence, "source": f.source_title, "passage_id": pid,
                 "sources": [{"kind": kind, "ref_id": ref_id, "sub_ref": Value::Null, "title": f.source_title, "start_ms": f.source_ms}],
             })
         }).collect::<Vec<_>>(),
@@ -162,21 +177,57 @@ const NOTES_REFRESH: Duration = Duration::from_secs(5);
 const BRIEF_NOTES_TOKENS: u32 = 500;
 
 pub fn spawn(p: BriefParams) -> Result<BriefHandle, String> {
-    let selection = Selection { provider: p.settings.provider.clone(), model: p.settings.model.clone(), effort: p.settings.effort.clone() };
-    let swap = SwapLlm::new(p.factory.clone(), AiPurpose::Brief, &p.meeting_id, selection)?;
+    let selection = Selection {
+        provider: p.settings.provider.clone(),
+        model: p.settings.model.clone(),
+        effort: p.settings.effort.clone(),
+    };
+    let swap = SwapLlm::new(
+        p.factory.clone(),
+        AiPurpose::Brief,
+        &p.meeting_id,
+        selection,
+    )?;
     let scope_cell = Arc::new(Mutex::new(p.scope.clone()));
     let discarded = Arc::new(AtomicBool::new(false));
     let search_error = Arc::new(Mutex::new(None));
     let mut cfg = BriefConfig::default();
     cfg.trigger.cap_tokens = p.settings.cap;
-    let search = SearchFn { db: p.db.clone(), scope: scope_cell.clone(), error: search_error.clone() };
-    let store = Arc::new(DbStore { db: p.db.clone(), meeting_id: p.meeting_id.clone(), scope: scope_cell.clone(), discarded: discarded.clone() });
+    let search = SearchFn {
+        db: p.db.clone(),
+        scope: scope_cell.clone(),
+        error: search_error.clone(),
+    };
+    let store = Arc::new(DbStore {
+        db: p.db.clone(),
+        meeting_id: p.meeting_id.clone(),
+        scope: scope_cell.clone(),
+        discarded: discarded.clone(),
+    });
     let key0 = scope_key(&p.scope.fingerprint, 0, p.scope.generation);
-    let mut engine = BriefEngine::new(swap.clone(), p.clock.clone(), search, &key0, cfg, Arc::new(Sink), store);
+    let mut engine = BriefEngine::new(
+        swap.clone(),
+        p.clock.clone(),
+        search,
+        &key0,
+        cfg,
+        Arc::new(Sink),
+        store,
+    );
     engine.set_memory(&p.scope.memory_text);
-    let shared = Arc::new(BriefShared { holder: engine.holder_handle(), counter: AtomicU64::new(0), nonce: engine.nonce.clone(), swap: swap.clone() });
+    let shared = Arc::new(BriefShared {
+        holder: engine.holder_handle(),
+        counter: AtomicU64::new(0),
+        nonce: engine.nonce.clone(),
+        swap: swap.clone(),
+    });
     let (tx, rx) = mpsc::unbounded_channel();
-    let handle = BriefHandle { tx, queued: Arc::new(AtomicUsize::new(0)), finished: Arc::new(AtomicBool::new(false)), shared: shared.clone() };
+    let handle = BriefHandle {
+        tx,
+        queued: Arc::new(AtomicUsize::new(0)),
+        finished: Arc::new(AtomicBool::new(false)),
+        shared: shared.clone(),
+    };
     let actor = Actor {
         queued: handle.queued.clone(),
         finished: handle.finished.clone(),
@@ -230,7 +281,12 @@ impl Actor {
     /// The one state the UI shows (see `state`). A failing search is the reason while nothing else is.
     fn snapshot(&self) -> RunSnapshot {
         let st = self.engine.status();
-        let search_error = self.search_error.lock().unwrap().clone().map(|e| format!("The brief could not search your workspace: {e}"));
+        let search_error = self
+            .search_error
+            .lock()
+            .unwrap()
+            .clone()
+            .map(|e| format!("The brief could not search your workspace: {e}"));
         snapshot(&StateInput {
             meeting_id: self.p.meeting_id.clone(),
             state: st.state,
@@ -246,7 +302,10 @@ impl Actor {
             started: st.tokens_used > 0 || self.engine.has_sheet(),
             not_covered: None,
             ended: None,
-            moved_online: self.swap.moved_online().map(|(from, to)| crate::live_runtime::state::MovedOnline { from, to }),
+            moved_online: self
+                .swap
+                .moved_online()
+                .map(|(from, to)| crate::live_runtime::state::MovedOnline { from, to }),
             next_in_ms: None,
             final_note: None,
             stop_reason: self.stop_reason.clone(),
@@ -257,7 +316,10 @@ impl Actor {
     fn emit_state(&mut self) {
         let snap = self.snapshot();
         if self.last_snap.as_ref() != Some(&snap) {
-            self.p.emitter.emit("brief_state", serde_json::to_value(&snap).unwrap_or(Value::Null));
+            self.p.emitter.emit(
+                "brief_state",
+                serde_json::to_value(&snap).unwrap_or(Value::Null),
+            );
             self.last_snap = Some(snap);
         }
     }
@@ -294,10 +356,20 @@ impl Actor {
                     _ => "The brief is off in this workspace".to_string(),
                 });
                 self.shared.invalidate();
-                self.engine.set_scope(&format!("off#{}", self.shared.counter.load(Ordering::SeqCst)), "");
+                self.engine.set_scope(
+                    &format!("off#{}", self.shared.counter.load(Ordering::SeqCst)),
+                    "",
+                );
                 let fp = other.ok().map(|s| s.fingerprint).unwrap_or_default();
                 let st = self.engine.status();
-                let _ = self.p.db.save_brief(&self.p.meeting_id, None, "off", st.tokens_used, st.cap, &fp);
+                let _ = self.p.db.save_brief(
+                    &self.p.meeting_id,
+                    None,
+                    "off",
+                    st.tokens_used,
+                    st.cap,
+                    &fp,
+                );
                 self.stopped = true;
                 self.quitting = true;
             }
@@ -309,7 +381,10 @@ impl Actor {
     /// prompt carries them (data, fenced like the rest). The notes are read at
     /// most every few seconds.
     fn refresh_context(&mut self) {
-        if self.notes_read.map_or(true, |t| t.elapsed() >= NOTES_REFRESH) {
+        if self
+            .notes_read
+            .map_or(true, |t| t.elapsed() >= NOTES_REFRESH)
+        {
             self.notes_text = self
                 .p
                 .db
@@ -326,10 +401,17 @@ impl Actor {
         match cmd {
             BriefCmd::Line { ms, text } => {
                 self.queued.fetch_sub(1, Ordering::SeqCst);
-                self.engine.feed(BriefLine { start_ms: ms, end_ms: None, text });
+                self.engine.feed(BriefLine {
+                    start_ms: ms,
+                    end_ms: None,
+                    text,
+                });
             }
             BriefCmd::Refresh => self.engine.request_refresh(),
-            BriefCmd::ScopeChanged => self.last_scope_check = std::time::Instant::now() - self.p.scope_check - Duration::from_secs(1),
+            BriefCmd::ScopeChanged => {
+                self.last_scope_check =
+                    std::time::Instant::now() - self.p.scope_check - Duration::from_secs(1)
+            }
             BriefCmd::Pause => self.engine.pause(),
             BriefCmd::Resume => self.engine.resume(),
             BriefCmd::TryAgain => self.engine.retry(),
@@ -340,7 +422,11 @@ impl Actor {
                     self.engine.set_cap(s.cap);
                 }
                 self.p.settings = s.clone();
-                let sel = Selection { provider: s.provider.clone(), model: s.model.clone(), effort: s.effort.clone() };
+                let sel = Selection {
+                    provider: s.provider.clone(),
+                    model: s.model.clone(),
+                    effort: s.effort.clone(),
+                };
                 if sel != self.swap.selection() {
                     if let Err(e) = self.swap.reselect(sel) {
                         log::warn!("live brief: the new model could not be set: {e}");
@@ -373,7 +459,12 @@ impl Actor {
                 self.quitting = true;
             }
             BriefCmd::Get(reply) => {
-                let _ = reply.send(json!(self.engine.view().sheet.as_ref().map(|s| sheet_to_contract(s, self.p.clock.now_ms() as i64))));
+                let _ = reply.send(json!(self
+                    .engine
+                    .view()
+                    .sheet
+                    .as_ref()
+                    .map(|s| sheet_to_contract(s, self.p.clock.now_ms() as i64))));
             }
         }
     }
@@ -381,7 +472,14 @@ impl Actor {
     fn save_interrupted(&self) {
         let st = self.engine.status();
         let fp = self.scope_cell.lock().unwrap().fingerprint.clone();
-        let _ = self.p.db.save_brief(&self.p.meeting_id, self.engine.view().sheet.as_ref(), "interrupted", st.tokens_used, st.cap, &fp);
+        let _ = self.p.db.save_brief(
+            &self.p.meeting_id,
+            self.engine.view().sheet.as_ref(),
+            "interrupted",
+            st.tokens_used,
+            st.cap,
+            &fp,
+        );
     }
 
     /// One run when the trigger says so, taking commands while the call is in flight.
@@ -407,7 +505,8 @@ impl Actor {
         let swap = self.swap.clone();
         let fut = swap.call(&req);
         tokio::pin!(fut);
-        let mut scope_poll = tokio::time::interval(self.p.scope_check.max(Duration::from_millis(5)));
+        let mut scope_poll =
+            tokio::time::interval(self.p.scope_check.max(Duration::from_millis(5)));
         let result = loop {
             tokio::select! {
                 r = &mut fut => break r,

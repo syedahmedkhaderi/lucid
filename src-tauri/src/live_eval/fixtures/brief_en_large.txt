@@ -1,6 +1,6 @@
 {"now":"Q3 budget: marketing launch and hiring","facts":[
-{"text":"Marketing asked for 12% more, about $48,000, for the Lisbon launch","source":"P1"},
-{"text":"Maria confirmed the launch for September 14","source":"P2"},
-{"text":"Acme handles the printing","source":"P2"},
-{"text":"The Globex contract renews in November with a 5% increase","source":"P3"}],
+{"text":"Marketing asked for 12% more, about $48,000, for the Lisbon launch","source":"P1","evidence":"Marketing asked for 12% more budget, about $48,000, for the Lisbon product launch."},
+{"text":"Maria confirmed the launch for September 14","source":"P2","evidence":"Maria confirmed the launch is on September 14."},
+{"text":"Acme handles the printing","source":"P2","evidence":"Acme will handle the printing of the brochures."},
+{"text":"The Globex contract renews in November with a 5% increase","source":"P3","evidence":"The Globex contract renews in November and the price goes up 5%."}],
 "earlier":["Agenda review"]}

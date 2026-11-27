@@ -5,6 +5,8 @@ Lucid is an active local-first desktop project. This document records current ha
 ## Secrets
 
 - Keep API keys in macOS Keychain or Windows Credential Manager through the app's credential integration.
+- Saved provider secrets are write-only to the WebView. Provider, model-list, speech, and translation commands resolve saved keys in Rust; the only credential-setting read command is allowlisted to non-secret region, endpoint, and model preferences.
+- Replacement keys for LLM, speech, and translation providers are tested before they replace the saved value. A failed test keeps the previous credential. Typed values are cleared from settings inputs after a successful save.
 - Never place credentials in source, configuration files, logs, bug reports, tests, screenshots, or Git history.
 - Revoke any key that was pasted into chat or otherwise exposed. Keys from the originating request were not copied into this checkout or probed.
 - Gemini API quotas are project-level. Do not rotate keys from the same project to evade a quota response.

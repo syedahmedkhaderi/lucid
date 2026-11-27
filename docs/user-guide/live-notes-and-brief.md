@@ -149,7 +149,7 @@ A short sheet that follows the conversation:
 
 If nothing in the workspace matches, the sheet says "Nothing in the workspace matches this topic."
 
-A fact only appears if it cites a passage that was really sent to the model, and if its names and numbers are in that passage. When the topic changes, the old sheet is hidden at once ("The old sheet is hidden so answers do not use it") and a new one is prepared.
+A fact only appears if it cites a passage that was really sent to the model and includes an exact excerpt from that passage. Its names and numbers must occur in the excerpt, and at least half of its distinct content words must overlap. Open **See evidence** under a fact to inspect the quote. This is a useful filter, not proof that a claim means the same thing as its quote. When the topic changes, the old sheet is hidden at once ("The old sheet is hidden so answers do not use it") and a new one is prepared.
 
 **Live answers use it.** Every live answer carries the newest sheet when it is less than 4 minutes old and belongs to the current workspace setup. Answers never wait for it. The panel says **Answers use this brief while it is fresh**, or **Too old for answers. Refresh to use it again.** If you change what the meeting uses, the sheet is cleared.
 
