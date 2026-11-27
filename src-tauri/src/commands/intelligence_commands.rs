@@ -2214,6 +2214,27 @@ pub async fn generate_assist(
             rag.context_text = docs;
         }
     }
+    // If the optional meeting note names a selected document as authoritative,
+    // include that document's extracted text directly. Semantic retrieval can
+    // otherwise return unrelated excerpts and make the model claim the named
+    // policy/source was not supplied. CSVs remain on the exact-row path above.
+    let meeting_documents_context = meeting_context
+        .as_deref()
+        .and_then(|references| {
+            state
+                .context
+                .as_ref()
+                .and_then(|context| context.lock().ok())
+                .and_then(|context| {
+                    context.referenced_documents_context_capped_for(
+                        &scoped,
+                        references,
+                        if small { 8_000 } else { 12_000 },
+                    )
+                })
+        })
+        .map(|documents| format!("## Documents named in meeting context\n{documents}"))
+        .unwrap_or_default();
     // Folder text for a provider that can't read the folders itself.
     let mut folder_text = String::new();
     if plan.library && is_answer_mode(&mode) && !explicit_record_query {
@@ -2249,6 +2270,7 @@ pub async fn generate_assist(
     let mut parts: Vec<String> = Vec::new();
     for part in [
         points_text,
+        meeting_documents_context,
         std::mem::take(&mut rag.context_text),
         folder_text,
     ] {

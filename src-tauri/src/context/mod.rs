@@ -741,6 +741,40 @@ impl ContextManager {
         self.capped_blocks(ctx, max_chars, false, true)
     }
 
+    /// Documents explicitly named by the meeting's optional background note.
+    /// This keeps short, authoritative references (such as a policy brief)
+    /// available to live answers even when semantic retrieval finds unrelated
+    /// excerpts. Large tabular datasets stay on the exact-row retrieval path.
+    pub fn referenced_documents_context_capped_for(
+        &self,
+        ctx: &ScopedContext,
+        references: &str,
+        max_chars: usize,
+    ) -> Option<String> {
+        let references = references.to_lowercase();
+        let nonce = document_nonce(&ctx.scope);
+        let blocks: Vec<RawBlock<'_>> = self
+            .scoped_documents(&ctx.scope)
+            .filter(|(resource, _)| {
+                let name = resource.name.to_lowercase();
+                let file_type = resource.file_type.to_lowercase();
+                let is_csv = file_type == "csv" || name.ends_with(".csv");
+                !is_csv && !name.is_empty() && references.contains(&name)
+            })
+            .map(|(resource, text)| RawBlock {
+                label: "doc",
+                id: resource.id.clone(),
+                attrs: format!(
+                    " {} \"{}\"",
+                    resource.file_type,
+                    resource.name.replace('"', " ")
+                ),
+                text,
+            })
+            .collect();
+        self.fit_blocks(&nonce, &blocks, max_chars)
+    }
+
     /// Only the scope's talking points marked as context, in at most
     /// `max_chars`: their reserved share, which no document can take.
     pub fn points_context_capped_for(
@@ -1196,6 +1230,42 @@ mod tests {
         assert!(m
             .documents_context_capped_for(&scoped(&[], "", &[("T", "x")]), 2_000)
             .is_none());
+    }
+
+    #[test]
+    fn named_meeting_references_are_included_from_scope_but_large_csvs_are_not() {
+        let mut m = manager_with(&[
+            ("policy", "The 30-day gate requires Finance reconciliation."),
+            ("accounts", "ACCT-0427 | 18420 | 12600"),
+            ("other", "OUT_OF_SCOPE_CANARY"),
+        ]);
+        m.resources[1].name = "accounts.csv".into();
+        m.resources[1].file_type = "csv".into();
+        let ctx = scoped(&["policy", "accounts"], "", &[]);
+
+        let referenced = m
+            .referenced_documents_context_capped_for(
+                &ctx,
+                "policy.txt is authoritative; accounts.csv has the figures",
+                2_000,
+            )
+            .unwrap();
+
+        assert!(referenced.contains("The 30-day gate requires Finance reconciliation."));
+        assert!(!referenced.contains("ACCT-0427"));
+        assert!(!referenced.contains("OUT_OF_SCOPE_CANARY"));
+    }
+
+    #[test]
+    fn named_reference_context_obeys_its_character_budget() {
+        let m = manager_with(&[("policy", &"policy detail ".repeat(2_000))]);
+        let ctx = scoped(&["policy"], "", &[]);
+        let referenced = m
+            .referenced_documents_context_capped_for(&ctx, "Use policy.txt", 1_200)
+            .unwrap();
+
+        assert!(referenced.contains("shortened"));
+        assert!(referenced.chars().count() <= 1_200);
     }
 
     #[test]

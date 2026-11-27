@@ -23,7 +23,7 @@ vi.mock("../lib/ipc", async (importOriginal) => ({
   cancelGeneration: vi.fn(() => Promise.resolve()),
 }));
 
-import { AUTO_TRIGGER_DELAY_MS, QuestionDetector, QuestionPanel, lastSentence, looksLikeQuestion } from "./QuestionDetector";
+import { AUTO_TRIGGER_DELAY_MS, QuestionDetector, QuestionPanel, expandCompoundQuestion, lastSentence, looksLikeQuestion } from "./QuestionDetector";
 import { runUserAction } from "../lib/userAction";
 import { cancelGeneration } from "../lib/ipc";
 import { useStreamStore } from "../stores/streamStore";
@@ -434,6 +434,31 @@ describe("QuestionDetector", () => {
     expect(lastSentence("Is that what you were thinking about? Right?")).toBe("Is that what you were thinking about?");
     expect(lastSentence("Can something change? Okay? Yeah, right?")).toBe("Can something change?");
     expect(lastSentence("Right?")).toBe("Right?");
+  });
+
+  it("expands a detected final clause to include linked earlier questions", () => {
+    const line = "Before we approve this renewal, what must be true at the 30-day review? And who signs off?";
+    expect(expandCompoundQuestion("And who signs off?", line)).toBe(line);
+  });
+
+  it("keeps a separate earlier question out of the answer prompt", () => {
+    expect(expandCompoundQuestion(
+      "What is the next step?",
+      "How much is overdue? That review is finished. What is the next step?",
+    )).toBe("What is the next step?");
+  });
+
+  it("auto-answers every linked part of a compound question", async () => {
+    vi.useFakeTimers();
+    setAutoTrigger(true);
+    render(<QuestionDetector />);
+    const line = seg("Before we approve this renewal, what must be true at the 30-day review? And who signs off?");
+    send(line);
+    await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_TRIGGER_DELAY_MS); });
+
+    expect(askedFor()).toEqual([
+      "Before we approve this renewal, what must be true at the 30-day review? And who signs off?",
+    ]);
   });
 
   it("finds a question a line gains after its first final", () => {

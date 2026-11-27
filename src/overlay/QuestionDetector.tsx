@@ -80,6 +80,46 @@ export function lastSentence(text: string): string {
 }
 
 /**
+ * A detector can surface only the final clause of a compound question (for
+ * example, "And who signs off?"). Include the previous question in the same
+ * sentence so the answer covers the whole request. A normal later question
+ * after a period remains independent.
+ */
+export function expandCompoundQuestion(question: string, segmentText: string): string {
+  const cleanQuestion = question.trim();
+  if (!cleanQuestion || !segmentText) return cleanQuestion;
+  const lowerText = segmentText.toLocaleLowerCase();
+  const start = lowerText.lastIndexOf(cleanQuestion.toLocaleLowerCase());
+  if (start < 0) return cleanQuestion;
+  const before = segmentText.slice(0, start);
+  const previousQuestion = Math.max(before.lastIndexOf("?"), before.lastIndexOf("？"));
+  if (previousQuestion < 0) return cleanQuestion;
+  const between = before.slice(previousQuestion + 1).trim();
+  if (between && !/^(?:and|also|or|but)$/iu.test(between)) return cleanQuestion;
+
+  const priorClause = before.slice(0, previousQuestion);
+  const boundary = Math.max(
+    priorClause.lastIndexOf("."),
+    priorClause.lastIndexOf("!"),
+    priorClause.lastIndexOf("。"),
+    priorClause.lastIndexOf("！"),
+    priorClause.lastIndexOf("\n"),
+  );
+  const endAt = start + cleanQuestion.length;
+  const expanded = segmentText.slice(boundary + 1, endAt).trim();
+  return expanded.replace(/^\[[^\]]+\]\s*[^:]+:\s*/u, "") || cleanQuestion;
+}
+
+function transcriptTextForQuestion(question: string, segmentId?: string): string {
+  const segments = useTranscriptStore.getState().segments;
+  const byId = segmentId ? segments.find((segment) => segment.id === segmentId) : undefined;
+  const containingQuestion = [...segments].reverse().find((segment) =>
+    segment.text.toLocaleLowerCase().includes(question.toLocaleLowerCase()),
+  );
+  return (byId ?? containingQuestion)?.text ?? "";
+}
+
+/**
  * Starts an automatic answer to `question` (a line's question), unless another
  * answer is running: then the question stays a card to click.
  */
@@ -92,7 +132,11 @@ function startAutoAnswer(question: DetectedQuestion, segmentId: string | undefin
   }
   if (segmentId !== undefined) store.answerLine(question, segmentId);
   const requestId = crypto.randomUUID();
-  const done = runUserAction("Assist", question.text, { requestId }).catch((err) => {
+  const fullQuestion = expandCompoundQuestion(
+    question.text,
+    transcriptTextForQuestion(question.text, segmentId),
+  );
+  const done = runUserAction("Assist", fullQuestion, { requestId }).catch((err) => {
     // Refused: an answer started elsewhere in the meantime.
     if (!String(err).includes(REFUSED)) return;
     const now = useQuestionStore.getState();
@@ -219,7 +263,11 @@ export function QuestionDetector() {
     const store = useQuestionStore.getState();
     if (autoAnswerRunning() && sameQuestion(store.autoAnswer?.question, question.text)) return;
     store.markAssisted(index);
-    runYourAction("Assist", question.text).catch((err) => {
+    const fullQuestion = expandCompoundQuestion(
+      question.text,
+      transcriptTextForQuestion(question.text, question.segmentId),
+    );
+    runYourAction("Assist", fullQuestion).catch((err) => {
       // No answer came, so it stays a card to click.
       useQuestionStore.getState().holdBack(question.segmentId, question.text);
       showToast(String(err).includes(REFUSED) ? "Another answer is still running" : "Couldn't generate AI response", "error");
