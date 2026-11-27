@@ -4,7 +4,7 @@ Updated: 2026-11-27
 
 ## Completed
 
-- Created the project at `the Lucid source directory` from NexQ `v3.0.0`, preserving history and MIT license. Pinned commit: `d83db586024270bfd0bcf7221a55275b104c4246`; branch `lucid/main`; upstream remote retained.
+- Created the project at `the Lucid source directory` from NexQ `v3.0.0`, preserving history and MIT license. Pinned commit: `d83db586024270bfd0bcf7221a55275b104c4246`; published to the private [`syedahmedkhaderi/lucid`](https://github.com/syedahmedkhaderi/lucid) repository on `main`; upstream remote retained.
 - Rebranded the app package, Tauri product, Rust crate, visible UI, installer strings, icons, and user-data identity (`com.lucid.desktop`). NexQ user data is isolated and is not automatically migrated.
 - Removed the upstream update endpoint/key and disabled update artifacts until Lucid owns a signed release channel.
 - Added a compact triangular top-center overlay with monitor-aware positioning and restoration of the expanded window bounds.
@@ -34,7 +34,7 @@ Updated: 2026-11-27
 - Dependency scans: `npm audit --omit=dev` found 0 vulnerabilities. `cargo-audit` 0.23.0 found 0 vulnerable Rust packages after updating `cookie` to 0.18.3, `url` to 2.5.9, and `rustix` to 1.1.6; nine warnings remain for unmaintained/yanked crates and Linux GTK's `glib` unsoundness advisory.
 - Local retrieval evaluation: 100% hit@1 and hit@8 across 30 questions and 42 synthetic English/Japanese/Chinese meetings. Search benchmark: 500 × 10,000-word synthetic transcripts, 24,000 passages, p50 87.9 ms / p95 97.2 ms / max 99.6 ms over 120 warm searches; corpus indexing 6.2 s with SQLite optimized at level 3. Unoptimized SQLite baseline p95 was 109.9 ms. These do not measure generated answer accuracy or end-to-end latency.
 - `./build-mac.sh --no-install --bundles app`: passed after the credential-profile, write-only secret IPC, and updater-config startup fixes. The installed `/Applications/Lucid.app` was launched and reached the Lucid Setup welcome screen. The ARM64 bundle is 86.36 MiB; its `com.lucid.desktop` identifier and `0.1.0` version were checked, and `codesign --verify --deep --strict` passed. Notarization is unavailable because signing credentials are not configured.
-- Added the cross-platform `npm run setup` bootstrap. Its macOS prerequisite/plan path passed with `npm run setup -- --dry-run`; Windows setup is implemented but cannot be exercised on this host.
+- Added the cross-platform `npm run setup` bootstrap. Both its dry run and full end-to-end macOS build/install passed; the freshly installed app launched and enumerated three microphones and two speakers without requesting microphone access. Windows setup is implemented but could not be exercised on this macOS host.
 - Tauri's Finder-based DMG layout timed out. Built `src-tauri/target/release/bundle/dmg/Lucid_0.1.0_aarch64_secure_credentials_hfsplus.dmg` from the current app as a 28.5 MB compressed HFS+ image. `hdiutil verify` and read-only mounting passed; the image contains the validly signed `Lucid.app` and `Applications` shortcut. SHA-256: `5145590aeb46eabef5288f8e4baf4654c0c792594e8e11537ddbf7b2a9fdfd75`.
 - Gemini Live provider tests use a local mock WebSocket server; the provider has not been authenticated against Google's live endpoint.
 - A secret scan of non-generated repository files found none of the pasted Gemini key pattern.
