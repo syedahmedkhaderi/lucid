@@ -1,0 +1,16 @@
+{
+  "generatedFrom": [
+    "package-lock.json",
+    "src-tauri/Cargo.lock"
+  ],
+  "scope": {
+    "npm": "Production dependency graph from package-lock.json; development dependencies omitted.",
+    "rust": "All source packages in Cargo.lock, including platform-specific, build, and test dependencies."
+  },
+  "npmProductionPackages": 165,
+  "npmPackagesWithoutDeclaredLicense": 98,
+  "npmUnassertedPackagesWithLicenseFiles": 98,
+  "rustLockedPackages": 711,
+  "rustPackagesWithoutDeclaredLicense": 0,
+  "note": "Declared metadata only; this output is not a legal license review and does not replace required license texts or notices."
+}

@@ -4,7 +4,7 @@ Lucid is a local-first desktop meeting assistant for live transcription, documen
 
 ## Status
 
-This checkout is an active development build, not a professional-pilot release. The frontend passes 3,926 tests (2 skipped), all Rust targets pass 2,001 tests (24 ignored), and the macOS app and installer image build. Gemini Live Transcribe and bounded PPTX text extraction are implemented but remain unverified against real provider accounts and production meeting data. See [`PROGRESS.md`](PROGRESS.md) and [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) for verified status and gaps.
+This checkout is an active development build, not a professional-pilot release. The frontend passes 3,931 tests (2 skipped), all Rust targets pass 2,006 tests (24 ignored), and the macOS app and installer image build. Gemini Live Transcribe and bounded PPTX text extraction are implemented but remain unverified against real provider accounts and production meeting data. See [`PROGRESS.md`](PROGRESS.md) and [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) for verified status and gaps.
 
 ## Current capabilities inherited from NexQ
 
