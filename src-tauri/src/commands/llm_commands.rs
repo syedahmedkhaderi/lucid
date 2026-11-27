@@ -177,6 +177,7 @@ pub async fn list_openrouter_models(
     force_refresh: bool,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
+    crate::privacy::ensure_llm_allowed(&ProviderType::Openrouter, None)?;
     // Check cache first (unless force refresh)
     if !force_refresh {
         let cache_guard = state

@@ -10,6 +10,7 @@ use crate::stt::provider::{self, STTProviderType};
 pub async fn set_stt_provider(app: AppHandle, provider: String) -> Result<(), String> {
     let provider_type = STTProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown STT provider: {}", provider))?;
+    crate::privacy::ensure_stt_allowed(&provider_type)?;
 
     let state = app.state::<AppState>();
 
@@ -96,6 +97,7 @@ pub async fn set_stt_provider(app: AppHandle, provider: String) -> Result<(), St
 pub async fn test_stt_connection(app: AppHandle, provider: String) -> Result<bool, String> {
     let provider_type = STTProviderType::from_str(&provider)
         .ok_or_else(|| format!("Unknown STT provider: {}", provider))?;
+    crate::privacy::ensure_stt_allowed(&provider_type)?;
 
     let state = app.state::<AppState>();
 

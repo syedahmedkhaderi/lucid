@@ -192,6 +192,10 @@ pub async fn start_capture(
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
 
+    // This legacy route uses browser Web Speech, which can send microphone
+    // audio to a browser service outside Rust's control.
+    crate::privacy::ensure_stt_allowed(&crate::stt::provider::STTProviderType::WebSpeech)?;
+
     // The legacy single-provider route also uses browser Web Speech for the
     // microphone and may use providers/models that cannot honor `auto`.
     // Require per-party configuration before changing capture state.
@@ -232,6 +236,10 @@ pub async fn start_capture(
             .audio
             .lock()
             .map_err(|_| "Audio state lock poisoned".to_string())?;
+        // Recheck under the audio lock: set_privacy_mode holds the same lock
+        // through its policy update, so cloud STT cannot slip into a new
+        // capture between an earlier check and this start.
+        crate::privacy::ensure_stt_allowed(&crate::stt::provider::STTProviderType::WebSpeech)?;
         let mgr = guard.get_or_insert_with(AudioCaptureManager::new);
         mgr.start_capture(&mic_device_id, &system_device_id, false, tx, capture_status_sink(&app))?;
         for warning in mgr.take_warnings() {
@@ -1330,6 +1338,15 @@ pub async fn start_capture_per_party(
             .audio
             .lock()
             .map_err(|_| "Audio state lock poisoned".to_string())?;
+        use crate::stt::provider::STTProviderType;
+        if !skip_you_stt {
+            let provider = STTProviderType::from_str(&you.stt_provider)
+                .ok_or_else(|| format!("Unknown STT provider: {}", you.stt_provider))?;
+            crate::privacy::ensure_stt_allowed(&provider)?;
+        }
+        let provider = STTProviderType::from_str(&them.stt_provider)
+            .ok_or_else(|| format!("Unknown STT provider: {}", them.stt_provider))?;
+        crate::privacy::ensure_stt_allowed(&provider)?;
         let mgr = guard.get_or_insert_with(AudioCaptureManager::new);
         log::info!(
             "AudioCaptureManager::start_capture mic='{}', system='{}'",
@@ -1975,6 +1992,7 @@ async fn create_stt_provider_for_party(
 
     let stt_type = STTProviderType::from_str(&config.stt_provider)
         .ok_or_else(|| format!("Unknown STT provider: {}", config.stt_provider))?;
+    crate::privacy::ensure_stt_allowed(&stt_type)?;
     // This side's own language when it has one, else the shared transcription language.
     let stt_language = config.effective_language(&get_stt_language(state));
     let deepgram_config = matches!(&stt_type, STTProviderType::Deepgram)

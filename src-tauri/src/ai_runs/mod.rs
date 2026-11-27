@@ -41,7 +41,7 @@ use crate::llm::{create_provider, ProviderConfig, ProviderType};
 use async_trait::async_trait;
 pub use gate::{local_server_id, GateWait, LiveBusy, LiveGate, LiveTarget};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 pub use windows::{bucket_context, estimate_tokens, ModelWindows};
 
@@ -473,6 +473,22 @@ pub struct AiRuns {
     models_inflight: Mutex<std::collections::HashSet<String>>,
     /// Told the provider whenever a list arrives (`automatic_model_updated`).
     models_updated: Mutex<Option<Arc<dyn Fn(&str) + Send + Sync>>>,
+    active_runs: AtomicUsize,
+}
+
+struct RunActivity<'a>(&'a AtomicUsize);
+
+impl<'a> RunActivity<'a> {
+    fn begin(active: &'a AtomicUsize) -> Self {
+        active.fetch_add(1, Ordering::SeqCst);
+        Self(active)
+    }
+}
+
+impl Drop for RunActivity<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 /// Gets a workspace chat's id and one activity line of its running answer.
@@ -499,6 +515,25 @@ pub fn chat_safe(mut line: SourceActivity) -> SourceActivity {
 }
 
 impl AiRuns {
+    pub fn is_running(&self) -> bool {
+        self.active_runs.load(Ordering::SeqCst) > 0
+    }
+
+    /// Check the concrete provider endpoint before a feature prepares context
+    /// or starts tools. This catches remote Ollama/LM Studio hints as well as
+    /// cloud vendors and subscription CLIs.
+    pub fn ensure_selection_allowed(&self, selection: &ModelSelection) -> Result<(), String> {
+        let ptype = ProviderType::from_str(&selection.provider).map_err(|e| e.to_string())?;
+        crate::privacy::ensure_llm_allowed(&ptype, None)?;
+        if crate::privacy::is_private_local()
+            && matches!(ptype, ProviderType::Ollama | ProviderType::LmStudio | ProviderType::Custom)
+        {
+            let config = self.configs.config_for(selection).map_err(|e| e.to_string())?;
+            crate::privacy::ensure_llm_config_allowed(&config)?;
+        }
+        Ok(())
+    }
+
     /// The app's service: real backend, the app-wide gate, keys from the
     /// credential manager. Also wires a chat's transcript folder to its
     /// session: it goes away when the session closes.
@@ -549,6 +584,7 @@ impl AiRuns {
             models_ttl: models::LIST_TTL,
             models_inflight: Mutex::new(Default::default()),
             models_updated: Mutex::new(None),
+            active_runs: AtomicUsize::new(0),
         }
     }
 
@@ -670,11 +706,22 @@ impl AiRuns {
 
     /// Run one request to the end. Tokens go to `sink` as they arrive.
     pub async fn run(&self, req: AiRunRequest, sink: Option<TokenSink>) -> Result<AiRunResult, AiRunError> {
+        let _activity = RunActivity::begin(&self.active_runs);
         if req.cancel.is_cancelled() {
             return Err(AiRunError::Cancelled);
         }
         let ptype = ProviderType::from_str(&req.selection.provider)
             .map_err(|e| AiRunError::Other { message: e.to_string() })?;
+        let request_config = if crate::privacy::is_private_local() {
+            self.configs.config_for(&req.selection).ok()
+        } else {
+            None
+        };
+        let _content_request = crate::privacy::begin_llm_request(
+            &ptype,
+            request_config.as_ref().and_then(|config| config.base_url.as_deref()),
+        )
+        .map_err(|message| AiRunError::Other { message })?;
         match ptype.cli_agent_kind() {
             Some(kind) => self.run_cli(kind, req, sink).await,
             None => self.run_api(ptype, req, sink).await,

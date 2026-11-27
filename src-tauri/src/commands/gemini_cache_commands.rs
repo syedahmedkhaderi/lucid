@@ -15,6 +15,10 @@ pub async fn create_gemini_context_cache(
     system_prompt: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
+    let _content_request = crate::privacy::begin_llm_request(
+        &crate::llm::ProviderType::Gemini,
+        None,
+    )?;
     // The documents of the running meeting's scope (the default workspace's
     // when none runs). The cache answers only requests with the same scope.
     let scoped = crate::workspace::runtime::for_live_or_default(&state);

@@ -67,4 +67,16 @@ describe("the meeting footer in a narrow window", () => {
     expect(screen.queryByText("MAI-Transcribe-2-Streaming")).toBeNull();
     expect(screen.getByRole("button", { name: /MAI-Transcribe-2-Streaming/ })).toBeInTheDocument();
   });
+
+  it("shows the current privacy mode in the meeting footer", () => {
+    useConfigStore.setState({ privacyMode: "private_local" });
+    render(<ServiceStatusBar compact />);
+    expect(screen.getByRole("status", { name: "Privacy mode: Private Local" })).toHaveTextContent("Private");
+  });
+
+  it("shows cloud consent in the dashboard footer", () => {
+    useConfigStore.setState({ privacyMode: "cloud_allowed" });
+    render(<ServiceStatusBar />);
+    expect(screen.getByRole("status", { name: "Privacy mode: Cloud processing allowed" })).toHaveTextContent("Cloud Allowed");
+  });
 });

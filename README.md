@@ -34,7 +34,9 @@ The repository's original `build-mac.sh` creates a macOS development package aft
 
 ## Privacy and credentials
 
-Cloud inference sends selected transcript or document context to the configured provider. The app does not yet enforce the required private-local boundary, so do not use it for confidential meetings. Provider keys belong in the app's OS credential store and must never be committed. The keys pasted in the originating request were not copied into this repository or tested; treat them as exposed and revoke or rotate them at their provider.
+Lucid starts in **Private Local** mode. It blocks cloud speech, cloud LLM and translation requests, subscription CLIs, remote model endpoints, Gemini context uploads, and remote embeddings. It permits offline speech engines and Ollama or LM Studio bound to a loopback address. Change this in **Settings → Privacy** after the meeting and any current AI requests finish. **Cloud processing allowed** may send audio, transcripts, document excerpts, notes, or images to the selected provider and may incur charges. Check provider and organizational data policies before enabling it. Private Local cannot verify the behavior of software you install on your device, and it does not encrypt meeting records stored on disk.
+
+Provider keys belong in the app's OS credential store and must never be committed. The keys pasted in the originating request were not copied into this repository or tested; treat them as exposed and revoke or rotate them at their provider.
 
 Gemini quotas are project-level. Multiple keys from one project share its quota, so Lucid will not use key cycling to bypass limits. Multi-key project-aware management is not implemented yet. See [`DECISIONS.md`](DECISIONS.md).
 

@@ -12,8 +12,10 @@ Lucid is an active local-first desktop project. This document records current ha
 ## Meeting data
 
 - Meeting documents, transcripts, and recordings can contain sensitive personal or business information. Use synthetic fixtures during development.
-- The upstream foundation supports both local and cloud providers. Cloud inference transmits the content included in a request; choose a local provider for confidential material unless cloud use is explicitly approved.
-- A Lucid-specific privacy-mode gate has not yet been completed. Until it is, do not assume that selecting a workspace alone prevents cloud transmission.
+- Lucid starts in **Private Local**. The Rust backend blocks cloud speech, cloud LLMs, subscription CLIs, remote translations and embeddings, Gemini context uploads, and non-loopback model endpoints. It allows offline STT engines and local LLM endpoints on loopback addresses.
+- **Cloud processing allowed** requires an explicit settings change. It may transmit audio, transcript, document, note, or image content to configured providers and may incur provider charges.
+- Privacy mode cannot be changed during an active meeting, audio capture, chat, or content-bearing AI request. Capture startup rechecks the selected STT provider under the same lock as policy changes.
+- The privacy gate is unit- and integration-tested, but it has not received an independent security audit. Private Local cannot verify the behavior of software installed on the device, and meeting records are not encrypted at rest.
 - Do not enable recording or transcription for a meeting unless participants and applicable policies allow it.
 
 ## Reporting
@@ -22,4 +24,4 @@ No Lucid-owned public security intake is configured yet. Do not send sensitive m
 
 ## Release checks still required
 
-Run secret scanning, dependency review, updater-signing review, privacy-boundary review, and Windows/macOS permission tests before any distribution. The upstream NexQ updater endpoint must remain disabled until Lucid has its own signing key and release feed.
+Run secret scanning, dependency review, updater-signing review, independent privacy-boundary review, and Windows/macOS permission tests before any distribution. The upstream NexQ updater endpoint must remain disabled until Lucid has its own signing key and release feed.

@@ -21,6 +21,7 @@ pub mod prompt_data;
 pub mod llm;
 pub mod meeting_detect;
 pub mod nav_guard;
+pub mod privacy;
 pub mod notes_mcp;
 pub mod ort_runtime;
 pub mod state;
@@ -772,6 +773,8 @@ pub fn run() {
             llm_commands::set_active_model,
             llm_commands::test_llm_connection,
             llm_commands::get_llm_providers,
+            commands::privacy_commands::set_privacy_mode,
+            commands::privacy_commands::get_privacy_mode,
             llm_commands::list_openrouter_models,
             // == COMMANDS: intelligence ==
             intelligence_commands::generate_assist,

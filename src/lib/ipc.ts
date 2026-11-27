@@ -211,6 +211,14 @@ export async function getAvailableSTTProviders(): Promise<string[]> {
 
 // == IPC: LLM (Sub-PRD 5) ==
 
+export async function setPrivacyMode(mode: "private_local" | "cloud_allowed"): Promise<void> {
+  return invoke("set_privacy_mode", { mode });
+}
+
+export async function getPrivacyMode(): Promise<"private_local" | "cloud_allowed"> {
+  return invoke("get_privacy_mode");
+}
+
 export async function setLLMProvider(provider: string): Promise<void> {
   return invoke("set_llm_provider", { provider });
 }

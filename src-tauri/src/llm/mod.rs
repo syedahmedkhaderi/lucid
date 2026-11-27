@@ -178,6 +178,7 @@ pub struct ProviderInfo {
 /// Used for the active provider (`LLMRouter::set_provider`) and for temporary
 /// providers (browsing models, connection tests, fallback).
 pub fn create_provider(config: &ProviderConfig) -> Result<Box<dyn LLMProvider>, String> {
+    crate::privacy::ensure_llm_config_allowed(config)?;
     let provider_type = ProviderType::from_str(&config.provider_type).map_err(|e| match e {
         LLMError::NotConfigured(msg) => msg,
         other => other.to_string(),
@@ -264,6 +265,7 @@ pub struct LLMRouter {
     active_provider: Option<Arc<TokioMutex<Box<dyn LLMProvider>>>>,
     active_model: String,
     active_provider_type: Option<ProviderType>,
+    active_base_url: Option<String>,
     cancel_token: Arc<TokioMutex<bool>>,
 }
 
@@ -273,6 +275,7 @@ impl LLMRouter {
             active_provider: None,
             active_model: String::new(),
             active_provider_type: None,
+            active_base_url: None,
             cancel_token: Arc::new(TokioMutex::new(false)),
         }
     }
@@ -287,14 +290,27 @@ impl LLMRouter {
 
         self.active_provider = Some(Arc::new(TokioMutex::new(provider)));
         self.active_provider_type = Some(provider_type);
+        self.active_base_url = config.base_url;
         Ok(())
     }
 
     /// Get a reference to the active provider (behind a tokio mutex for async access).
     pub fn get_provider(&self) -> Result<Arc<TokioMutex<Box<dyn LLMProvider>>>, LLMError> {
+        if let Some(provider_type) = self.active_provider_type.as_ref() {
+            crate::privacy::ensure_llm_allowed(provider_type, self.active_base_url.as_deref())
+                .map_err(LLMError::NotConfigured)?;
+        }
         self.active_provider
             .clone()
             .ok_or_else(|| LLMError::NotConfigured("No LLM provider configured".to_string()))
+    }
+
+    /// Reserve the privacy policy for a content-bearing request routed through
+    /// this active provider. The returned guard must live through the request.
+    pub fn begin_content_request(&self) -> Result<crate::privacy::ContentRequestGuard, String> {
+        let provider_type = self.active_provider_type.as_ref()
+            .ok_or_else(|| "No active LLM provider configured".to_string())?;
+        crate::privacy::begin_llm_request(provider_type, self.active_base_url.as_deref())
     }
 
     /// Get the active model name.

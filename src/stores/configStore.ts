@@ -20,6 +20,7 @@ import type {
   CliAgentKind,
   ContextScopeSetting,
   ThinkingSetting,
+  PrivacyMode,
 } from "../lib/types";
 import {
   normalizeExtraJsonMap,
@@ -238,6 +239,8 @@ export async function persistValue(key: string, value: unknown): Promise<void> {
 }
 
 interface ConfigState {
+  /** Backend-enforced policy for content-bearing provider calls. */
+  privacyMode: PrivacyMode;
   // Appearance
   theme: ThemeMode;
 
@@ -395,6 +398,7 @@ interface ConfigState {
 
   // Actions
   setTheme: (theme: ThemeMode) => void;
+  setPrivacyMode: (mode: PrivacyMode) => Promise<void>;
   setContextStrategy: (strategy: ContextStrategy) => void;
   setSTTProvider: (provider: STTProviderType) => void;
   setSTTLanguage: (language: string) => void;
@@ -515,6 +519,7 @@ function followFallback(provider: string): void {
 
 export const useConfigStore = create<ConfigState>((set) => ({
   theme: "dark",
+  privacyMode: "private_local",
   sttProvider: "windows_native",
   sttLanguage: "en-US",
   llmProvider: "ollama",
@@ -607,6 +612,12 @@ export const useConfigStore = create<ConfigState>((set) => ({
   setContextStrategy: (strategy) => {
     set({ contextStrategy: strategy });
     persistValue("contextStrategy", strategy);
+  },
+  setPrivacyMode: async (mode) => {
+    const ipc = await import("../lib/ipc");
+    await ipc.setPrivacyMode(mode);
+    set({ privacyMode: mode });
+    await persistValue("privacyMode", mode);
   },
   setTheme: (theme) => {
     set({ theme });
@@ -1102,6 +1113,11 @@ export const useConfigStore = create<ConfigState>((set) => ({
     try {
       const alreadyLoaded = useConfigStore.getState()._loaded;
       const store = await getStore();
+      const privacyMode = (await store.get<PrivacyMode>("privacyMode")) ?? "private_local";
+      // Apply the persisted policy before syncing providers or allowing the UI
+      // to send content. Rust also starts in Private Local before this runs.
+      const privacyIpc = await import("../lib/ipc");
+      await privacyIpc.setPrivacyMode(privacyMode);
 
       const theme = await store.get<ThemeMode>("theme");
       const sttProvider = await store.get<STTProviderType>("sttProvider");
@@ -1314,6 +1330,7 @@ export const useConfigStore = create<ConfigState>((set) => ({
       set((state) => ({
         ...state,
         _loaded: true,
+        privacyMode,
         ...(theme != null && { theme }),
         ...(sttProvider != null && { sttProvider }),
         ...(sttLanguage != null && { sttLanguage }),
@@ -1419,6 +1436,9 @@ export const useConfigStore = create<ConfigState>((set) => ({
       // update this window's Zustand state automatically.
       store.onKeyChange<MeetingAudioConfig>("meetingAudioConfig", (val) => {
         if (val != null) set({ meetingAudioConfig: val });
+      });
+      store.onKeyChange<PrivacyMode>("privacyMode", (val) => {
+        if (val === "private_local" || val === "cloud_allowed") set({ privacyMode: val });
       });
       store.onKeyChange<string>("activeWhisperModel", (val) => {
         if (val !== undefined) set({ activeWhisperModel: val ?? null });

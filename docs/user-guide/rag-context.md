@@ -32,7 +32,7 @@ The result: the AI can reference your documents when generating responses, makin
 | Plain Text | `.txt` | Any plain text file |
 | Markdown | `.md` | Markdown formatted documents |
 
-Each file must be non-empty and no larger than 50 MB. A workspace can contain up to ten document entries; this is a workspace-wide limit, not a separate limit for each meeting. Legacy `.doc` and `.ppt` files and OCR for scanned PDFs are not supported.
+Each file must be non-empty and no larger than 50 MB. A workspace can contain up to ten document entries and 500 MiB total source-file size; these are workspace-wide limits, not separate limits for each meeting. Legacy `.doc` and `.ppt` files and OCR for scanned PDFs are not supported.
 
 ## Loading Documents
 

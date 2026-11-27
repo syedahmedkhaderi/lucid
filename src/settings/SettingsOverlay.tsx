@@ -25,6 +25,7 @@ import {
   Volume2,
   BarChart2,
   Globe,
+  ShieldCheck,
 } from "lucide-react";
 import { ContextStrategySettings } from "./ContextStrategySettings";
 import { AIActionsSettings } from "./AIActionsSettings";
@@ -32,8 +33,9 @@ import { TranslationSettings } from "./TranslationSettings";
 import { Sparkles, BookOpen, NotebookText } from "lucide-react";
 import { LiveNotesSettings } from "./LiveNotesSettings";
 import { PersonalSourcesEditor } from "../sources/PersonalSourcesEditor";
+import { PrivacySettings } from "./PrivacySettings";
 
-type SettingsTab = "meeting_audio" | "llm" | "stt" | "translation" | "ai_actions" | "context_strategy" | "scenarios" | "noise_presets" | "confidence" | "personal_sources" | "live_notes" | "hotkeys" | "general" | "about";
+type SettingsTab = "meeting_audio" | "llm" | "stt" | "translation" | "privacy" | "ai_actions" | "context_strategy" | "scenarios" | "noise_presets" | "confidence" | "personal_sources" | "live_notes" | "hotkeys" | "general" | "about";
 
 // ── Tab groups for sidebar (contextually organized, importance-ordered) ──
 interface TabItem {
@@ -60,6 +62,7 @@ const TAB_GROUPS: TabGroup[] = [
       { id: "llm", label: "LLM Providers", icon: <Brain className="h-4 w-4" /> },
       { id: "stt", label: "STT Providers", icon: <Mic className="h-4 w-4" /> },
       { id: "translation", label: "Translation", icon: <Globe className="h-4 w-4" /> },
+      { id: "privacy", label: "Privacy", icon: <ShieldCheck className="h-4 w-4" /> },
     ],
   },
   {
@@ -175,6 +178,8 @@ export function SettingsOverlay({ isModal = false }: SettingsOverlayProps) {
         return <STTSettings />;
       case "translation":
         return <TranslationSettings />;
+      case "privacy":
+        return <PrivacySettings />;
       case "hotkeys":
         return <HotkeySettings />;
       case "general":

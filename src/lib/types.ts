@@ -325,6 +325,9 @@ export type LLMProviderType =
   | "antigravity_cli"
   | "codex_cli";
 
+/** Content handling policy enforced by the Rust backend. */
+export type PrivacyMode = "private_local" | "cloud_allowed";
+
 /**
  * How much a provider's model thinks before answering. "auto" sends nothing
  * (the provider's own default); the others map to each API's own parameter.

@@ -305,9 +305,28 @@ impl TranslationRouter {
     /// Get an Arc clone of the active provider — safe to hold across .await.
     /// IMPORTANT: Always clone the Arc out of the lock scope before awaiting.
     pub fn get_provider(&self) -> Result<Arc<dyn TranslationProvider>, TranslationError> {
+        if let Some(provider) = self.active_type.as_ref() {
+            crate::privacy::ensure_translation_allowed(&provider.to_string())
+                .map_err(TranslationError::NotConfigured)?;
+        }
         self.active_provider
             .clone()
             .ok_or_else(|| TranslationError::NotConfigured("No translation provider set".into()))
+    }
+
+    /// Keep privacy mode stable for the full period in which a translation
+    /// provider may receive meeting text. LLM translation reserves its own
+    /// LLM request guard at the completion boundary.
+    pub fn begin_content_request(&self) -> Result<Option<crate::privacy::ContentRequestGuard>, String> {
+        let Some(provider) = self.active_type.as_ref() else {
+            return Err("No translation provider set".into());
+        };
+        if provider == &TranslationProviderType::Llm {
+            crate::privacy::ensure_translation_allowed(&provider.to_string())?;
+            Ok(None)
+        } else {
+            crate::privacy::begin_translation_request(&provider.to_string()).map(Some)
+        }
     }
 
     pub fn active_provider_name(&self) -> String {

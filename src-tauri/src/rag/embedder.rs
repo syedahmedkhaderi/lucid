@@ -137,6 +137,7 @@ impl OllamaEmbedder {
         texts: Vec<String>,
         model: &str,
     ) -> Result<Vec<Vec<f32>>, String> {
+        let _content_request = crate::privacy::begin_embedder_request(&self.base_url)?;
         let url = format!("{}/api/embed", self.base_url);
         let base_limit = model_char_limit(model);
 
@@ -202,6 +203,7 @@ impl OllamaEmbedder {
         text: &str,
         model: &str,
     ) -> Result<Vec<f32>, String> {
+        crate::privacy::ensure_embedder_allowed(&self.base_url)?;
         let prefixed = format!("search_query: {}", text);
         let results = self.embed_texts(vec![prefixed], model).await?;
         results
@@ -216,6 +218,7 @@ impl OllamaEmbedder {
         texts: Vec<String>,
         model: &str,
     ) -> Result<Vec<Vec<f32>>, String> {
+        crate::privacy::ensure_embedder_allowed(&self.base_url)?;
         let prefixed: Vec<String> = texts
             .into_iter()
             .map(|t| format!("search_document: {}", t))

@@ -9,6 +9,7 @@ pub mod intelligence_commands;
 pub mod live_commands;
 pub mod llm_commands;
 pub mod log_commands;
+pub mod privacy_commands;
 pub mod meeting_chat_commands;
 pub mod meeting_commands;
 pub mod model_commands;
